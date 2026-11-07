@@ -86,6 +86,18 @@ dialog{border:1px solid var(--line);border-radius:28px;box-shadow:0 25px 80px #1
 }
 .beta-mark svg { width: 16px; height: 16px; }
 .beta-mark strong { letter-spacing: .08em; }
+.brand-mark .brand-friend { width: 27px; height: 27px; }
+.beta-test-links {
+  margin: 0 0 24px;
+  padding: 15px;
+  border: 1px solid #d2c4ea;
+  border-radius: 16px;
+  background: #f3edf9;
+}
+.beta-test-links h3 { margin: 0 0 5px; font-size: 1rem; }
+.beta-test-links p { color: var(--muted); font-size: .85rem; line-height: 1.5; }
+.beta-test-links > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.beta-test-links a { display: inline-flex; align-items: center; color: var(--ink); text-decoration: none; }
 .collection-shelf, .badge-shelf { margin-top: 18px; }
 .collection-shelf > .secondary { margin-top: 12px; }
 .collection-dialog h3 { margin: 16px 0 8px; font-size: 1rem; }
