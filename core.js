@@ -1,7 +1,9 @@
 import {restoreRewards} from './rewards.js';
-export const VERSION='1.7.0';
+import {CURRICULUM_LEVELS, CURRICULUM_TOPICS, curriculumTopic, createCurriculumTask, validCurriculumTask, nextLevelForGrade} from './curriculum.js';
+export const VERSION='1.8.0';
 export const CHANNEL = 'preview';
 export const ROUND_LENGTH=8;
+export const PROGRESSION_ROUNDS=3;
 export const STORAGE_KEY = CHANNEL === 'preview' ? 'tallvenn-preview-v1' : 'tallvenn-v1';
 export const LEVELS = {
   1:{label:'Tall til 20', description:'Tiervenner, pluss, minus og tall som mangler.', max:20,
@@ -12,20 +14,25 @@ export const LEVELS = {
     pattern:['place','ten','count','shift','remove','add','subtract','missing']},
   4:{label:'Ganging og deling', description:'Små tall og brikker i like store grupper.', max:100,
     pattern:['add','subtract','multiply','divide','multiply','divide','missing','multiply']},
+  ...CURRICULUM_LEVELS,
 };
-export const TOPICS={place:'Tall og plassverdi',ten:'Tiervenner',count:'Tallrekka',add:'Pluss',subtract:'Minus',missing:'Tall som mangler',multiply:'Ganging',divide:'Deling'};
+export const TOPICS={place:'Tall og plassverdi',ten:'Tiervenner',count:'Tallrekka',add:'Pluss',subtract:'Minus',missing:'Tall som mangler',multiply:'Ganging',divide:'Deling',...CURRICULUM_TOPICS};
 const taskTypes = new Set(Object.values(LEVELS).flatMap(level => level.pattern));
 const validLevel = x => Object.hasOwn(LEVELS, Number(x));
-export const topicOf=t=>['place','remove','shift'].includes(typeof t==='string'?t:t.type)?'place':(typeof t==='string'?t:t.type);
+export function topicOf(task) {
+  const type = typeof task === 'string' ? task : task.type;
+  return ['place','remove','shift'].includes(type) ? 'place' : curriculumTopic(type) || type;
+}
 export const countStep=t=>t.answer<t.n?-1:1;
-export const factKey=t=>[t.type,t.n??'',t.a??'',t.b??'',...(t.type==='count'?[t.answer]:[])].join(':');
+export const factKey=t=>curriculumTopic(t.type) ? JSON.stringify([t.type,t.prompt,t.visual])
+  : [t.type,t.n??'',t.a??'',t.b??'',...(t.type==='count'?[t.answer]:[])].join(':');
 export function randomGenerator(seed){let n=seed>>>0;return()=>{n+=0x6D2B79F5;let t=n;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;};}
 function shuffle(items,rng){const a=[...items];for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 
 export function topicStats(history=[],level=1){
   const stats=Object.fromEntries(Object.keys(TOPICS).map(k=>[k,{total:0,firstTry:0,helped:0,recent:[],rounds:new Set(),independent:0,keys:new Set()}]));
   for(const round of history.filter(r=>r.level===Number(level)).slice(-12))for(const result of round.results||[]){
-    if(!result||!stats[topicOf(result)])continue;
+    if(!result||!Object.hasOwn(stats,topicOf(result)))continue;
     const s=stats[topicOf(result)];s.total++;if(result.firstTry)s.firstTry++;if(result.helped)s.helped++;
     s.recent.push(result);s.recent=s.recent.slice(-12);
     if(result.firstTry&&!result.helped)s.rounds.add(round.id);
@@ -34,11 +41,13 @@ export function topicStats(history=[],level=1){
   }return stats;
 }
 function supportFor(type,stats,always){
+  if (curriculumTopic(type)) return {support:'visible',input:false};
   const s=stats[topicOf(type)],r=s.recent,clean=r.filter(x=>x.firstTry&&!x.helped).length;
   const optional=!always&&type!=='place'&&r.length>=6&&s.rounds.size>=3&&clean/r.length>=.8&&r.slice(-2).every(x=>x.firstTry&&!x.helped);
   return{support:optional?'optional':'visible',input:optional&&s.independent>=6&&s.keys.size>=3&&clean/r.length>=.9};
 }
 function generateTask(type,level,rng,index,first=false){
+  if (curriculumTopic(type)) return createCurriculumTask(type,rng,index);
   const int=(a,b)=>a+Math.floor(rng()*(b-a+1)),pick=a=>a[int(0,a.length-1)];let n,a,b,answer;
   const {max} = LEVELS[level];
   if(type==='remove'){n=level===1?first&&index===0?17:int(11,19):level===2?int(2,9)*10+int(1,9):int(1,9)*100+int(0,9)*10+int(1,9);b=n%10;answer=n-b;}
@@ -79,7 +88,11 @@ function generateTask(type,level,rng,index,first=false){
     answer = a + b;
   }
   const choices=[answer];
-  for(const c of [...shuffle([answer-1,answer+1,answer-2,answer+2],rng),...shuffle([n,b,a,answer-10,answer+10],rng)]){if(Number.isInteger(c)&&c>=0&&c<=max&&!choices.includes(c))choices.push(c);if(choices.length===3)break;}
+  const neighbors=shuffle([answer-1,answer+1,answer-2,answer+2],rng);
+  const others=shuffle([n,b,a,answer-10,answer+10],rng);
+  // A place-value answer needs a distractor with a different tens digit too.
+  const differentTen = type==='place' ? (answer + 10 <= max ? answer + 10 : answer - 10) : undefined;
+  for(const c of [differentTen,...neighbors,...others]){if(Number.isInteger(c)&&c>=0&&c<=max&&!choices.includes(c))choices.push(c);if(choices.length===3)break;}
   return{id:`${index}-${type}`,type,...(n!==undefined&&{n}),...(a!==undefined&&{a}),...(b!==undefined&&{b}),answer,choices:shuffle(choices,rng),support:'visible',mode:'choice'};
 }
 export function createRound(level=1,seed=Date.now(),first=false,options={}){
@@ -91,11 +104,20 @@ export function createRound(level=1,seed=Date.now(),first=false,options={}){
     const recent=history.filter(r=>r.level===level).slice(-3).flatMap(r=>r.results||[]).filter(r=>r&&pool.includes(r.type)),needs=recent.filter(r=>!r.firstTry||r.helped);
     focus=needs.length?needs[needs.length-1].type:shuffle(pool,rng).sort((a,b)=>stats[topicOf(a)].total-stats[topicOf(b)].total)[0];
     const familiar=shuffle(pool.filter(t=>t!==focus),rng).sort((a,b)=>{const score=t=>{const s=stats[topicOf(t)];return s.total?s.firstTry/s.total:0;};return score(b)-score(a);}),other=shuffle(pool.filter(t=>t!==focus),rng);
-    pattern=[familiar[0]||'ten',familiar[1]||'remove',focus,focus,focus,focus,other[0],other[1]];
+    pattern=[familiar[0]||focus,familiar[1]||focus,focus,focus,focus,focus,other[0]||focus,other[1]||focus];
   }
   const tasks=pattern.map((type,i)=>generateTask(type,level,rng,i,first));
   for(let i=1;i<tasks.length;i++)for(let j=0;j<12&&factKey(tasks[i])===factKey(tasks[i-1]);j++)tasks[i]=generateTask(tasks[i].type,level,rng,i);
   tasks.forEach((t,i)=>{const s=supportFor(t.type,stats,options.alwaysShowVisuals);t.support=s.support;if(i>=6&&s.input)t.mode='input';t.role=i<2?'warmup':i<6?'focus':'review';});
+  const preview = options.preview;
+  if (preview && validLevel(preview.level) && preview.level !== level && Number.isInteger(preview.count)) {
+    const types = [...new Set(LEVELS[preview.level].pattern)];
+    const count=Math.min(preview.count,PROGRESSION_ROUNDS-1);
+    for (let i=0; i<count; i++) {
+      const index=ROUND_LENGTH-count+i;
+      tasks[index]={...generateTask(types[i%types.length],preview.level,rng,index), practiceLevel:preview.level, role:'preview'};
+    }
+  }
   return{id:`${seed}-${level}`,seed,level,focus,tasks,index:0,attempts:Array(8).fill(0),helped:Array(8).fill(false),hintStages:Array(8).fill(0),results:Array(8).fill(null),solved:false,startedAt:new Date().toISOString()};
 }
 export function noteHelp(round){if(!round||round.solved||round.index>=8)return round;const helped=[...round.helped],hintStages=[...(round.hintStages||Array(8).fill(0))];helped[round.index]=true;hintStages[round.index]=Math.min(3,hintStages[round.index]+1);return{...round,helped,hintStages};}
@@ -110,28 +132,44 @@ export function answerRound(round,value){
 export function advanceRound(round){
   if(!round||!round.solved||round.index>=8)return round;
   const tasks=[...round.tasks],source=round.tasks[round.index],result=round.results[round.index],target=round.index+3;
-  if(target<8&&(!result.firstTry||result.helped)){
-    const rng=randomGenerator((round.seed||Number.parseInt(round.id)||1)+round.index*37+991);let repeated=generateTask(source.type,round.level,rng,target);
-    for(let j=0;j<12&&factKey(repeated)===factKey(source);j++)repeated=generateTask(source.type,round.level,rng,target);
-    tasks[target]={...repeated,role:'review',reviewOf:round.index};
+  if(target<8&&tasks[target].role!=='preview'&&(!result.firstTry||result.helped)){
+    const rng=randomGenerator((round.seed||Number.parseInt(round.id)||1)+round.index*37+991), practiceLevel=source.practiceLevel||round.level;
+    let repeated=generateTask(source.type,practiceLevel,rng,target);
+    for(let j=0;j<12&&factKey(repeated)===factKey(source);j++)repeated=generateTask(source.type,practiceLevel,rng,target);
+    tasks[target]={...repeated,...(source.practiceLevel&&{practiceLevel}),role:'review',reviewOf:round.index};
   }return{...round,tasks,index:round.index+1,solved:false};
 }
 export function roundSummary(r){if(r?.index!==8||!r.results.every(Boolean))return null;return{id:r.id,level:r.level,date:new Date().toISOString(),focus:r.focus||null,firstTry:r.results.filter(x=>x.firstTry).length,helped:r.results.filter(x=>x.helped).length,results:r.results};}
 export function growthState(total){total=Math.max(0,Math.floor(Number(total)||0));const stage=total===0?0:((total-1)%5)+1;return{stage,flowers:Math.floor(total/5),label:['Et lite frø','En ny spire!','To fine blader!','Planten vokser!','Snart en blomst!','Nå blomstrer det!'][stage]};}
-export function freshState(){return{version:1,level:1,sound:true,alwaysShowVisuals:false,focusBreaks:false,focusBreakPending:false,roundsCompleted:0,history:[],active:null,...restoreRewards(null,0)};}
+export function progressionPreview(state, grade) {
+  const level = state.autoProgress && nextLevelForGrade(grade, state.level);
+  return level ? {level, count:state.progressRounds} : null;
+}
+
+export function advancePractice(state, grade, finishedLevel) {
+  const next = progressionPreview(state, grade);
+  if (!next || finishedLevel !== state.level) return state;
+  const progressRounds = state.progressRounds + 1;
+  return progressRounds >= PROGRESSION_ROUNDS ? {...state, level:next.level, progressRounds:0} : {...state, progressRounds};
+}
+
+export function freshState(){return{version:1,level:1,autoProgress:false,progressRounds:0,sound:true,alwaysShowVisuals:false,focusBreaks:false,focusBreakPending:false,roundsCompleted:0,history:[],active:null,...restoreRewards(null,0)};}
 export function restoreState(raw){
   const fallback=freshState();if(!raw||raw.version!==1)return fallback;
   const history=Array.isArray(raw.history)?raw.history.filter(r=>typeof r?.id==='string'&&validLevel(r.level)&&typeof r.date==='string'&&Number.isInteger(r.firstTry)&&r.firstTry>=0&&r.firstTry<=8&&Number.isInteger(r.helped)&&r.helped>=0&&r.helped<=8).slice(-40):[];
   const r=raw.active;
   const validNumber=x=>Number.isInteger(x)&&x>=0&&x<=999;
   const validTask=t=>t&&taskTypes.has(t.type)&&validNumber(t.answer)&&Array.isArray(t.choices)&&t.choices.length===3&&new Set(t.choices).size===3&&t.choices.includes(t.answer)&&t.choices.every(validNumber)
+    && (t.practiceLevel===undefined||validLevel(t.practiceLevel)&&LEVELS[t.practiceLevel].pattern.includes(t.type))
+    && (!curriculumTopic(t.type)||validCurriculumTask(t))
     && (!['remove','count','place','shift','subtract','missing','divide'].includes(t.type)||validNumber(t.n)&&t.n>0)
     && (!['ten','add','missing','multiply'].includes(t.type)||validNumber(t.a))
     && (!['remove','shift','subtract','add','multiply','divide'].includes(t.type)||Number.isInteger(t.b)&&Math.abs(t.b)<=999)
     && (t.type!=='multiply'||t.a>=2&&t.a<=4&&t.b>=2&&t.b<=6)
     && (t.type!=='divide'||t.b>=2&&t.b<=4&&t.answer>=2&&t.answer<=6&&t.n===t.b*t.answer);
   const valid=r&&typeof r.id==='string'&&validLevel(r.level)&&Array.isArray(r.tasks)&&r.tasks.length===8&&r.tasks.every(validTask)&&Number.isInteger(r.index)&&r.index>=0&&r.index<8&&['attempts','helped','results'].every(k=>Array.isArray(r[k])&&r[k].length===8)&&r.attempts.every(x=>Number.isInteger(x)&&x>=0)&&r.helped.every(x=>typeof x==='boolean')&&r.results.every((x,i)=>i<r.index||(i===r.index&&r.solved)?x&&typeof x.firstTry==='boolean'&&typeof x.helped==='boolean':x===null)&&typeof r.solved==='boolean';
-  const active=valid?{...r,tasks:r.tasks.map(t=>({...t,support:t.support==='optional'?'optional':'visible',mode:t.mode==='input'?'input':'choice'})),hintStages:Array.isArray(r.hintStages)&&r.hintStages.length===8?r.hintStages.map(x=>Number.isInteger(x)?Math.max(0,Math.min(3,x)):0):r.helped.map(v=>v?3:0)}:null;
+  const active=valid?{...r,tasks:r.tasks.map(t=>({...t,support:t.support==='optional'&&!curriculumTopic(t.type)?'optional':'visible',mode:t.mode==='input'&&!curriculumTopic(t.type)?'input':'choice'})),hintStages:Array.isArray(r.hintStages)&&r.hintStages.length===8?r.hintStages.map(x=>Number.isInteger(x)?Math.max(0,Math.min(3,x)):0):r.helped.map(v=>v?3:0)}:null;
   const total=Number.isSafeInteger(raw.roundsCompleted)&&raw.roundsCompleted>=history.length?raw.roundsCompleted:history.length;
-  return{...fallback,level:validLevel(raw.level)?Number(raw.level):1,sound:typeof raw.sound==='boolean'?raw.sound:fallback.sound,alwaysShowVisuals:raw.alwaysShowVisuals===true,focusBreaks:raw.focusBreaks===true,focusBreakPending:raw.focusBreaks===true&&raw.focusBreakPending===true&&!active,roundsCompleted:total,history,active,...restoreRewards(raw,total)};
+  const autoProgress=raw.autoProgress===true, progressRounds=autoProgress&&Number.isInteger(raw.progressRounds)&&raw.progressRounds>=0&&raw.progressRounds<PROGRESSION_ROUNDS ? raw.progressRounds : 0;
+  return{...fallback,level:validLevel(raw.level)?Number(raw.level):1,autoProgress,progressRounds,sound:typeof raw.sound==='boolean'?raw.sound:fallback.sound,alwaysShowVisuals:raw.alwaysShowVisuals===true,focusBreaks:raw.focusBreaks===true,focusBreakPending:raw.focusBreaks===true&&raw.focusBreakPending===true&&!active,roundsCompleted:total,history,active,...restoreRewards(raw,total)};
 }

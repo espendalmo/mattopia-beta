@@ -8,6 +8,12 @@ export const AVATARS = {
   frog:{ icon:'🐸', label:'Frosk' },
   octopus:{ icon:'🐙', label:'Blekksprut' },
   owl:{ icon:'🦉', label:'Ugle' },
+  tiger:{ icon:'🐯', label:'Tiger' },
+  koala:{ icon:'🐨', label:'Koala' },
+  penguin:{ icon:'🐧', label:'Pingvin' },
+  cat:{ icon:'🐱', label:'Katt' },
+  dragon:{ icon:'🐲', label:'Drage' },
+  robot:{ icon:'🤖', label:'Robot' },
 };
 export const GRADES = Array.from({ length:10 }, (_, i) => i + 1);
 export const NAME_LIMIT = 24;
