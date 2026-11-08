@@ -283,6 +283,7 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 .adult-profile { margin-bottom: 22px; padding: 15px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
 .adult-profile h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; font-size: 1rem; overflow-wrap: anywhere; }
 .adult-profile > button { margin-top: 12px; }
+.round-length-setting { margin-bottom: 20px; }
 .progression-setting { margin: 12px 0 0; padding: 9px 13px 12px; border-radius: 14px; background: #edf4e8; }
 .progression-setting .sound-setting { margin: 0; }
 .progression-setting .adult-note { margin: 0 0 0 34px; }
@@ -639,6 +640,69 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 .curriculum-table th { background: #edf4e8; }
 .wide-answers { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .wide-answers .answer { font-size: clamp(.98rem, 4.3vw, 1.5rem); line-height: 1.25; overflow-wrap: anywhere; }
+
+.project-choice-list { margin-top: 10px; }
+.project-choice-list > summary { cursor: pointer; font-weight: 750; padding: 10px 0; }
+.project-choice-list > p { margin-bottom: 12px; }
+.project-peek {
+  position: relative;
+  display: block;
+  width: min(100%, 360px);
+  margin: 0 auto 12px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  overflow: hidden;
+  background: #e6f1ea;
+  color: var(--ink);
+}
+.project-peek canvas { display: block; width: 100%; height: clamp(170px, 39vw, 210px); }
+.project-peek > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #f8faf5;
+  font-size: .78rem;
+  font-weight: 750;
+}
+.project-peek svg { width: 15px; height: 15px; }
+.welcome-dialog .project-peek { margin-top: 24px; }
+.completion-garden.completion-project { width: min(100%, 360px); height: auto; margin-bottom: 18px; }
+.completion-project .earned-star svg { fill: none; stroke: #8b6825; stroke-width: 1.8; }
+.project-dialog {
+  width: min(100% - 20px, 970px);
+  max-height: 94svh;
+  padding: clamp(12px, 2.3vw, 23px);
+}
+.project-dialog .dialog-header { margin-bottom: 10px; }
+.project-dialog .dialog-header p, .project-viewer p, .project-milestone {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: .86rem;
+  line-height: 1.4;
+}
+.project-viewer canvas {
+  display: block;
+  width: 100%;
+  height: clamp(220px, 59svh, 630px);
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #e6f1ea;
+  cursor: grab;
+  touch-action: none;
+}
+.project-viewer canvas:focus-visible { outline: 3px solid #285ed2; outline-offset: 2px; }
+.project-viewer canvas:active { cursor: grabbing; }
+.project-controls { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 10px; margin: 9px 0 7px; }
+.project-control-group { display: flex; gap: 5px; }
+.project-control-group > button { min-width: 42px; min-height: 42px; padding: 6px 9px; }
+.project-control-group > button[aria-pressed="true"] { background: var(--mint); border-color: #8eb281; color: var(--green); }
+.project-zoom { font-size: 1.2rem; }
 
 @media (max-width: 380px) {
   .focus-options button { font-size: .68rem; }

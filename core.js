@@ -1,8 +1,10 @@
 import {restoreRewards} from './rewards.js';
 import {CURRICULUM_LEVELS, CURRICULUM_TOPICS, curriculumTopic, createCurriculumTask, validCurriculumTask, nextLevelForGrade} from './curriculum.js';
-export const VERSION='1.8.0';
+export const VERSION='1.9.0';
 export const CHANNEL = 'preview';
 export const ROUND_LENGTH=8;
+export const ROUND_LENGTHS=Object.freeze([5,6,ROUND_LENGTH]);
+const validRoundLength=length=>ROUND_LENGTHS.includes(length);
 export const PROGRESSION_ROUNDS=3;
 export const STORAGE_KEY = CHANNEL === 'preview' ? 'tallvenn-preview-v1' : 'tallvenn-v1';
 export const LEVELS = {
@@ -97,6 +99,8 @@ function generateTask(type,level,rng,index,first=false){
 }
 export function createRound(level=1,seed=Date.now(),first=false,options={}){
   level=validLevel(level)?Number(level):1;
+  const length=validRoundLength(options.length)?options.length:ROUND_LENGTH;
+  const reviewStart=length-(length===5?1:2);
   const rng=randomGenerator(seed),history=options.history||[],stats=topicStats(history,level);
   let focus=null, pattern=[...LEVELS[level].pattern];
   const pool=[...new Set(pattern)];
@@ -104,25 +108,28 @@ export function createRound(level=1,seed=Date.now(),first=false,options={}){
     const recent=history.filter(r=>r.level===level).slice(-3).flatMap(r=>r.results||[]).filter(r=>r&&pool.includes(r.type)),needs=recent.filter(r=>!r.firstTry||r.helped);
     focus=needs.length?needs[needs.length-1].type:shuffle(pool,rng).sort((a,b)=>stats[topicOf(a)].total-stats[topicOf(b)].total)[0];
     const familiar=shuffle(pool.filter(t=>t!==focus),rng).sort((a,b)=>{const score=t=>{const s=stats[topicOf(t)];return s.total?s.firstTry/s.total:0;};return score(b)-score(a);}),other=shuffle(pool.filter(t=>t!==focus),rng);
-    pattern=[familiar[0]||focus,familiar[1]||focus,focus,focus,focus,focus,other[0]||focus,other[1]||focus];
+    const review=Array.from({length:length-reviewStart},(_,i)=>other[i]||focus);
+    pattern=[familiar[0]||focus,familiar[1]||focus,...Array(reviewStart-2).fill(focus),...review];
+  } else if(length<ROUND_LENGTH && pool.length>=length) {
+    pattern=[pool[0],...shuffle(pool.slice(1),rng)];
   }
-  const tasks=pattern.map((type,i)=>generateTask(type,level,rng,i,first));
+  const tasks=pattern.slice(0,length).map((type,i)=>generateTask(type,level,rng,i,first));
   for(let i=1;i<tasks.length;i++)for(let j=0;j<12&&factKey(tasks[i])===factKey(tasks[i-1]);j++)tasks[i]=generateTask(tasks[i].type,level,rng,i);
-  tasks.forEach((t,i)=>{const s=supportFor(t.type,stats,options.alwaysShowVisuals);t.support=s.support;if(i>=6&&s.input)t.mode='input';t.role=i<2?'warmup':i<6?'focus':'review';});
+  tasks.forEach((t,i)=>{const s=supportFor(t.type,stats,options.alwaysShowVisuals);t.support=s.support;if(i>=reviewStart&&s.input)t.mode='input';t.role=i<2?'warmup':i<reviewStart?'focus':'review';});
   const preview = options.preview;
   if (preview && validLevel(preview.level) && preview.level !== level && Number.isInteger(preview.count)) {
     const types = [...new Set(LEVELS[preview.level].pattern)];
     const count=Math.min(preview.count,PROGRESSION_ROUNDS-1);
     for (let i=0; i<count; i++) {
-      const index=ROUND_LENGTH-count+i;
+      const index=length-count+i;
       tasks[index]={...generateTask(types[i%types.length],preview.level,rng,index), practiceLevel:preview.level, role:'preview'};
     }
   }
-  return{id:`${seed}-${level}`,seed,level,focus,tasks,index:0,attempts:Array(8).fill(0),helped:Array(8).fill(false),hintStages:Array(8).fill(0),results:Array(8).fill(null),solved:false,startedAt:new Date().toISOString()};
+  return{id:`${seed}-${level}`,seed,level,focus,tasks,index:0,attempts:Array(length).fill(0),helped:Array(length).fill(false),hintStages:Array(length).fill(0),results:Array(length).fill(null),solved:false,startedAt:new Date().toISOString()};
 }
-export function noteHelp(round){if(!round||round.solved||round.index>=8)return round;const helped=[...round.helped],hintStages=[...(round.hintStages||Array(8).fill(0))];helped[round.index]=true;hintStages[round.index]=Math.min(3,hintStages[round.index]+1);return{...round,helped,hintStages};}
+export function noteHelp(round){if(!round||round.solved||round.index>=round.tasks.length)return round;const helped=[...round.helped],hintStages=[...(round.hintStages||Array(round.tasks.length).fill(0))];helped[round.index]=true;hintStages[round.index]=Math.min(3,hintStages[round.index]+1);return{...round,helped,hintStages};}
 export function answerRound(round,value){
-  if(!round||round.solved||round.index>=8)return round;const t=round.tasks[round.index];
+  if(!round||round.solved||round.index>=round.tasks.length)return round;const t=round.tasks[round.index];
   if(!Number.isInteger(value)||value<0||value>999||(t.mode!=='input'&&!t.choices.includes(value)))return round;
   const index=round.index,attempts=[...round.attempts];attempts[index]++;
   if(value!==t.answer)return{...round,attempts};const results=[...round.results];
@@ -130,16 +137,16 @@ export function answerRound(round,value){
   return{...round,attempts,results,solved:true};
 }
 export function advanceRound(round){
-  if(!round||!round.solved||round.index>=8)return round;
+  if(!round||!round.solved||round.index>=round.tasks.length)return round;
   const tasks=[...round.tasks],source=round.tasks[round.index],result=round.results[round.index],target=round.index+3;
-  if(target<8&&tasks[target].role!=='preview'&&(!result.firstTry||result.helped)){
+  if(target<tasks.length&&tasks[target].role!=='preview'&&(!result.firstTry||result.helped)){
     const rng=randomGenerator((round.seed||Number.parseInt(round.id)||1)+round.index*37+991), practiceLevel=source.practiceLevel||round.level;
     let repeated=generateTask(source.type,practiceLevel,rng,target);
     for(let j=0;j<12&&factKey(repeated)===factKey(source);j++)repeated=generateTask(source.type,practiceLevel,rng,target);
     tasks[target]={...repeated,...(source.practiceLevel&&{practiceLevel}),role:'review',reviewOf:round.index};
   }return{...round,tasks,index:round.index+1,solved:false};
 }
-export function roundSummary(r){if(r?.index!==8||!r.results.every(Boolean))return null;return{id:r.id,level:r.level,date:new Date().toISOString(),focus:r.focus||null,firstTry:r.results.filter(x=>x.firstTry).length,helped:r.results.filter(x=>x.helped).length,results:r.results};}
+export function roundSummary(r){if(!r||r.index!==r.tasks.length||!r.results.every(Boolean))return null;return{id:r.id,level:r.level,length:r.tasks.length,date:new Date().toISOString(),focus:r.focus||null,firstTry:r.results.filter(x=>x.firstTry).length,helped:r.results.filter(x=>x.helped).length,results:r.results};}
 export function growthState(total){total=Math.max(0,Math.floor(Number(total)||0));const stage=total===0?0:((total-1)%5)+1;return{stage,flowers:Math.floor(total/5),label:['Et lite frø','En ny spire!','To fine blader!','Planten vokser!','Snart en blomst!','Nå blomstrer det!'][stage]};}
 export function progressionPreview(state, grade) {
   const level = state.autoProgress && nextLevelForGrade(grade, state.level);
@@ -153,11 +160,15 @@ export function advancePractice(state, grade, finishedLevel) {
   return progressRounds >= PROGRESSION_ROUNDS ? {...state, level:next.level, progressRounds:0} : {...state, progressRounds};
 }
 
-export function freshState(){return{version:1,level:1,autoProgress:false,progressRounds:0,sound:true,alwaysShowVisuals:false,focusBreaks:false,focusBreakPending:false,roundsCompleted:0,history:[],active:null,...restoreRewards(null,0)};}
+export function freshState(){return{version:1,level:1,roundLength:ROUND_LENGTH,autoProgress:false,progressRounds:0,sound:true,alwaysShowVisuals:false,focusBreaks:false,focusBreakPending:false,roundsCompleted:0,history:[],active:null,...restoreRewards(null,0)};}
 export function restoreState(raw){
   const fallback=freshState();if(!raw||raw.version!==1)return fallback;
-  const history=Array.isArray(raw.history)?raw.history.filter(r=>typeof r?.id==='string'&&validLevel(r.level)&&typeof r.date==='string'&&Number.isInteger(r.firstTry)&&r.firstTry>=0&&r.firstTry<=8&&Number.isInteger(r.helped)&&r.helped>=0&&r.helped<=8).slice(-40):[];
+  const history=Array.isArray(raw.history)?raw.history.filter(r=>{
+    const length=r?.length??ROUND_LENGTH;
+    return typeof r?.id==='string'&&validLevel(r.level)&&typeof r.date==='string'&&validRoundLength(length)&&Number.isInteger(r.firstTry)&&r.firstTry>=0&&r.firstTry<=length&&Number.isInteger(r.helped)&&r.helped>=0&&r.helped<=length;
+  }).slice(-40):[];
   const r=raw.active;
+  const length=r?.tasks?.length;
   const validNumber=x=>Number.isInteger(x)&&x>=0&&x<=999;
   const validTask=t=>t&&taskTypes.has(t.type)&&validNumber(t.answer)&&Array.isArray(t.choices)&&t.choices.length===3&&new Set(t.choices).size===3&&t.choices.includes(t.answer)&&t.choices.every(validNumber)
     && (t.practiceLevel===undefined||validLevel(t.practiceLevel)&&LEVELS[t.practiceLevel].pattern.includes(t.type))
@@ -167,9 +178,9 @@ export function restoreState(raw){
     && (!['remove','shift','subtract','add','multiply','divide'].includes(t.type)||Number.isInteger(t.b)&&Math.abs(t.b)<=999)
     && (t.type!=='multiply'||t.a>=2&&t.a<=4&&t.b>=2&&t.b<=6)
     && (t.type!=='divide'||t.b>=2&&t.b<=4&&t.answer>=2&&t.answer<=6&&t.n===t.b*t.answer);
-  const valid=r&&typeof r.id==='string'&&validLevel(r.level)&&Array.isArray(r.tasks)&&r.tasks.length===8&&r.tasks.every(validTask)&&Number.isInteger(r.index)&&r.index>=0&&r.index<8&&['attempts','helped','results'].every(k=>Array.isArray(r[k])&&r[k].length===8)&&r.attempts.every(x=>Number.isInteger(x)&&x>=0)&&r.helped.every(x=>typeof x==='boolean')&&r.results.every((x,i)=>i<r.index||(i===r.index&&r.solved)?x&&typeof x.firstTry==='boolean'&&typeof x.helped==='boolean':x===null)&&typeof r.solved==='boolean';
-  const active=valid?{...r,tasks:r.tasks.map(t=>({...t,support:t.support==='optional'&&!curriculumTopic(t.type)?'optional':'visible',mode:t.mode==='input'&&!curriculumTopic(t.type)?'input':'choice'})),hintStages:Array.isArray(r.hintStages)&&r.hintStages.length===8?r.hintStages.map(x=>Number.isInteger(x)?Math.max(0,Math.min(3,x)):0):r.helped.map(v=>v?3:0)}:null;
+  const valid=r&&typeof r.id==='string'&&validLevel(r.level)&&Array.isArray(r.tasks)&&validRoundLength(length)&&r.tasks.every(validTask)&&Number.isInteger(r.index)&&r.index>=0&&r.index<length&&['attempts','helped','results'].every(k=>Array.isArray(r[k])&&r[k].length===length)&&r.attempts.every(x=>Number.isInteger(x)&&x>=0)&&r.helped.every(x=>typeof x==='boolean')&&r.results.every((x,i)=>i<r.index||(i===r.index&&r.solved)?x&&typeof x.firstTry==='boolean'&&typeof x.helped==='boolean':x===null)&&typeof r.solved==='boolean';
+  const active=valid?{...r,tasks:r.tasks.map(t=>({...t,support:t.support==='optional'&&!curriculumTopic(t.type)?'optional':'visible',mode:t.mode==='input'&&!curriculumTopic(t.type)?'input':'choice'})),hintStages:Array.isArray(r.hintStages)&&r.hintStages.length===length?r.hintStages.map(x=>Number.isInteger(x)?Math.max(0,Math.min(3,x)):0):r.helped.map(v=>v?3:0)}:null;
   const total=Number.isSafeInteger(raw.roundsCompleted)&&raw.roundsCompleted>=history.length?raw.roundsCompleted:history.length;
   const autoProgress=raw.autoProgress===true, progressRounds=autoProgress&&Number.isInteger(raw.progressRounds)&&raw.progressRounds>=0&&raw.progressRounds<PROGRESSION_ROUNDS ? raw.progressRounds : 0;
-  return{...fallback,level:validLevel(raw.level)?Number(raw.level):1,autoProgress,progressRounds,sound:typeof raw.sound==='boolean'?raw.sound:fallback.sound,alwaysShowVisuals:raw.alwaysShowVisuals===true,focusBreaks:raw.focusBreaks===true,focusBreakPending:raw.focusBreaks===true&&raw.focusBreakPending===true&&!active,roundsCompleted:total,history,active,...restoreRewards(raw,total)};
+  return{...fallback,level:validLevel(raw.level)?Number(raw.level):1,roundLength:validRoundLength(raw.roundLength)?raw.roundLength:ROUND_LENGTH,autoProgress,progressRounds,sound:typeof raw.sound==='boolean'?raw.sound:fallback.sound,alwaysShowVisuals:raw.alwaysShowVisuals===true,focusBreaks:raw.focusBreaks===true,focusBreakPending:raw.focusBreaks===true&&raw.focusBreakPending===true&&!active,roundsCompleted:total,history,active,...restoreRewards(raw,total)};
 }

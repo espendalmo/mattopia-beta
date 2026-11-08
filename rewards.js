@@ -1,4 +1,5 @@
 import { PLANTS, plantById } from './plants.js';
+import { projectById, restoreProjects } from './projects.js';
 
 // Local, code-drawn toy bricks. A piece is earned only by finishing a round.
 const PALETTE = { blue:'#398bd4', red:'#df5149', yellow:'#efc546', green:'#60a86d', orange:'#ec9a43', purple:'#9877bd', white:'#e8eee9', black:'#52626a', pink:'#e483a5', tan:'#c99a6e', teal:'#42aba4' };
@@ -207,18 +208,20 @@ function nextPlant(garden, rng) {
 export function restoreRewards(raw,total=0) {
   const plantRounds = count(raw?.plantRounds) && raw.plantRounds <= total ? raw.plantRounds : total;
   return {
-    rewardMode:raw?.rewardMode==='bricks'?'bricks':'plant',
+    rewardMode:raw?.rewardMode==='bricks'||projectById(raw?.rewardMode)?raw.rewardMode:'plant',
     plantRounds,
     garden:restoreGarden(raw?.garden, plantRounds),
     brickBuild:restoreBuild(raw?.brickBuild),
+    projects:restoreProjects(raw?.projects,total),
     lastRewardRoundId:typeof raw?.lastRewardRoundId==='string'?raw.lastRewardRoundId:null,
   };
 }
 export function selectRewardMode(state,mode,rng=Math.random) {
-  if(!['plant','bricks'].includes(mode))return state;
+  if(!['plant','bricks'].includes(mode)&&!projectById(mode))return state;
   return {...state,rewardMode:mode,brickBuild:mode==='bricks'?ensureBuild(state.brickBuild,rng):state.brickBuild};
 }
 export function prepareReward(state,rng=Math.random) {
+  if (projectById(state.rewardMode)) return state;
   if (state.rewardMode !== 'bricks') {
     const garden = restoreGarden(state.garden, state.plantRounds);
     return garden.stage === 5 ? { ...state, garden:nextPlant(garden, rng) } : state;
@@ -229,6 +232,13 @@ export function prepareReward(state,rng=Math.random) {
 }
 export function awardPractice(state,roundId,rng=Math.random) {
   if(!roundId||state.lastRewardRoundId===roundId)return {state,reward:null};
+  const mode=state.rewardMode, project=projectById(mode);
+  if (project) {
+    const before=state.projects[mode]||0;
+    const completed=Math.min(project.total,before+1);
+    return {state:{...state,projects:{...state.projects,[mode]:completed},lastRewardRoundId:roundId},
+      reward:{mode,completed,added:completed>before}};
+  }
   if(state.rewardMode!=='bricks') {
     const plantRounds=(state.plantRounds||0)+1;
     let garden = restoreGarden(state.garden, state.plantRounds || 0);
