@@ -8,7 +8,7 @@ import { BREAK_ATTEMPTS, BREAK_INTERVAL, BREAK_TITLES, BRICK_COLORS, breakKind, 
 import { AVATARS, GRADES, NAME_LIMIT, profileDetails, readProfiles, saveProfile } from './profiles.js';
 import { curriculumTopic, levelForGrade, levelsForGrade, nextLevelForGrade } from './curriculum.js';
 import { PROJECTS, projectById, projectScene, worldBuilding, worldBuildingOptions, worldBuildingPreview } from './projects.js';
-import { isWorld, currentWorld, worldStatus, worldSelect, worldAdvance, freshWorld, replaceCurrentWorld, startNewWorld, WORLD_PLACES } from './worlds.js';
+import { isWorld, currentWorld, worldStatus, worldCompletedPlaces, worldSelect, worldAdvance, freshWorld, replaceCurrentWorld, startNewWorld, WORLD_IDS, REGION_PLACES } from './worlds.js';
 import { mountProjectView } from './project-view.js';
 
 const root = document.querySelector('#app');
@@ -315,7 +315,7 @@ function mountProjectPreview(container) {
 }
 
 function projectProgress(info) {
-  return isWorld(info.mode) ? `${info.built} av ${WORLD_PLACES} bygg ferdige` : `${info.completed} av ${info.total} byggesteg`;
+  return isWorld(info.mode) ? `${info.built??0} av ${info.capacity??REGION_PLACES} bygg ferdige` : `${info.completed} av ${info.total} byggesteg`;
 }
 
 function projectAmbience(dialog, id) {
@@ -345,7 +345,7 @@ function projectAmbience(dialog, id) {
   sync();
 }
 
-function showProject(id, demo = false, archivedMap = null) {
+function showProject(id, demo = false, archivedMap = null, {galleryMap=null,place=null} = {}) {
   const project = projectById(id);
   if (!project || (demo && CHANNEL !== 'preview')) return;
   let trail = demo && isWorld(id) ? [freshWorld()] : null;
@@ -353,18 +353,23 @@ function showProject(id, demo = false, archivedMap = null) {
   let map = trail ? trail[0] : archivedMap || currentWorld(state,id);
   const progress = () => ({mode:id,...(map ? worldStatus(map) : {completed,total:project.total,full:completed===project.total})});
   let scene = projectScene(id, map || completed);
+  const target=place===null?null:scene.landmarks?.[place];
+  if (place!==null&&!target) return;
+  const title=target?worldBuilding(id,place,map).name:project.name;
   const latest = () => `<strong>${scene.last ? escapeHtml(scene.last) : 'Klar til å bygge'}</strong>`;
   const milestone = () => progress().full ? 'Hele byggeprosjektet er ferdig!'
-    : scene.next ? `Neste byggesteg er «${scene.next}».` : 'Velg neste bygg før en ny runde.';
-  showDialog(`<div class="dialog-header"><div><h2 id="dialog-title" tabindex="-1" autofocus>${project.name}</h2>
-      <p data-demo-progress>${demo ? 'Byggedemo · ' : ''}${projectProgress(progress())}</p></div><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggeprosjektet">${icon('close')}</button></div>
+    : scene.next ? `Neste byggesteg er «${scene.next}».`
+    : map?.layout===2 && map.progress===0 ? 'Bygg videre for å se hva som skjuler seg i tåka.' : 'Velg neste bygg før en ny runde.';
+  showDialog(`<div class="dialog-header"><div><h2 id="dialog-title" tabindex="-1" autofocus>${title}</h2>
+      <p data-demo-progress>${demo ? 'Byggedemo · ' : target ? project.name+' · ' : ''}${projectProgress(progress())}</p></div><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggeprosjektet">${icon('close')}</button></div>
+    ${galleryMap!==null ? `<button class="secondary project-back" data-action="collection" data-project="${id}" data-map="${galleryMap}" ${place===null?'':`data-place="${place}"`}>Tilbake til samlingen</button>` : ''}
     <div class="project-viewer" data-drag-mode="move">
       ${demo ? `<div class="demo-controls" role="group" aria-label="Byggesteg i demoen">
         <button class="secondary" data-demo-step="-1" disabled aria-label="Forrige byggesteg"><span class="demo-back">${icon('arrow')}</span> Forrige</button>
         <p data-demo-status aria-live="polite">${latest()}</p>
         <button class="secondary" data-demo-step="1" aria-label="Neste byggesteg">Neste ${icon('arrow')}</button>
       </div>` : ''}
-      <canvas tabindex="0" role="img" aria-label="${project.name} i 3D" aria-describedby="project-instructions project-milestone"></canvas>
+      <canvas tabindex="0" role="img" aria-label="${title} i 3D" aria-describedby="project-instructions project-milestone"></canvas>
       <div class="project-controls">
         <div class="project-control-group" role="group" aria-label="Velg hva som skjer når du drar">
           <button class="secondary" data-project-mode="move" aria-pressed="true">Flytt</button>
@@ -378,13 +383,13 @@ function showProject(id, demo = false, archivedMap = null) {
       </div>
       <p id="project-instructions" data-project-instructions>Dra for å flytte. Klyp eller bruk pluss og minus for å zoome.</p>
       ${scene.world ? `<div class="project-atmosphere"><button class="secondary" data-project-ambience aria-pressed="false" ${state.sound ? '' : 'disabled'}>${icon('muted')} Omgivelseslyd</button>${state.sound ? '' : '<small>Applyden er slått av.</small>'}</div>` : ''}
-      ${!demo && progress().completed ? `<div class="project-latest"><div><small>Siste byggesteg · ${progress().completed} av ${progress().total}</small>${latest()}</div><button class="secondary" data-project-latest>Vis siste steg</button></div>` : ''}
+      ${!demo && !target && progress().completed ? `<div class="project-latest"><div><small>Siste byggesteg · ${progress().completed} av ${progress().total}</small>${latest()}</div><button class="secondary" data-project-latest>Vis siste steg</button></div>` : ''}
     </div>
     <p id="project-milestone" class="project-milestone">${milestone()}</p>
     ${trail ? '<button class="secondary demo-new-map" data-demo-new>Nytt demokart</button>' : ''}`, 'project-dialog', dialog => {
     const viewer = dialog.querySelector('.project-viewer');
     const mount = reveal => mountProjectView(viewer, scene, true, {
-      closeUp:Boolean(progress().completed), reveal, demo,
+      closeUp:galleryMap===null && Boolean(progress().completed), reveal, demo, target,
     });
     let dispose = mount(false);
     projectAmbience(dialog, id);
@@ -402,6 +407,8 @@ function showProject(id, demo = false, archivedMap = null) {
         viewer.querySelector('[data-demo-status]').innerHTML = `<small>Steg ${info.completed} av ${info.total}</small>${scene.finished ? `<strong>${escapeHtml(scene.finished)} er på plass!</strong>` : latest()}`;
         dialog.querySelector('#project-milestone').textContent = milestone();
         dispose();
+        const canvas=viewer.querySelector('canvas');
+        canvas.replaceWith(canvas.cloneNode());
         dispose = mount(amount > 0);
         dialog.querySelector('.confetti')?.remove();
         if (amount > 0 && scene.finished) {
@@ -413,7 +420,10 @@ function showProject(id, demo = false, archivedMap = null) {
         const target = completed + amount;
         if (target < 0 || (amount > 0 && progress().full)) return;
         if (trail) {
-          if (!trail[target]) trail.push(worldAdvance(map));
+          if (!trail[target]) {
+            const [choice]=worldBuildingOptions(id,map);
+            trail.push(worldAdvance(worldSelect(map,choice)));
+          }
           map = trail[target];
         }
         completed = target;
@@ -504,10 +514,65 @@ function collectionTile(kind, id) {
   return `<button class="collection-tile" data-action="collectible" data-kind="${kind}" data-id="${id}" aria-label="Se ${item.name} stort">${item.art(true)}<span>${item.name}</span></button>`;
 }
 
+function playerMaps(id) {
+  const history=state.worlds?.[id];
+  return history?.length ? history : [currentWorld(state,id)];
+}
+
+function collectedMaps() {
+  const ids = isWorld(state.rewardMode) ? [state.rewardMode,...WORLD_IDS.filter(id=>id!==state.rewardMode)] : WORLD_IDS;
+  return ids.flatMap(id=>playerMaps(id).map((map,index)=>({id,index,map,places:worldCompletedPlaces(map)}))
+    .filter(item=>item.places.length).reverse());
+}
+
+function galleryMapsMarkup(maps,preferred) {
+  if (!maps.length) return '';
+  const open=maps.find(item=>item.id===preferred.project&&item.index===Number(preferred.map))??maps[0];
+  return `<h3>Bygg og kart</h3><div class="map-gallery">${maps.map(({id,index,map,places})=>{
+    const project=projectById(id), count=places.length;
+    const name=`${project.name}${playerMaps(id).length>1?' · Kart '+(index+1):''}`;
+    return `<details class="map-gallery-card" data-theme="${id}" ${id===open.id&&index===open.index?'open':''}>
+      <summary><span class="map-gallery-icon" aria-hidden="true">${project.icon}</span><span><strong>${name}</strong><small>${count} ${count===1?'ferdig bygg':'ferdige bygg'}</small></span></summary>
+      <div class="map-gallery-content"><button class="secondary map-gallery-open" data-action="gallery-map" data-project="${id}" data-map="${index}">Se kartet i 3D ${icon('arrow')}</button>
+      <div class="map-landmarks">${places.slice().reverse().map(place=>{
+        const {name}=worldBuilding(id,place,map);
+        return `<button class="map-landmark" data-action="gallery-map" data-project="${id}" data-map="${index}" data-place="${place}" aria-label="Finn ${name} på kartet">
+          <canvas aria-hidden="true"></canvas><span>${name}</span></button>`;
+      }).join('')}</div></div></details>`;
+  }).join('')}</div>`;
+}
+
+const galleryArt=new WeakMap();
+function mountGalleryArt(dialog) {
+  galleryArt.get(dialog)?.();
+  const tiles=dialog.querySelectorAll('.map-landmark');
+  if (!tiles.length) return;
+  const previews=new Map();
+  const observer=new IntersectionObserver(entries=>{
+    for (const {target,isIntersecting} of entries) {
+      if (!isIntersecting || previews.has(target)) continue;
+      const {project,map,place}=target.dataset;
+      const scene=worldBuildingPreview(project,Number(place),playerMaps(project)[Number(map)]);
+      if (scene) previews.set(target,mountProjectView(target,scene,false,{still:true}));
+      observer.unobserve(target);
+    }
+  },{root:dialog});
+  tiles.forEach(button=>observer.observe(button));
+  const clean=()=>{
+    observer.disconnect();
+    previews.forEach(stop=>stop());
+    galleryArt.delete(dialog);
+    dialog.removeEventListener('close',clean);
+  };
+  galleryArt.set(dialog,clean);
+  dialog.addEventListener('close',clean,{once:true});
+}
+
 function collectionShelf() {
   const bricks = state.brickBuild?.unlocked || [];
   const plants = state.garden.collection;
-  if (!bricks.length && !plants.length) return '';
+  const maps = collectedMaps();
+  if (!bricks.length && !plants.length && !maps.length) return '';
   const kind = state.rewardMode === 'bricks' ? 'brick' : 'plant';
   const recent = kind === 'brick'
     ? [...new Set(state.brickBuild.collection.slice().reverse())].slice(0, 3)
@@ -518,17 +583,24 @@ function collectionShelf() {
   </section>`;
 }
 
-function showCollection() {
+function showCollection(preferred={}) {
   const bricks = state.brickBuild?.unlocked || [];
   const plants = state.garden.collection;
   const dialog = document.querySelector('.collection-dialog');
   const content = `<div class="dialog-header"><h2 id="dialog-title" tabindex="-1">Samlingen din</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk samlingen">${icon('close')}</button></div>
+    ${galleryMapsMarkup(collectedMaps(),preferred)}
     ${bricks.length ? `<h3>Byggefigurer</h3><div class="collection-grid">${bricks.map(id => collectionTile('brick', id)).join('')}</div>` : ''}
     ${plants.length ? `<h3>Planter</h3><div class="collection-grid">${plants.map(id => collectionTile('plant', id)).join('')}</div>` : ''}`;
   if (dialog) {
     dialog.innerHTML = content;
+    mountGalleryArt(dialog);
     dialog.querySelector(`[data-kind="${dialog.dataset.kind}"][data-id="${dialog.dataset.id}"]`)?.focus();
-  } else showDialog(content, 'collection-dialog');
+  } else showDialog(content, 'collection-dialog', dialog => {
+    mountGalleryArt(dialog);
+    const matching=[...dialog.querySelectorAll('[data-action="gallery-map"]')].find(({dataset})=>
+      dataset.project===preferred.project&&dataset.map===preferred.map&&dataset.place===preferred.place);
+    matching?.focus();
+  });
 }
 
 function showCollectible(kind, id) {
@@ -539,6 +611,7 @@ function showCollectible(kind, id) {
     <div class="collectible-large">${item.art(false)}</div>
     ${dialog ? '<button class="secondary" data-action="collection">Tilbake til samlingen</button>' : ''}`;
   if (dialog) {
+    galleryArt.get(dialog)?.();
     dialog.dataset.kind = kind;
     dialog.dataset.id = id;
     dialog.innerHTML = content;
@@ -560,7 +633,7 @@ function renderHome() {
   const shelf = g.project ? projectProgress(g) : g.mode === 'bricks'
     ? `${g.build.pieces} av ${g.model.pieces.length} klosser på plass.`
     : `${g.garden.stage} av 5 vekststeg.`;
-  const nextBuilding = g.map && worldBuilding(g.mode, g.building);
+  const nextBuilding = g.map && worldBuilding(g.mode, g.building,g.map);
   const choose = g.map && g.building === null && !g.full;
   const archives = g.map ? (state.worlds?.[g.mode] ?? []).slice(0,-1) : [];
   const cta = state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : choose ? 'Velg neste bygg' : 'Start runden';
@@ -578,8 +651,9 @@ function renderHome() {
 }
 
 function showWorldChoices(id, choices) {
+  const map=currentWorld(state,id);
   const cards = choices.map(index => {
-    const {name,description} = worldBuilding(id,index);
+    const {name,description} = worldBuilding(id,index,map);
     return `<button class="world-option" data-action="world-choose" data-project="${id}" data-building="${index}">
       <canvas data-world-art="${index}" aria-hidden="true"></canvas><strong>${name}</strong><small>${description}</small>
     </button>`;
@@ -587,7 +661,7 @@ function showWorldChoices(id, choices) {
   sounds.play('open', state.sound);
   showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>Hva vil du bygge nå?</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggevalget">${icon('close')}</button></div>
     <p class="world-choose-note">Hvert bygg tar tre runder.</p><div class="world-options">${cards}</div>`, 'world-chooser', dialog => {
-    const dispose = [...dialog.querySelectorAll('[data-world-art]')].map(canvas => mountProjectView(canvas.parentElement, worldBuildingPreview(id,Number(canvas.dataset.worldArt))));
+    const dispose = [...dialog.querySelectorAll('[data-world-art]')].map(canvas => mountProjectView(canvas.parentElement, worldBuildingPreview(id,Number(canvas.dataset.worldArt),map)));
     dialog.addEventListener('close', () => dispose.forEach(stop => stop()), {once:true});
   });
 }
@@ -1073,7 +1147,7 @@ function renderComplete() {
   const badge = newBadge ? `<div class="new-badge">${badgeArt(newBadge)}<span>Ny utmerkelse <strong>${newBadge.name}</strong></span></div>` : '';
   const next = g.mode === 'bricks' && upcomingBuild(g.build);
   const preview = next ? `<div class="next-build-card">${renderBuildSvg(next, {mini:true, preview:true})}<div>Neste bygg<strong>Hva tror du det blir?</strong></div></div>` : '';
-  const latest = projectStep ? `<div class="project-latest result-latest${stage.finished ? ' landmark-complete' : ''}"><div><small>${stage.finished ? 'Ferdig på kartet' : 'Nytt byggesteg'} · ${g.completed} av ${g.total}</small><strong>${escapeHtml(stage.finished || projectStep)}${stage.finished ? ' er på plass!' : ''}</strong></div><button class="secondary" data-project-latest>Vis igjen</button></div>` : '';
+  const latest = projectStep ? `<div class="project-latest result-latest${stage.finished ? ' landmark-complete' : ''}"><div><small>${stage.finished ? 'Ferdig på kartet' : 'Nytt byggesteg'} · ${g.completed} av ${g.total}</small><strong>${escapeHtml(stage.finished || projectStep)}${stage.finished ? ' er på plass!' : ''}</strong></div><button class="secondary" data-project-latest>Vis igjen</button></div>${g.map && stage.finished?'<button class="secondary result-gallery" data-action="collection">Se i samlingen</button>':''}` : '';
   const newMap = g.map && g.full && g.mode === state.rewardMode && !state.focusBreakPending;
   const again = newMap ? 'Start et nytt kart' : state.focusBreakPending ? breakButtonLabel() : 'En runde til';
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">Du klarte runden!</h1>${latest}${(!projectStep || g.full) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="primary" data-action="home">Ferdig for nå${icon('check')}</button><button class="secondary secondary-cta" data-action="${newMap ? 'world-new' : 'again'}">${again}</button></main></div>${party}`;
@@ -1489,7 +1563,7 @@ document.addEventListener('click', e => {
     if (view !== 'round') startRound();
   }
   if (action === 'retry') retryAnswer();
-  if (action === 'collection') showCollection();
+  if (action === 'collection') showCollection(actionButton.dataset);
   if (action === 'collectible') {
     const { kind, id } = e.target.closest('[data-action="collectible"]').dataset;
     showCollectible(kind, id);
@@ -1556,6 +1630,15 @@ document.addEventListener('click', e => {
     const maps = state.worlds?.[project];
     const index = Number(archive);
     if (maps && index >= 0 && index < maps.length-1 && maps[index]) showProject(project,false,maps[index]);
+  }
+  if (action === 'gallery-map') {
+    const {project,map,place}=actionButton.dataset;
+    if (!isWorld(project)) return;
+    const selected=playerMaps(project)[Number(map)];
+    if (selected && worldStatus(selected).built) {
+      sounds.play('open',state.sound);
+      showProject(project,false,selected,{galleryMap:Number(map),place:place===undefined?null:Number(place)});
+    }
   }
   if (action === 'world-choose' && !state.active && !state.focusBreakPending) {
     const {project,building} = actionButton.dataset;

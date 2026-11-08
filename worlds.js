@@ -1,8 +1,10 @@
 export const WORLD_IDS=Object.freeze(['city','moon','island']);
 export const WORLD_BUILD_STEPS=3;
 export const WORLD_PLACES=16;
+export const REGION_PLACES=24;
 export const LEGACY_WORLD_STEPS=120;
 export const isWorld=id=>WORLD_IDS.includes(id);
+export const worldCapacity=map=>!map||map.layout===2?REGION_PLACES:WORLD_PLACES;
 
 export function randomGenerator(seed){
   let n=seed>>>0;
@@ -29,15 +31,22 @@ export function legacyPlacement(count) {
 
 export function worldStatus(map) {
   const {finished,partial}=legacyPlacement(map?.legacy??0);
+  const capacity=worldCapacity(map);
   const catchUp=Number(Boolean(partial));
-  const total=(map?.legacy??0)+catchUp+(WORLD_PLACES-finished.length-catchUp)*WORLD_BUILD_STEPS;
+  const total=(map?.legacy??0)+catchUp+(capacity-finished.length-catchUp)*WORLD_BUILD_STEPS;
   const steps=Math.max(0,(map?.progress??0)-catchUp);
   const count=Math.floor(steps/WORLD_BUILD_STEPS);
   const phase=steps%WORLD_BUILD_STEPS;
   const previous=finished.length+Number(catchUp>0&&(map?.progress??0)>0);
   const building=catchUp && !map.progress ? partial.id : map?.order[count]??null;
   const built=previous+count;
-  return {total,completed:(map?.legacy??0)+(map?.progress??0),built,phase,building,full:built===WORLD_PLACES};
+  return {capacity,total,completed:(map?.legacy??0)+(map?.progress??0),built,phase,building,full:built===capacity};
+}
+
+export function worldCompletedPlaces(map) {
+  const {finished,partial}=legacyPlacement(map?.legacy??0);
+  if (partial && map.progress) finished.push(partial.id);
+  return [...finished,...(map?.order.slice(0,worldStatus(map).built-finished.length)??[])];
 }
 
 export function currentWorld(state,id) {
@@ -50,7 +59,7 @@ export function worldChoices(map) {
   if (!map || worldStatus(map).building!==null) return [];
   const {finished,partial}=legacyPlacement(map.legacy);
   const used=new Set([...finished,partial?.id,...map.order]);
-  const options=Array.from({length:WORLD_PLACES},(_,i)=>i).filter(id=>!used.has(id));
+  const options=Array.from({length:worldCapacity(map)},(_,i)=>i).filter(id=>!used.has(id));
   const rng=randomGenerator((map.seed??0x4fd37d89)+map.order.length*0x47c82f31+(map.legacy||0)*17);
   for (let i=options.length-1;i>0;i--) {
     const swap=Math.floor(rng()*(i+1));
@@ -73,7 +82,7 @@ export function worldAdvance(map) {
 
 export function freshWorld(rng=Math.random,previous=null) {
   const seed=Math.floor(rng()*2**32)>>>0;
-  return {seed:seed===previous?.seed?(seed+1)>>>0:seed,legacy:0,order:[],progress:0};
+  return {layout:2,seed:seed===previous?.seed?(seed+1)>>>0:seed,legacy:0,order:[],progress:0};
 }
 
 function restoreWorld(raw,budget,first) {
@@ -82,14 +91,16 @@ function restoreWorld(raw,budget,first) {
   const legacy=first&&integer(raw.legacy)?Math.min(raw.legacy,budget,LEGACY_WORLD_STEPS):0;
   if (!legacy && (!integer(raw.seed)||raw.seed>=2**32)) return null;
   const {finished,partial}=legacyPlacement(legacy);
-  const remaining=WORLD_PLACES-finished.length-Number(Boolean(partial));
+  const layout=raw.layout===2&&!legacy?2:1;
+  const capacity=worldCapacity({layout});
+  const remaining=capacity-finished.length-Number(Boolean(partial));
   const used=new Set([...finished,partial?.id]);
-  const ids=Array.isArray(raw.order)?[...new Set(raw.order)].filter(id=>integer(id)&&id<WORLD_PLACES&&!used.has(id)).slice(0,remaining):[];
+  const ids=Array.isArray(raw.order)?[...new Set(raw.order)].filter(id=>integer(id)&&id<capacity&&!used.has(id)).slice(0,remaining):[];
   const catchUp=Number(Boolean(partial));
   const progress=integer(raw.progress)?Math.min(raw.progress,budget-legacy,ids.length*WORLD_BUILD_STEPS+catchUp):0;
   // There can be at most one selected building beyond completed and in-progress buildings.
   const limit=catchUp&&progress===0?0:Math.floor(Math.max(0,progress-catchUp)/WORLD_BUILD_STEPS)+1;
-  return {seed:legacy?null:raw.seed,legacy,order:ids.slice(0,limit),progress};
+  return {...(layout===2?{layout}:{}),seed:legacy?null:raw.seed,legacy,order:ids.slice(0,limit),progress};
 }
 
 export function restoreWorlds(raw, projects, total) {

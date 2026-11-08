@@ -1,5 +1,7 @@
 import {box,tube,roof,rounded,dome,at,worldSign,vehicle,worldActors,districtActors} from './scenery.js';
 import {isWorld,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,randomGenerator} from './worlds.js';
+import {expandedWorldScene} from './region-scenery.js';
+import {NEW_LANDMARKS,landmarkStages} from './world-landmarks.js';
 
 const stage = (label, ...parts) => ({label,parts:parts.flat()});
 
@@ -419,18 +421,26 @@ const DETAILS = {
     'Et høyt tårn å se øya fra.','En grønn hage under palmene.','En liten bod med fruktskilt.','Et torg der øya kan møtes.'],
 };
 
-export function worldBuilding(id,index) {
+export function worldBuilding(id,index,map=null) {
+  const custom=map?.layout===2?NEW_LANDMARKS[id]?.[index]:null;
+  if (custom) {
+    const [name,description,kind]=custom;
+    return {name,description,kind};
+  }
   const definition=PLACES[id]?.[index];
   if (!definition) return null;
-  return {name:definition[0],description:DETAILS[id][index]};
+  return {name:definition[0],description:DETAILS[id][index],kind:definition[1]};
 }
 
 export function worldBuildingOptions(id,map) {
-  const available=worldChoices(map);
+  const available=worldChoices(map).filter(index=>{
+    const {kind}=worldBuilding(id,index,map);
+    return map.layout!==2||map.progress>=2*WORLD_BUILD_STEPS||!['pier','marina','quay','bridge'].includes(kind);
+  });
   const types=new Set();
   const varied=[];
   for (const index of available) {
-    const type=PLACES[id][index][1];
+    const {kind:type}=worldBuilding(id,index,map);
     if (types.has(type)) continue;
     types.add(type);
     varied.push(index);
@@ -439,12 +449,26 @@ export function worldBuildingOptions(id,map) {
   return [...varied,...available.filter(index=>!varied.includes(index))].slice(0,3);
 }
 
-export function worldBuildingPreview(id,index) {
-  const definition=PLACES[id]?.[index];
-  if (!definition) return null;
-  const parts=landmark(id,index,definition,[0,0]).flatMap(step=>step.parts);
+function regionLandmarkParts(id,index,site) {
+  const custom=NEW_LANDMARKS[id]?.[index];
+  if (custom) return landmarkStages(id,custom[2],site);
+  const legacy=landmark(id,index,PLACES[id][index],[0,0]);
+  const ground=id==='island'?.45:.04;
+  const steps=legacy.map(step=>at(step.parts,0,-ground,0));
+  const [{w,d}]=steps[0];
+  return [
+    [{...box(0,0,w-.18,d-.18,1.24,THEMES[id].foundation,-1.22),support:true},...steps[0],...steps[1]],
+    [...steps[2],...steps[3]], [...steps[4],...steps[5]],
+  ];
+}
+
+export function worldBuildingPreview(id,index,map=null) {
+  const info=worldBuilding(id,index,map);
+  if (!info) return null;
+  const parts=map?.layout===2?regionLandmarkParts(id,index).flat():landmark(id,index,PLACES[id][index],[0,0]).flatMap(step=>step.parts);
   const height=Math.max(...parts.map(part=>part.y+part.h));
-  return {parts,background:THEMES[id].sky,yaw:-.52,pitch:.47,center:height*.39,size:Math.max(9.7,height*1.47),latest:[]};
+  const span=Math.max(...parts.map(part=>2*Math.abs(part.x)+(part.w??0)));
+  return {parts,background:THEMES[id].sky,yaw:-.52,pitch:.47,center:height*.39,size:Math.max(9.7,height*1.47,span*.91),latest:[]};
 }
 
 function landShape(x,z,w,d,y,color,layout) {
@@ -582,6 +606,7 @@ function plannedWorldScene(id,map) {
   const lots=layout?.lots.slice(0,opened);
   const terrain=previous??generatedTerrain(id,layout,lots);
   const parts=terrain.parts.slice();
+  const landmarks=Object.fromEntries(legacyPlacement(map.legacy).finished.map(index=>[index,legacyTarget(id,index)]));
   let latest=previous?.latest??[],last=previous?.last,finished=previous?.finished??null;
   if (partial && map.progress) {
     const steps=landmark(id,partial.id,PLACES[id][partial.id]);
@@ -589,6 +614,7 @@ function plannedWorldScene(id,map) {
     parts.push(...latest);
     last=steps.at(-1).label;
     finished=steps.at(-1).finished;
+    landmarks[partial.id]=legacyTarget(id,partial.id);
   }
   map.order.forEach((place,i)=>{
     const amount=Math.max(0,Math.min(WORLD_BUILD_STEPS,earned-i*WORLD_BUILD_STEPS));
@@ -602,19 +628,34 @@ function plannedWorldScene(id,map) {
     }
     last=`${definition[0]} · ${PHASES[amount-1].toLowerCase()}`;
     finished=amount===WORLD_BUILD_STEPS?definition[0]:null;
+    if (finished) landmarks[place]=lot?{x:lot.x,z:lot.z,y:0}:legacyTarget(id,place);
   });
   return {
-    parts,latest,last,finished,id,world:true,background:THEMES[id].sky,yaw:-.62,pitch:.57,center:1,closeSize:79,
+    parts,latest,last,finished,landmarks,id,world:true,background:THEMES[id].sky,yaw:-.62,pitch:.57,center:1,closeSize:79,
     size:terrain.size,anchorX:terrain.anchorX,anchorZ:terrain.anchorZ,
     ambient:previous?.ambient??(earned>=2?districtActors(id,lots):[]),
     next:status.building!==null?`${PLACES[id][status.building][0]} · ${partial&&!map.progress?'ferdigstilling':PHASES[status.phase].toLowerCase()}`:null,
   };
 }
 
+function legacyTarget(id,index) {
+  const [x,z]=plot(index,id);
+  return {x,z,y:id==='island'?.45:0};
+}
+
 const catalog = new Map();
+const regionScenes = new Map();
 export function projectScene(id, completed=0) {
   const project=projectById(id);
   if(!project) return null;
+  if (isWorld(id)&&completed?.layout===2) {
+    const key=`${id}:${completed.seed}:${completed.progress}:${completed.order.join(',')}`;
+    if (regionScenes.has(key)) return regionScenes.get(key);
+    const scene=expandedWorldScene(id,completed,THEMES[id],index=>worldBuilding(id,index,completed),(index,site)=>regionLandmarkParts(id,index,site));
+    regionScenes.set(key,scene);
+    if (regionScenes.size>5) regionScenes.delete(regionScenes.keys().next().value);
+    return scene;
+  }
   if(isWorld(id)&&completed&&typeof completed==='object') return plannedWorldScene(id,completed);
   if(!catalog.has(id)) catalog.set(id, Object.hasOwn(HERO_PALETTES,id) ? heroScene(id) : worldScene(id));
   const {base,ambient,steps,background,yaw,pitch,world}=catalog.get(id);

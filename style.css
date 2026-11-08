@@ -898,3 +898,79 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 .beta-test-actions > summary { font-weight: 750; }
 .beta-test-actions [data-action="beta-abort-round"]:disabled { opacity: .55; cursor: default; }
 [data-reset-round]:empty { display: none; }
+
+.map-gallery {
+  display: grid;
+  gap: 9px;
+  margin: 12px 0 18px;
+}
+.map-gallery-card {
+  --map-tint: #edf3e6;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: #fff;
+}
+.map-gallery-card[data-theme="moon"] { --map-tint: #ebebf6; }
+.map-gallery-card[data-theme="island"] { --map-tint: #e3f1eb; }
+.map-gallery-card > summary {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 57px;
+  padding: 8px 12px;
+  border-radius: inherit;
+  background: var(--map-tint);
+  list-style: none;
+  cursor: pointer;
+}
+.map-gallery-card[open] > summary { border-radius: 16px 16px 0 0; }
+.map-gallery-card > summary::-webkit-details-marker { display: none; }
+.map-gallery-card > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  margin-right: 6px;
+  border-right: 2px solid #587467;
+  border-bottom: 2px solid #587467;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 180ms ease;
+}
+.map-gallery-card[open] > summary::after { transform: translateY(2px) rotate(225deg); }
+.map-gallery-icon { font-size: 1.4rem; }
+.map-gallery-card summary strong, .map-gallery-card summary small { display: block; }
+.map-gallery-card summary small { color: var(--muted); }
+.map-gallery-content { padding: 9px; }
+.map-gallery-open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 8px;
+  color: var(--green);
+}
+.map-gallery-open svg { width: 16px; height: 16px; }
+.map-landmarks { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+.map-landmark {
+  display: grid;
+  grid-template-rows: 68px 1fr;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 100px;
+  padding: 4px 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  text-align: center;
+}
+.map-landmark canvas { display: block; width: 100%; height: 100%; border-radius: 8px; background: var(--map-tint); }
+.map-landmark span { padding: 5px 2px 0; font-size: .79rem; line-height: 1.22; overflow-wrap: anywhere; }
+.result-gallery { min-height: 44px; margin-top: 8px; }
+.project-back { margin-bottom: 9px; min-height: 44px; }
+@media (max-width: 370px) {
+  .map-landmarks { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}

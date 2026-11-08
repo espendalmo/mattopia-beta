@@ -1,9 +1,30 @@
+import {regionSurface,roadElevation,riverAt} from './regions.js';
+
 export const box = (x,z,w,d,h,color,y=0,studs=0) => ({shape:'box',x,y,z,w,d,h,color,studs});
 export const tube = (x,z,w,d,h,color,y=0,axis='y') => ({shape:'tube',x,y,z,w,d,h,color,axis});
 export const roof = (x,z,w,d,h,color,y) => ({shape:'roof',x,y,z,w,d,h,color});
 export const rounded = (x,z,w,d,h,color,y=0) => ({shape:'rounded',x,y,z,w,d,h,color});
 export const dome = (x,z,w,d,h,color,y=0,angle=0) => ({shape:'dome',x,y,z,w,d,h,color,angle});
 export const at = (parts,x,y,z) => parts.map(part=>({...part,x:part.x+x,y:part.y+y,z:part.z+z}));
+export const beam = (from,to,width,color) => ({
+  shape:'beam',from,to,width,color,x:(from[0]+to[0])/2,z:(from[2]+to[2])/2,y:Math.min(from[1],to[1]),h:Math.abs(from[1]-to[1])+width,
+});
+export const MAX_ACTORS=12;
+
+export function placeParts(parts,{x,y,z,yaw=0}) {
+  const c=Math.cos(yaw),s=Math.sin(yaw);
+  const point=([a,b,d])=>[x+a*c+d*s,y+b,z+d*c-a*s];
+  return parts.map(part=>{
+    const [px,py,pz]=point([part.x,part.y,part.z]);
+    const placed={...part,x:px,y:py,z:pz,angle:(part.angle??0)-yaw};
+    if (part.shape==='beam') {
+      placed.from=point(part.from); placed.to=point(part.to);
+    } else if (part.outline) {
+      placed.outline=part.outline.map(point);
+    }
+    return placed;
+  });
+}
 
 // Front-facing plaques use a few simple painted shapes, at the same scale as the buildings.
 const cream='#fff2cc', blue='#b4e5ed', apricot='#f5ad6c', rose='#ff9db1', mint='#96dfbc', ink='#324857';
@@ -140,12 +161,12 @@ function route(points, corner) {
     const start=length;
     length+=distance;
     return {x,z,dx,dz,start,end:length,yaw:Math.atan2(dx,dz)};
-  });
+  }).filter(segment=>segment.end-segment.start>.0001);
   return {segments,length};
 }
 
-function actor(parts,points,{kind,ground,speed,phase=0,corner=.85,roads=[],roadRise=0}) {
-  return {parts,kind,ground,speed,phase,roads,roadRise,route:route(points,corner)};
+function actor(parts,points,{kind,ground,speed,phase=0,corner=.85,roads=[],roadRise=0,elevation}) {
+  return {parts,kind,ground,speed,phase,roads,roadRise,elevation,route:route(points,corner)};
 }
 
 export function worldActors(theme) {
@@ -203,7 +224,102 @@ export function actorPose(actor, seconds) {
   const yaw=segment.yaw;
   const walking=actor.kind==='walk';
   const nearestRoad=Math.min(...actor.roads.map(row=>Math.abs(row-z)));
-  const y=actor.ground+actor.roadRise*Math.max(0,1-Math.max(0,nearestRoad-.85)/.61);
-  const bob=actor.kind==='bird' ? Math.sin(traveled*.44)*.35 : walking ? Math.abs(Math.sin(traveled*6))*.035 : 0;
+  const y=actor.elevation?.(x,z)??(actor.ground+actor.roadRise*Math.max(0,1-Math.max(0,nearestRoad-.85)/.61));
+  const bob=actor.kind==='bird' ? Math.sin(traveled*.44)*.35 : actor.kind==='boat' ? Math.sin(traveled*2.1)*.045 : walking ? Math.abs(Math.sin(traveled*6))*.035 : 0;
   return {x,y:y+bob,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking?Math.sin(traveled*6)*.17:0};
+}
+
+
+function laneLoop(path,offset) {
+  const lane=side=>path.map((point,i)=>{
+    const before=path[Math.max(0,i-1)],after=path[Math.min(path.length-1,i+1)];
+    const angle=Math.atan2(after.z-before.z,after.x-before.x);
+    return [point.x-Math.sin(angle)*side,point.z+Math.cos(angle)*side];
+  });
+  return [...lane(offset),...lane(-offset).reverse()];
+}
+
+function sailboat(cargo) {
+  const hull=cargo?'#567a8f':'#af695c';
+  const keel=[rounded(0,-.11,1.62,3.04,.48,hull,.01),dome(0,.94,1.55,1.83,.38,hull,.06),
+    rounded(0,-.09,1.42,2.8,.14,'#e1ceb0',.48)];
+  if (cargo) return [...keel,rounded(0,-.81,1.16,1.15,.7,'#e9dabf',.57),
+    box(0,-.2,.78,.075,.26,'#90bbcb',.95),rounded(-.22,.64,.6,.99,.48,'#d38d6e',.61),
+    tube(.38,-1.09,.18,.18,.61,'#5a6e7d',1.24)];
+  return [...keel,tube(0,-.2,.087,.087,2.64,'#ac8d68',.57),
+    {shape:'plate',x:0,y:1.6,z:-.18,w:2.15,d:.02,h:2.55,color:'#fff1d2',profile:[[0,1.38],[0,-.97],[-1.04,-.94]]},
+    {shape:'plate',x:.12,y:1.38,z:-.1,w:1.12,d:.02,h:1.9,color:'#e3988e',profile:[[0,1.24],[.92,-.72],[0,-.69]]}];
+}
+
+function littleDog() {
+  return [rounded(0,0,.41,.87,.41,'#bd8860',.27),dome(0,.37,.53,.59,.46,'#cd9b6d',.49),
+    rounded(0,.62,.26,.32,.22,'#e5b78b',.5),dome(0,.77,.19,.19,.14,'#5b4c48',.57),
+    ...[-1,1].flatMap(side=>[-.24,.24].map(z=>({...tube(side*.14,z,.10,.11,.34,'#8a5e4f'),stride:side*Math.sign(z)}))),
+    beam([0,.52,-.34],[.12,.8,-.66],.105,'#bb8058')];
+}
+
+function regionBird(moon) {
+  if (moon) return [rounded(0,0,.55,.7,.27,'#d4cecf',.02),dome(0,.14,.32,.31,.22,'#a7d6e5',.18),
+    ...[-1,1].map(s=>box(s*.55,0,.69,.46,.11,'#617cab',.075))];
+  return [rounded(0,0,.36,.66,.19,'#f9ead1',.06),dome(0,.32,.26,.34,.23,'#f5e9d3',.12),
+    ...[-1,1].map(s=>dome(s*.38,-.03,.87,.24,.11,'#e8dbca',.13,s*.2)),
+    rounded(0,.56,.12,.22,.08,'#e4ad73',.14)];
+}
+
+function boatRoute(theme,layout,plot) {
+  if (theme==='city') {
+    const sample=Array.from({length:10},(_,i)=>plot.z+(i-4.5)*2.2);
+    return [...sample.map(z=>[riverAt(layout,z)-.62,z]),...sample.reverse().map(z=>[riverAt(layout,z)+.62,z])];
+  }
+  const c=Math.cos(plot.yaw),s=Math.sin(plot.yaw);
+  return [[-5,6],[-6,13],[5,14],[8,10],[4,6]].map(([x,z])=>[plot.x+x*c+z*s,plot.z+z*c-x*s]);
+}
+
+export function regionActors(theme,layout,plan,completed) {
+  if (!completed.length) return [];
+  const actors=[], moon=theme==='moon';
+  const paths=plan.paths.filter(path=>path.length>=4);
+  const colors=['#deaa73','#8eb1c6','#d27d84','#e0bb83'];
+  const walkers=moon?['astronaut','alien']:['human'];
+  for (const plot of completed.filter(plot=>['pier','quay','marina'].includes(plot.kind))) {
+    const cargo=plot.kind==='quay';
+    actors.push(actor(sailboat(cargo),boatRoute(theme,layout,plot),{kind:'boat',ground:.06,speed:cargo?1.45:1.85,phase:.35,corner:2}));
+  }
+  const suspension=completed.find(plot=>plot.kind==='bridge');
+  if (suspension) {
+    const span=suspension.span;
+    const path=Array.from({length:9},(_,i)=>({x:suspension.x+(i/8-.5)*(span+8),z:suspension.z}));
+    actors.push(actor(vehicle('car','#82a6b8'),laneLoop(path,.38),{
+      kind:'road',elevation:(x,z)=>Math.abs(x-suspension.x)<span*.5?suspension.y+.514:roadElevation(layout,x,z),
+      speed:2.7,phase:.1,corner:.65,
+    }));
+  }
+  for (let i=0;i<Math.min(paths.length,suspension?3:4,1+Math.floor(completed.length/5));i++) {
+    const path=paths[(paths.length-1-i*3+paths.length*3)%paths.length];
+    const points=laneLoop(path,.32);
+    actors.push(actor(vehicle(moon?'rover':theme==='island'?'cart':'car',colors[i]),points,{
+      kind:'road',elevation:(x,z)=>roadElevation(layout,x,z),speed:moon?2.12+i*.19:2.7+i*.21,phase:i*.29+.12,corner:.7,
+    }));
+  }
+  for (let i=0;i<Math.min(paths.length,4,1+Math.floor(completed.length/4));i++) {
+    const path=paths[(i*3+1)%paths.length];
+    const points=laneLoop(path.slice(0,Math.min(path.length,24)),theme==='island'?1:1.29);
+    actors.push(actor(walker(walkers[i%walkers.length],colors[(i+1)%4],i%2?'#a97963':'#edb88c'),points,{
+      kind:'walk',elevation:(x,z)=>roadElevation(layout,x,z)+.012,speed:.87+i*.092,phase:.13+i*.17,corner:.52,
+    }));
+  }
+  if (completed.length>=2) {
+    const {x,z}=completed.at(-1);
+    actors.push(actor(regionBird(moon),[[x-11,z-5],[x+2,z-11],[x+11,z-2],[x+4,z+10],[x-8,z+8]],{
+      kind:'bird',ground:moon?7.5:6.5,speed:4.25,phase:.2,corner:5,
+    }));
+  }
+  if (!moon&&completed.length>=4&&paths.length) {
+    const path=paths[1%paths.length];
+    actors.push(actor(littleDog(),laneLoop(path.slice(0,Math.min(path.length,16)),1.2),{
+      kind:'walk',elevation:(x,z)=>regionSurface(layout,x,z).water?roadElevation(layout,x,z):regionSurface(layout,x,z).y+.06,
+      speed:1.62,phase:.71,corner:.47,
+    }));
+  }
+  return actors.slice(0,MAX_ACTORS);
 }
