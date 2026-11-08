@@ -1,18 +1,14 @@
 import {box,dome,tube,beam,placeParts,regionActors,MAX_ACTORS} from './scenery.js';
-import {regionLayout,planRegion,regionVisibility,regionSurface,roadElevation,riverAt,riverWidth} from './regions.js';
+import {regionLayout,planRegion,regionVisibility,regionSurface} from './regions.js';
 import {WORLD_BUILD_STEPS,randomGenerator,worldStatus} from './worlds.js';
 import {planStreetRegion} from './street-grid.js';
-import {constructionYard,rideModels} from './map-art.js';
+import {regionRoads} from './region-roads.js';
+import {constructionYard,lunarSky,rideModels} from './map-art.js';
 
 const SHADES={
   city:{ground:'#93ae77',shade:'#628c68',high:'#b2bd81',bank:'#c6c295',deep:'#5a93a8',shallow:'#85c5bf'},
   island:{ground:'#9ab980',shade:'#659570',high:'#bbc284',bank:'#ead1a1',deep:'#4d9eac',shallow:'#91d3c4'},
   moon:{ground:'#9f9eb8',shade:'#737492',high:'#c1b6c8',bank:'#b3abc5',deep:'#6d789e',shallow:'#9eabc9'},
-};
-const STREET_TONES={
-  city:['#c3c4ad','#647686','#f3e1b3'],
-  island:['#e3cfa6','#c3a478','#f6dfb8'],
-  moon:['#b7b4c6','#767d9d','#d7d9e9'],
 };
 const clamp=(v,min=0,max=1)=>Math.max(min,Math.min(max,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -26,10 +22,6 @@ function blend(a,b,t) { return a.map((value,i)=>lerp(value,b[i],t)); }
 function face(outline,color,layer,colors) {
   const [x,y,z]=outline[0];
   return {shape:'terrain',outline,color,colors,x,y,z,h:0,layer};
-}
-
-function patch(points,color,layer) {
-  return face(points.reverse(),color,layer);
 }
 
 function surfaceColor(tile,layout) {
@@ -49,80 +41,83 @@ function surfaceColor(tile,layout) {
   return blend(ground,rgb(palette.bank),beach*.88);
 }
 
-function regionGround(layout,plan,sky,full,transparent) {
+function smooth(value) {
+  const t=clamp(value);
+  return t*t*(3-2*t);
+}
+
+function distantRelief(layout) {
+  const rng=randomGenerator(layout.seed^0x18a32df7);
+  const theme=layout.theme;
+  const ranges=theme==='city'?[
+    ...[-40,-25,-9,8,23,41,61,80].map(x=>[x,-87]),
+    ...[-62,-43,-22,-4,19,43].map(z=>[86,z]),
+  ]:theme==='island'?[[-40,-88],[-51,-89],[82,-28],[89,-20],[91,24]]
+    :[[-50,-83],[-18,-88],[20,-88],[53,-84],[86,-42],[87,-6],[90,35]];
+  const sites=ranges.map(([x,z])=>({
+    x:x+(rng()-.5)*9,z:z+(rng()-.5)*9,
+    radius:theme==='island'?6.5+rng()*7:12+rng()*9,
+    height:theme==='city'?8+rng()*19:theme==='island'?1.9+rng()*3.1:2.1+rng()*2.9,
+  }));
+  return (x,z,tile)=>{
+    const outer=smooth((Math.max(x,-z)-66)/16);
+    if (!outer) return {height:0,tint:0,color:null};
+    let height=0;
+    for (const site of sites) {
+      const distance=Math.hypot((x-site.x)/site.radius,(z-site.z)/site.radius);
+      if (theme==='moon') {
+        const rim=Math.exp(-(((distance-.82)/.25)**2));
+        height+=site.height*(rim-.42*Math.max(0,1-distance/.67));
+      } else height=Math.max(height,site.height*Math.max(0,1-distance)**.88);
+    }
+    if (theme==='city') {
+      const peak=height*outer*(tile.water?0:1);
+      const tint=smooth(peak/7)*.79;
+      const color=blend(rgb('#859fa4'),rgb('#d8ded1'),smooth((peak-6+tile.detail*2)/12));
+      return {height:peak,tint,color};
+    }
+    if (theme==='island') {
+      const island=height*outer;
+      const reef=blend(rgb('#6aacb1'),rgb('#a1c9b2'),smooth((island+tile.detail*.3)/3.2));
+      return {height:island,tint:outer*.78,color:reef};
+    }
+    const rock=blend(rgb('#8085a6'),rgb('#b3b2c9'),clamp(.46+height*.13+tile.detail*.15));
+    return {height:height*outer,tint:outer*.83,color:rock};
+  };
+}
+
+function regionGround(layout,plan,sky,full,horizon) {
   const background=rgb(sky);
-  const grid=layout.grid.map(tile=>{
-    const {x,y,z}=tile;
-    const visibility=regionVisibility(plan,x,z,full);
-    const point=[x,y,z];
-    const color=surfaceColor(tile,layout);
-    return {point,color:transparent?color:blend(background,color,visibility),visibility};
+  const inner=Math.sqrt(layout.grid.length);
+  const extension=horizon?[3,7,12,18,25]:[];
+  const extra=extension.length,row=inner+2*extra;
+  const edge=layout.grid[inner-1].x;
+  const coords=[...extension.map(distance=>-edge-distance).reverse(),...layout.grid.slice(0,inner).map(tile=>tile.x),
+    ...extension.map(distance=>edge+distance)];
+  const relief=horizon?distantRelief(layout):null;
+  const grid=Array.from({length:row*row},(_,i)=>{
+    const col=i%row,line=Math.floor(i/row);
+    const x=coords[col],z=coords[line];
+    const tile=col>=extra&&col<row-extra&&line>=extra&&line<row-extra
+      ?layout.grid[(line-extra)*inner+col-extra]:regionSurface(layout,x,z);
+    const distance=Math.max(Math.max(Math.abs(x),Math.abs(z))/103,Math.hypot(x,z)/127);
+    const rim=horizon**2*smooth((1-distance)/.24);
+    const visibility=Math.max(rim,regionVisibility(plan,x,z,full));
+    const base=surfaceColor(tile,layout);
+    const distant=relief?.(x,z,tile);
+    const color=distant?.tint?blend(base,distant.color,distant.tint*horizon):base;
+    return {point:[x,tile.y+(distant?.height??0)*horizon,z],color:blend(background,color,visibility),visibility};
   });
-  const row=Math.sqrt(grid.length), ground=[];
+  const ground=[];
   for (let i=0;i<grid.length-row;i++) {
     if (i%row===row-1) continue;
     const [a,b,c,d]=[grid[i],grid[i+1],grid[i+row],grid[i+row+1]];
     if (Math.max(a.visibility,b.visibility,c.visibility,d.visibility)<.008) continue;
     for (const triangle of [[a,c,b],[b,c,d]]) {
-      const tile=face(triangle.map(v=>v.point),sky,0,triangle.map(v=>v.color));
-      if (transparent) tile.alphas=triangle.map(v=>v.visibility);
-      ground.push(tile);
+      ground.push(face(triangle.map(v=>v.point),sky,0,triangle.map(v=>v.color)));
     }
   }
   return ground;
-}
-
-function across(layout,point,prev,next,half,lift) {
-  const angle=Math.atan2(next.z-prev.z,next.x-prev.x);
-  const x=Math.sin(angle)*half,z=Math.cos(angle)*half;
-  const y=(point.y??roadElevation(layout,point.x,point.z))+lift;
-  return [[point.x-x,y,point.z+z],[point.x+x,y,point.z-z]];
-}
-
-const streetWidth=theme=>theme==='island'?1.02:1.22;
-
-function pavedRoute(layout,path,theme) {
-  const lanes=STREET_TONES[theme];
-  const width=streetWidth(theme);
-  const parts=[];
-  for (const [half,color,lift,layer] of [[width+.28,lanes[0],-.042,3],[width,lanes[1],0,4]]) {
-    const rim=path.map((point,i)=>across(layout,point,path[Math.max(i-1,0)],path[Math.min(i+1,path.length-1)],half,lift));
-    for (let i=1;i<rim.length;i++) {
-      parts.push(patch([rim[i-1][0],rim[i-1][1],rim[i][1],rim[i][0]],color,layer));
-    }
-  }
-  let length=0,lastDash=-2;
-  for (let i=1;i<path.length;i++) {
-    const a=path[i-1],b=path[i],span=Math.hypot(b.x-a.x,b.z-a.z);
-    length+=span;
-    if (theme!=='island'&&length-lastDash>=3.6&&span>.46) {
-      const c={x:lerp(a.x,b.x,.12),z:lerp(a.z,b.z,.12)},d={x:lerp(a.x,b.x,.68),z:lerp(a.z,b.z,.68)};
-      const A=across(layout,c,a,b,.055,.012),B=across(layout,d,a,b,.055,.012);
-      parts.push(patch([A[0],A[1],B[1],B[0]],lanes[2],5));
-      lastDash=length;
-    }
-    const overRiver=theme==='city'&&Math.abs(a.x-riverAt(layout,a.z))<riverWidth(layout,a.z)+.36
-      &&Math.abs(a.z-layout.berths.bridge.z)>5.6;
-    if (overRiver&&span>.12) {
-      const A=across(layout,a,a,b,width+.14,.25),B=across(layout,b,a,b,width+.14,.25);
-      parts.push(...A.map((point,j)=>beam(point,B[j],.13,'#e2cfac')));
-      if (i%2===0) parts.push(...A.map(([x,y,z])=>box(x,z,.18,.18,.42,'#e7d6b9',y-.26)));
-    }
-  }
-  return parts;
-}
-
-function crossroads(layout,junctions) {
-  const width=streetWidth(layout.theme);
-  const [curb,road,mark]=STREET_TONES[layout.theme];
-  return junctions.flatMap(({x,z,degree})=>{
-    const y=roadElevation(layout,x,z);
-    const tile=(r,height,color,layer)=>face([[x-r,height,z-r],[x-r,height,z+r],[x+r,height,z+r],[x+r,height,z-r]],color,layer);
-    return [tile(width+.27,y-.035,curb,3),tile(width+.02,y+.021,road,5),
-      ...(layout.theme!=='island'&&degree>2?[-.57,-.19,.19,.57].map(dx=>({
-        ...box(x+dx,z+.95,.18,.39,.008,mark,y+.035),layer:6,
-      })):[])];
-  });
 }
 
 function groundShadow(layout,x,z,rx,rz,amount=.23,corners=8) {
@@ -215,12 +210,12 @@ function landscapeDetails(layout,plan,full) {
   return marks;
 }
 
-function viewBounds(plan,full) {
-  if (full) return {anchorX:0,anchorZ:0,size:172};
+function viewBounds(plan,horizon) {
   const points=[plan.origin,...plan.plots,...plan.paths.flat()];
   const xs=points.map(p=>p.x),zs=points.map(p=>p.z);
   const left=Math.min(...xs),right=Math.max(...xs),back=Math.min(...zs),front=Math.max(...zs);
-  return {anchorX:(left+right)*.5,anchorZ:(back+front)*.5,size:Math.max(52,Math.hypot(right-left,front-back)*.91+34)};
+  return {anchorX:(left+right)*.5*(1-horizon),anchorZ:(back+front)*.5*(1-horizon),
+    size:lerp(Math.max(52,Math.hypot(right-left,front-back)*.91+34),238,horizon)};
 }
 
 const PHASES=['grunnarbeid','form og fasade','siste detaljer'];
@@ -244,9 +239,9 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts) {
   const plan=(map.layout===3?planStreetRegion(layout,buildings):null)??planRegion(layout,buildings);
   const horizon=clamp((status.built-18)/6);
   const parts=[
-    ...regionGround(layout,plan,palette.sky,status.full,horizon>0),
-    ...plan.paths.flatMap(path=>pavedRoute(layout,path,id)),
-    ...crossroads(layout,plan.junctions??[]),
+    ...(id==='moon'&&horizon?lunarSky(map.seed,palette.sky,horizon):[]),
+    ...regionGround(layout,plan,palette.sky,status.full,horizon),
+    ...regionRoads(layout,plan),
     ...landscapeDetails(layout,plan,status.full),
   ];
   let latest=[],last,finished=null,latestTarget=null;
@@ -273,8 +268,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts) {
   const completedPlots=plan.plots.slice(0,status.built);
   return {
     id,parts,latest,last,finished,landmarks,latestTarget,world:true,illustrated:true,background:palette.sky,yaw:-Math.PI/4,pitch:.6155,center:1.1,closeSize:76,
-    horizon:horizon?{id,seed:map.seed,amount:horizon}:null,
-    ...viewBounds(plan,status.full),
+    ...viewBounds(plan,horizon),
     ambient:[...rides,...regionActors(id,layout,plan,completedPlots)].slice(0,MAX_ACTORS),
     next:status.building!==null?`${buildingInfo(status.building).name} · ${PHASES[status.phase]}`:null,
   };

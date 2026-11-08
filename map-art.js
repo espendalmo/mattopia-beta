@@ -99,35 +99,46 @@ export function rideModels(plot,stages) {
   return [];
 }
 
-const ridge=(rng,start,base,shade,amplitude)=>`<path fill="${shade}" d="M0 ${base} ${Array.from({length:17},(_,i)=>`L${i*63} ${(start-rng()*amplitude).toFixed(1)}`).join(' ')} L1008 ${base} Z"/>`;
+export function lunarSky(seed,sky,amount) {
+  const rng=randomGenerator(seed^0x5fa849b1);
+  const right=[Math.SQRT1_2,0,Math.SQRT1_2];
+  const up=[1/Math.sqrt(6),Math.sqrt(2/3),-1/Math.sqrt(6)];
+  const front=[-1,1,1].map(axis=>axis/Math.sqrt(3));
+  const origin=[75,17,-97];
+  const point=(x,y,depth)=>origin.map((value,i)=>value+x*right[i]+y*up[i]+depth*front[i]);
+  const background=sky.slice(1).match(/../g).map(value=>parseInt(value,16)/255);
+  const shade=(color,strength=1)=>color.map((value,i)=>background[i]+(value-background[i])*strength*amount);
+  const face=(outline,colors)=>{
+    const [x,y,z]=outline[0];
+    return {shape:'terrain',outline,colors,color:sky,x,y,z,h:0,layer:-1};
+  };
+  const stars=Array.from({length:42},()=>{
+    const x=(rng()-.5)*187,y=(rng()-.51)*38,r=.15+rng()*.29;
+    const strength=(.31+rng()*.61)*Math.max(.09,1-(x/105)**2);
+    const color=shade(rng()<.62?[.54,.58,.73]:[1,.98,.88],strength);
+    const [a,b,c,d]=[[x+r,y],[x,y+r],[x-r,y],[x,y-r]].map(([u,v])=>point(u,v,-8));
+    return [face([a,b,c],[color,color,color]),face([a,c,d],[color,color,color])];
+  }).flat();
 
-export function horizonImage({id,seed,amount},sky) {
-  const rng=randomGenerator(seed^0x18a32df7);
-  let art;
-  if (id==='moon') {
-    const stars=Array.from({length:67},()=>{
-      const x=(rng()*1000).toFixed(1),y=(12+rng()*210).toFixed(1),r=(.63+rng()*2.22).toFixed(2);
-      return `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff5db" opacity="${(.28+rng()*.67).toFixed(2)}"/>`;
-    }).join('');
-    art=`<defs><linearGradient id="g" x2="0" y2="1"><stop stop-color="#263453"/><stop offset=".53" stop-color="#7a80ab"/><stop offset="1" stop-color="${sky}"/></linearGradient>
-      <radialGradient id="planet" cx=".31" cy=".29"><stop stop-color="#d9f0e9"/><stop offset=".62" stop-color="#7cc6cf"/><stop offset="1" stop-color="#4a789f"/></radialGradient></defs>
-      <rect width="1000" height="311" fill="url(#g)"/>${stars}<circle cx="812" cy="109" r="46" fill="url(#planet)"/>
-      <path d="M775 109q18-38 49-28l-16 12 8 16-14 16-21-1zm48 15 21-19 11 11q-12 27-31 29z" fill="#9bd0ae" opacity=".76"/>`;
-  } else if (id==='island') {
-    const sparkles=Array.from({length:26},(_,i)=>{
-      const x=(360+rng()*440).toFixed(1),y=(181+i*2.6).toFixed(1);
-      return `<path d="M${x} ${y}h${(10+rng()*54).toFixed(1)}" stroke="#fff0c9" stroke-width="1.5" opacity=".5"/>`;
-    }).join('');
-    art=`<defs><linearGradient id="g" x2="0" y2="1"><stop stop-color="#a7d6d9"/><stop offset=".54" stop-color="#f1dcc3"/><stop offset=".545" stop-color="#71b9bd"/><stop offset="1" stop-color="${sky}"/></linearGradient></defs>
-      <rect width="1000" height="320" fill="url(#g)"/><circle cx="708" cy="144" r="30" fill="#fff2ce"/>
-      <path d="M0 174h1000" stroke="#f4e5cf" opacity=".75"/>${sparkles}`;
-  } else {
-    art=`<defs><linearGradient id="g" x2="0" y2="1"><stop stop-color="#afc9ca"/><stop offset=".56" stop-color="#eedec1"/><stop offset="1" stop-color="${sky}"/></linearGradient>
-      <linearGradient id="f" x2="0" y2="1"><stop stop-color="${sky}" stop-opacity="0"/><stop offset="1" stop-color="${sky}"/></linearGradient></defs>
-      <rect width="1000" height="320" fill="url(#g)"/><circle cx="764" cy="107" r="34" fill="#fff0c9"/>
-      ${ridge(rng,191,294,'#9cafb2',53)}${ridge(rng,225,290,'#8ba5a6',53)}
-      ${ridge(rng,254,321,'#a0b9ab',42)}<rect y="193" width="1000" height="132" fill="url(#f)"/>`;
-  }
-  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" preserveAspectRatio="none"><rect width="1000" height="600" fill="${sky}"/><g opacity="${amount.toFixed(3)}">${art}</g></svg>`;
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+  const radius=8.2,steps=28;
+  const vertex=(r,angle)=>{
+    const x=Math.cos(angle)*r,y=Math.sin(angle)*r,z=Math.sqrt(1-r*r);
+    const land=Math.sin(8*x+3*y)*Math.cos(5*y-4*x)+.38*Math.sin(13*y+4*x)>.43;
+    const light=Math.max(.38,.68-.28*x+.19*y+.11*z);
+    const tint=land?[.6,.81,.65]:[.32,.68,.8];
+    const rim=r**8*.43;
+    return {position:point(61+x*radius,y*radius,z*radius),
+      color:shade(tint.map((channel,i)=>channel*light+(background[i]-channel*light)*rim))};
+  };
+  const triangle=(...points)=>face(points.map(vertex=>vertex.position),points.map(vertex=>vertex.color));
+  const rings=[.22,.46,.68,.84,1].map(r=>Array.from({length:steps},(_,i)=>vertex(r,i*2*Math.PI/steps)));
+  const center=vertex(0,0);
+  const planet=rings.flatMap((ring,index)=>ring.flatMap((vertex,i)=>{
+    const next=(i+1)%steps;
+    if (!index) return [triangle(center,vertex,ring[next])];
+    const inner=rings[index-1];
+    return [triangle(inner[i],vertex,ring[next]),triangle(inner[i],ring[next],inner[next])];
+  }));
+  return [...stars,...planet];
 }
+

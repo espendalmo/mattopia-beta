@@ -1,5 +1,4 @@
 import {actorPose,MAX_ACTORS} from './scenery.js';
-import {horizonImage} from './map-art.js';
 
 const clamp = (value,min,max) => Math.max(min,Math.min(value,max));
 const cross = ([ax,ay,az],[bx,by,bz]) => [ay*bz-az*by,az*bx-ax*bz,ax*by-ay*bx];
@@ -146,7 +145,7 @@ export function projectFaces(scene) {
       const fade=color=>color.map((value,i)=>value+(haze[i]-value)*(piece.fog??0));
       const vertexColors=piece.colors??(piece.shape==='dome'&&faceIndex>0 ? points.map(point=>fade(shaded(domeNormal(piece,point)))) : null);
       const color=landscape ? fade(rgb) : vertexColors ? rgb.map((_,i)=>vertexColors.reduce((sum,vertex)=>sum+vertex[i],0)/points.length) : fade(shaded(unit));
-      return {points,normal:unit,color,vertexColors,alphas:piece.alphas,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,
+      return {points,normal:unit,color,vertexColors,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,
         origin:landscape||piece.radial ? [piece.x,piece.y,piece.z] : null,
         group:layerIndex?layerIndex+1:latest.has(part)?1:0,stride:part.stride??0};
     });
@@ -157,12 +156,12 @@ function backgroundRGB(hex) {
   return hex.slice(1).match(/../g).map(channel=>parseInt(channel,16)/255);
 }
 
-function triangleGradient(context,points,colors,alphas,solid,paintColor) {
+function triangleGradient(context,points,colors,solid,paintColor) {
   const [[ax,ay],[bx,by],[cx,cy]]=points;
   const determinant=(bx-ax)*(cy-ay)-(cx-ax)*(by-ay);
   if (Math.abs(determinant)<.05) return solid;
   // Terrain tint and mist vary gradually over each triangle.
-  const values=alphas&&Math.max(...alphas)-Math.min(...alphas)>.01?alphas:colors.map(([r,g,b])=>.29*r+.53*g+.18*b);
+  const values=colors.map(([r,g,b])=>.29*r+.53*g+.18*b);
   const low=Math.min(...values),high=Math.max(...values);
   if (high-low<.005) return solid;
   const dx=((values[1]-values[0])*(cy-ay)-(values[2]-values[0])*(by-ay))/determinant;
@@ -170,7 +169,7 @@ function triangleGradient(context,points,colors,alphas,solid,paintColor) {
   const span=(high-low)/(dx*dx+dy*dy);
   const [x,y]=points[values.indexOf(low)];
   const gradient=context.createLinearGradient(x,y,x+dx*span,y+dy*span);
-  colors.forEach((color,i)=>gradient.addColorStop((values[i]-low)/(high-low),paintColor(color,alphas?.[i])));
+  colors.forEach((color,i)=>gradient.addColorStop((values[i]-low)/(high-low),paintColor(color)));
   return gradient;
 }
 
@@ -195,15 +194,12 @@ function splitWideFace(face) {
   return points.map((point,i)=>({...face,points:[center,point,points[(i+1)%points.length]]}));
 }
 
-function canvasPainter(canvas, faces, background, transparent) {
+function canvasPainter(canvas, faces, background) {
   const context=canvas.getContext('2d');
   if (!context) return null;
-  const paintColor=(color,alpha=1)=>`rgba(${color.map(channel=>Math.round(channel*255)).join(',')},${alpha})`;
+  const paintColor=color=>`rgb(${color.map(channel=>Math.round(channel*255)).join(',')})`;
   // Smaller surfaces keep thin signs, roofs and ride tracks sorted correctly in Canvas.
-  const flat=faces.flatMap(splitWideFace).map(face=>{
-    const alpha=face.alphas ? face.alphas.reduce((sum,value)=>sum+value,0)/face.alphas.length : 1;
-    return {...face,paint:paintColor(face.color,alpha)};
-  });
+  const flat=faces.flatMap(splitWideFace).map(face=>({...face,paint:paintColor(face.color)}));
   const terrain=flat.filter(face=>Number.isFinite(face.layer));
   const objects=flat.filter(face=>!Number.isFinite(face.layer));
   const backing=terrain.length?canvas.ownerDocument.createElement('canvas'):null;
@@ -256,15 +252,15 @@ function canvasPainter(canvas, faces, background, transparent) {
         const highlight=face.group===1?Math.min(.58,effects.highlight+shimmer):0;
         const paint=highlight ? paintColor(face.color.map((value,i)=>
           value+([1,.86,.46][i]-value)*highlight)) : face.paint;
-        polygons.push({points,depth:depth/points.length,paint,layer:face.layer,colors:face.smooth?face.vertexColors:null,alphas:face.alphas});
+        polygons.push({points,depth:depth/points.length,paint,layer:face.layer,colors:face.smooth?face.vertexColors:null});
       }
       polygons.sort((a,b)=>(a.layer-b.layer)||a.depth-b.depth);
-      for (const {points,paint,colors,alphas} of polygons) {
+      for (const {points,paint,colors} of polygons) {
         surface.beginPath();
         points.forEach(([x,y],i)=>i?surface.lineTo(x,y):surface.moveTo(x,y));
         surface.closePath();
-        surface.fillStyle=surface.strokeStyle=colors?triangleGradient(surface,points,colors,alphas,paint,paintColor):paint;
-        surface.lineWidth=alphas&&Math.min(...alphas)<.98?.21:.65;
+        surface.fillStyle=surface.strokeStyle=colors?triangleGradient(surface,points,colors,paint,paintColor):paint;
+        surface.lineWidth=.65;
         surface.fill();
         surface.stroke();
       }
@@ -279,24 +275,23 @@ function canvasPainter(canvas, faces, background, transparent) {
           backing.width=canvas.width; backing.height=canvas.height;
         }
         groundContext.setTransform(sx,0,0,sy,0,0);
-        if (transparent) groundContext.clearRect(0,0,width,height);
-        else { groundContext.fillStyle=background; groundContext.fillRect(0,0,width,height); }
+        groundContext.fillStyle=background;
+        groundContext.fillRect(0,0,width,height);
         drawFaces(groundContext,terrain);
         viewKey=key;
       }
-      if (transparent) context.clearRect(0,0,width,height);
       context.drawImage(backing,0,0,width,height);
       drawFaces(context,objects);
     } else {
-      if (transparent) context.clearRect(0,0,width,height);
-      else { context.fillStyle=background; context.fillRect(0,0,width,height); }
+      context.fillStyle=background;
+      context.fillRect(0,0,width,height);
       drawFaces(context,flat);
     }
   };
 }
 
-function webGLPainter(canvas, faces, background, transparent, illustrated) {
-  const gl=canvas.getContext('webgl',{alpha:transparent,antialias:true});
+function webGLPainter(canvas, faces, background, illustrated) {
+  const gl=canvas.getContext('webgl',{alpha:false,antialias:true});
   if (!gl) return null;
   const shader=(kind,source)=>{
     const result=gl.createShader(kind);
@@ -310,7 +305,6 @@ function webGLPainter(canvas, faces, background, transparent, illustrated) {
     attribute float group;
     attribute float stride;
     attribute vec3 hinge;
-    attribute float alpha;
     uniform vec2 yaw;
     uniform vec2 pitch;
     uniform vec2 zoom;
@@ -322,7 +316,6 @@ function webGLPainter(canvas, faces, background, transparent, illustrated) {
     varying mediump vec3 shade;
     varying mediump float modelHeight;
     varying mediump float latest;
-    varying mediump float coverage;
     void main() {
       vec3 pos = position;
       latest = group == 1.0 ? 1.0 : 0.0;
@@ -345,7 +338,6 @@ function webGLPainter(canvas, faces, background, transparent, illustrated) {
       vec2 point = vec2(pos.x*yaw.x-pos.z*yaw.y,y*pitch.x-forward*pitch.y);
       gl_Position = vec4(point*zoom+pan,-(y*pitch.y+forward*pitch.x)/160.0,1.0);
       shade = color;
-      coverage = alpha;
     }
   `);
   const fragment=shader(gl.FRAGMENT_SHADER,`
@@ -353,13 +345,12 @@ function webGLPainter(canvas, faces, background, transparent, illustrated) {
     varying mediump vec3 shade;
     varying mediump float modelHeight;
     varying mediump float latest;
-    varying mediump float coverage;
     uniform vec2 shine;
     void main() {
       float sweep = max(0.0,1.0-abs(modelHeight-shine.y)/.7)*.36;
       vec3 color = mix(shade,vec3(1.0,.86,.46),latest*min(.58,shine.x+sweep));
       ${illustrated?'color += (fract(52.9829 * fract(dot(gl_FragCoord.xy,vec2(.06711,.00583))))-.5)*.022;':''}
-      gl_FragColor = vec4(color,coverage);
+      gl_FragColor = vec4(color,1.0);
     }
   `);
   const program=gl.createProgram();
@@ -371,33 +362,29 @@ function webGLPainter(canvas, faces, background, transparent, illustrated) {
   gl.deleteShader(vertex);
   gl.deleteShader(fragment);
   const data=[];
-  for (const {points,color,vertexColors,group,origin,stride,hinge,alphas} of faces) {
+  for (const {points,color,vertexColors,group,origin,stride,hinge} of faces) {
     const pivot=hinge?[...hinge,1]:[0,0,0];
     for (let i=origin?0:1;i<(origin?points.length:points.length-1);i++) {
       const next=(i+1)%points.length;
-      data.push(...(origin??points[0]),...(vertexColors?.[0]??color),group,stride,...pivot,alphas?.[0]??1,
-        ...points[i],...(vertexColors?.[i]??color),group,stride,...pivot,alphas?.[i]??1,
-        ...points[next],...(vertexColors?.[next]??color),group,stride,...pivot,alphas?.[next]??1);
+      data.push(...(origin??points[0]),...(vertexColors?.[0]??color),group,stride,...pivot,
+        ...points[i],...(vertexColors?.[i]??color),group,stride,...pivot,
+        ...points[next],...(vertexColors?.[next]??color),group,stride,...pivot);
     }
   }
   const buffer=gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
   gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);
-  for (const [name,size,offset] of [['position',3,0],['color',3,12],['group',1,24],['stride',1,28],['hinge',3,32],['alpha',1,44]]) {
+  for (const [name,size,offset] of [['position',3,0],['color',3,12],['group',1,24],['stride',1,28],['hinge',3,32]]) {
     const location=gl.getAttribLocation(program,name);
     gl.enableVertexAttribArray(location);
-    gl.vertexAttribPointer(location,size,gl.FLOAT,false,48,offset);
+    gl.vertexAttribPointer(location,size,gl.FLOAT,false,44,offset);
   }
   const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','reveal','shine','actorPose[0]','actorMotion[0]']
     .map(name=>[name,gl.getUniformLocation(program,name)]));
   const actorPositions=new Float32Array(MAX_ACTORS*4),actorMovement=new Float32Array(MAX_ACTORS*4);
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
-  if (transparent) {
-    gl.enable(gl.BLEND);
-    gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
-  }
-  gl.clearColor(...(transparent?[0,0,0,0]:[...backgroundRGB(background),1]));
+  gl.clearColor(...backgroundRGB(background),1);
   return {
     draw(width,height,camera,scale,center,effects) {
       gl.viewport(0,0,canvas.width,canvas.height);
@@ -415,7 +402,7 @@ function webGLPainter(canvas, faces, background, transparent, illustrated) {
       });
       gl.uniform4fv(uniforms['actorPose[0]'],actorPositions);
       gl.uniform4fv(uniforms['actorMotion[0]'],actorMovement);
-      gl.drawArrays(gl.TRIANGLES,0,data.length/12);
+      gl.drawArrays(gl.TRIANGLES,0,data.length/11);
     },
     dispose() {
       gl.deleteBuffer(buffer);
@@ -441,7 +428,7 @@ export function buildMotion(world, elapsed, ground, top, marked) {
   };
 }
 
-export function projectCameras(scene,target=null) {
+export function projectCameras(scene,target=null,focusLatest=false) {
   const initial={yaw:scene.world?-Math.PI/4:scene.yaw,pitch:scene.world?.6155:scene.pitch,zoom:1,
     x:0,y:0,anchorX:scene.anchorX??0,anchorZ:scene.anchorZ??0,center:scene.center};
   const maxZoom=Math.max(1.15,MAX_ZOOM*scene.size/(scene.closeSize??scene.size));
@@ -457,7 +444,7 @@ export function projectCameras(scene,target=null) {
   const context={...initial,zoom:clamp(scene.size/41,1,maxZoom),center:point.y+1.35,
     anchorX:neighbor?point.x*.77+neighbor.x*.23:point.x,
     anchorZ:neighbor?point.z*.77+neighbor.z*.23:point.z};
-  return {initial,maxZoom,context,detail:target||scene.finished?close:context};
+  return {initial,maxZoom,context,detail:target||focusLatest||scene.finished?close:context};
 }
 
 export function finishTransition(elapsed) {
@@ -465,29 +452,21 @@ export function finishTransition(elapsed) {
   return {travel: t*t*(3-2*t),opacity:1-.31*Math.sin(Math.PI*t)};
 }
 
-export function mountProjectView(container, scene, interactive=false, {closeUp=false, reveal=false, demo=false,target=null,still=false}={}) {
+export function mountProjectView(container, scene, interactive=false, {closeUp=false, reveal=false, demo=false,target=null,still=false,focusLatest=false}={}) {
   let canvas=container.querySelector('canvas');
   const faces=projectFaces(scene);
-  const transparent=Boolean(scene.horizon);
   let engine;
   if (interactive || scene.world && !still) {
-    try { engine=webGLPainter(canvas,faces,scene.background,transparent,scene.illustrated); }
+    try { engine=webGLPainter(canvas,faces,scene.background,scene.illustrated); }
     catch {
       const fallback=canvas.cloneNode();
       canvas.replaceWith(fallback);
       canvas=fallback;
     }
   }
-  if (transparent) {
-    canvas.style.backgroundImage=horizonImage(scene.horizon,scene.background);
-    canvas.style.backgroundSize='100% 100%';
-  } else {
-    canvas.style.removeProperty('background-image');
-    canvas.style.removeProperty('background-size');
-  }
-  const paint=engine?.draw || canvasPainter(canvas,faces,scene.background,transparent);
+  const paint=engine?.draw || canvasPainter(canvas,faces,scene.background);
   if (!paint) return ()=>{};
-  const {initial,maxZoom,context,detail}=projectCameras(scene,target);
+  const {initial,maxZoom,context,detail}=projectCameras(scene,target,focusLatest);
   const latest=scene.latest ?? [];
   const heights=faces.filter(face=>face.group===1).flatMap(face=>face.points.map(point=>point[1]));
   const low=heights.length ? Math.min(...heights) : 0;
@@ -500,7 +479,7 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
   let marked=reveal&&latest.length>0, started=null, from={...camera}, visible=true, lastFrame=-Infinity;
   const completedBuild=scene.world&&Boolean(scene.finished)&&!target;
-  if (target || closeUp && (!reveal || motion.matches || demo&&!scene.world)) Object.assign(camera,detail);
+  if (target || closeUp && (!reveal || motion.matches || demo&&!scene.world || focusLatest&&!completedBuild)) Object.assign(camera,detail);
   else if (reveal&&scene.world) Object.assign(camera,context);
   from={...camera};
   if (marked && !motion.matches) started=performance.now();
@@ -561,8 +540,8 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   }
   function drag(dx,dy) {
     if (mode==='rotate'&&!scene.world) {
-      camera.yaw+=dx*.009;
-      camera.pitch=clamp(camera.pitch-dy*.006,.06,1.36);
+      camera.yaw-=dx*.009;
+      camera.pitch=clamp(camera.pitch+dy*.006,.06,1.36);
     } else {
       camera.x+=dx;
       camera.y+=dy;

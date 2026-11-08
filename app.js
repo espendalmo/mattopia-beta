@@ -294,9 +294,13 @@ function rewardDetails(reward = null) {
 }
 function rewardArt(happy = false, reward = null) {
   const info = rewardDetails(reward);
-  if (info.project) return `<button class="project-peek" data-action="project-open" data-project="${info.mode}" aria-label="Utforsk ${info.project.name} i 3D">
-    <canvas data-project-preview="${info.mode}" data-completed="${info.completed}" ${happy && info.added && celebrateOnRender ? 'data-reveal' : ''} aria-hidden="true"></canvas><span>Utforsk i 3D ${icon('arrow')}</span>
-  </button>`;
+  if (info.project) {
+    const world = isWorld(info.mode);
+    const label = world ? 'Utforsk kartet' : 'Utforsk i 3D';
+    return `<button class="project-peek" data-action="project-open" data-project="${info.mode}" aria-label="${label}: ${info.project.name}">
+      <canvas data-project-preview="${info.mode}" data-completed="${info.completed}" ${happy && info.added && celebrateOnRender ? 'data-reveal' : ''} aria-hidden="true"></canvas><span>${label} ${icon('arrow')}</span>
+    </button>`;
+  }
   const art = info.mode === 'bricks'
     ? renderBuildSvg(info.build, {animate:happy, preview:info.build.pieces === 0})
     : renderPlant(info.garden.plant, info.garden.stage);
@@ -311,8 +315,13 @@ function mountProjectPreview(container) {
   const scene = projectScene(id, map || Number(canvas.dataset.completed));
   const reveal=canvas.hasAttribute('data-reveal');
   if (scene) return mountProjectView(canvas.closest('.complete') || canvas.parentElement, scene, false, {
-    closeUp:true, reveal, still:!reveal&&scene.parts.length>2200,
+    closeUp:true, reveal, focusLatest:view==='complete'||Boolean(state.active), still:!reveal&&scene.parts.length>2200,
   });
+}
+
+function mountDialogProjectPreview(dialog) {
+  const dispose = mountProjectPreview(dialog);
+  if (dispose) dialog.addEventListener('close', dispose, {once:true});
 }
 
 function projectProgress(info) {
@@ -370,7 +379,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         <p data-demo-status aria-live="polite">${latest()}</p>
         <button class="secondary" data-demo-step="1" aria-label="Neste byggesteg">Neste ${icon('arrow')}</button>
       </div>` : ''}
-      <canvas tabindex="0" role="img" aria-label="${title} i 3D" aria-describedby="project-instructions project-milestone"></canvas>
+      <canvas tabindex="0" role="img" aria-label="${scene.world ? 'Kart: '+title : title+' i 3D'}" aria-describedby="project-instructions project-milestone"></canvas>
       <div class="project-controls">
         ${scene.world?'':`<div class="project-control-group" role="group" aria-label="Velg hva som skjer når du drar">
           <button class="secondary" data-project-mode="move" aria-pressed="true">Flytt</button>
@@ -391,6 +400,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
     const viewer = dialog.querySelector('.project-viewer');
     const mount = reveal => mountProjectView(viewer, scene, true, {
       closeUp:galleryMap===null && Boolean(progress().completed), reveal, demo, target,
+      focusLatest:!demo&&!archivedMap&&galleryMap===null&&(view==='complete'||Boolean(state.active)),
     });
     let dispose = mount(false);
     projectAmbience(dialog, id);
@@ -1115,12 +1125,12 @@ function renderRound() {
     feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${messages[r.index % messages.length]}</p><p class="feedback-detail">${escapeHtml(equationText(t))}</p></div></div><button class="primary" data-action="next">${r.index === length - 1 ? 'Fullfør runden' : 'Neste'}${icon('arrow')}</button>`;
   } else feedback = '<p class="idle-note">Ta den tiden du trenger.</p>';
   root.innerHTML = `<div class="round-shell"><header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>${CHANNEL === 'preview' ? betaMark() : 'Din lille runde'}</span><strong>Oppgave ${r.index + 1} av ${length}</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="${length}" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
-    <main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-buddy">${buddy(r.solved, ui.retry)}</div><p>${r.solved ? 'Se hva du fikk til!' : r.attempts[r.index] ? 'Vi prøver igjen sammen.' : 'Vi finner det ut.'}</p></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
+    <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-buddy">${buddy(r.solved, ui.retry)}</div><p>${r.solved ? 'Se hva du fikk til!' : r.attempts[r.index] ? 'Vi prøver igjen sammen.' : 'Vi finner det ut.'}</p></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
     ${equation(t, r.solved)}${renderVisual(t, r.solved)}
     ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 ? 'disabled' : ''}>${icon('help')}${stage === 3 ? 'Vi ser sammen' : stage ? 'Et hint til' : 'Vis meg'}</button>` : ''}
     ${stage && !r.solved ? `<div class="hint" id="hint-panel">${escapeHtml(hintText(t))}</div>` : ''}
     ${t.mode === 'input' ? r.solved ? `<div class="entered-correct" aria-label="Svaret ${t.answer} er riktig">${t.answer} ${icon('check')}</div>` : keypad() : renderAnswers(t, r.solved)}
-    <div class="feedback-area">${feedback}</div></main></div>`;
+    <div class="feedback-area">${feedback}</div></main></div></div>`;
 }
 
 function renderAnswers(t, solved) {
@@ -1157,6 +1167,7 @@ function renderComplete() {
 
 let renderedScreen;
 function render() {
+  const taskScroll = root.querySelector('.task-scroll')?.scrollTop ?? 0;
   disposeProjectPreview?.();
   if (view === 'round') renderRound();
   else if (view === 'complete') renderComplete();
@@ -1166,6 +1177,7 @@ function render() {
   disposeProjectPreview = mountProjectPreview(root);
   const screen = view === 'round' ? `round-${state.active?.id}-${state.active?.index}`
     : view === 'focus-break' ? `${view}-${focusGame.kind}-${focusGame.phase}` : view;
+  if (view === 'round' && taskScroll && renderedScreen === screen) root.querySelector('.task-scroll').scrollTop = taskScroll;
   if (renderedScreen !== screen && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
     root.querySelector(view === 'round' ? '.task' : 'main')?.animate?.(
       [{transform:'translateY(4px)'},{transform:'translateY(0)'}],
@@ -1224,7 +1236,9 @@ function showDialog(content, css = '', afterOpen) {
 function closeDialog() { document.querySelector('dialog')?.close(); }
 function showPause() {
   sounds.play('open', state.sound);
-  showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>En liten pause?</h2><p>Oppgavene venter på deg.<br>Du kan fortsette senere.</p><button class="primary" data-action="close-dialog">Fortsett runden</button><button class="secondary secondary-cta" data-action="pause-home">Ta en pause</button>${CHANNEL === 'preview' ? '<button class="text-button beta-danger" data-action="beta-abort-round">Avbryt runden</button>' : ''}`, 'pause-dialog');
+  const map = currentWorld(state, state.rewardMode);
+  const preview = map && worldStatus(map).completed ? rewardArt() : '';
+  showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>En liten pause?</h2><p>Oppgavene venter på deg.<br>Du kan fortsette senere.</p>${preview}<button class="primary" data-action="close-dialog">Fortsett runden</button><button class="secondary secondary-cta" data-action="pause-home">Ta en pause</button>${CHANNEL === 'preview' ? '<button class="text-button beta-danger" data-action="beta-abort-round">Avbryt runden</button>' : ''}`, 'pause-dialog', preview ? mountDialogProjectPreview : undefined);
 }
 
 function confirmBetaAbort() {
@@ -1295,10 +1309,7 @@ function welcomeBack() {
     : g.full ? 'Neste runde får du et nytt frø!'
     : g.mode === 'bricks' ? 'Én runde gir deg neste kloss.' : 'Én runde gir planten litt mer vekst.';
   const cta = state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : 'Ta en runde';
-  showDialog(`<button class="icon-button welcome-close" data-action="close-dialog" aria-label="Lukk velkomsten">${icon('close')}</button>${rewardArt(false, next)}<h2 id="dialog-title" tabindex="-1" autofocus>Hei igjen!</h2><p class="welcome-reward">${g.label}</p><p>${note}</p><button class="primary" data-action="welcome-start">${cta} ${icon('arrow')}</button>`, 'welcome-dialog', g.project ? dialog => {
-    const dispose = mountProjectPreview(dialog);
-    if (dispose) dialog.addEventListener('close', dispose, {once:true});
-  } : undefined);
+  showDialog(`<button class="icon-button welcome-close" data-action="close-dialog" aria-label="Lukk velkomsten">${icon('close')}</button>${rewardArt(false, next)}<h2 id="dialog-title" tabindex="-1" autofocus>Hei igjen!</h2><p class="welcome-reward">${g.label}</p><p>${note}</p><button class="primary" data-action="welcome-start">${cta} ${icon('arrow')}</button>`, 'welcome-dialog', g.project ? mountDialogProjectPreview : undefined);
 }
 
 function progressionNote() {

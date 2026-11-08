@@ -2,6 +2,7 @@ import {connectWaterfront,regionSurface,riverAt,riverWidth,specialEntrances} fro
 import {randomGenerator,REGION_PLACES} from './worlds.js';
 
 const WIDTH=11;
+export const STREET_TURN_RADIUS=2.35;
 const streets=new WeakMap();
 const gap=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const edgeKey=(a,b)=>a<b?`${a}:${b}`:`${b}:${a}`;
@@ -126,7 +127,7 @@ export function planStreetRegion(layout,buildings) {
   const graph=layoutStreets(layout);
   if (!graph||graph.available.length<REGION_PLACES-Object.keys(layout.berths).length) return null;
   const {nodes,edges,origin,available,links,connectorLayout}=graph;
-  const open=new Map(), active=new Set(), connectors=[],plots=[];
+  const open=new Map(), active=new Set(), connectors=[],connectedNodes=new Set(),plots=[];
   const usedLots=new Set();
   const add=edge=>{
     if (!edge) return;
@@ -150,6 +151,7 @@ export function planStreetRegion(layout,buildings) {
         if (!candidates.length) continue;
         const start=candidates.reduce((near,point)=>gap(point,entry)<gap(near,entry)?point:near);
         connectors.push(connectWaterfront(connectorLayout,start,entry,kind==='bridge'));
+        connectedNodes.add(start.id);
         active.add(start.id);
       }
       plots.push({...special,index,kind,entries});
@@ -184,7 +186,11 @@ export function planStreetRegion(layout,buildings) {
   }
   return {
     origin,plots,paths:[...open.values()].map(edge=>edge.points).concat(connectors),
-    junctions:[...active].filter(id=>openLinks[id].length>=2).map(id=>({...nodes[id],degree:openLinks[id].length})),
+    junctions:[...active].filter(id=>openLinks[id].length>=2).map(id=>{
+      const {x,z}=nodes[id];
+      const arms=openLinks[id].map(neighbor=>[Math.sign(nodes[neighbor].x-x),Math.sign(nodes[neighbor].z-z)]);
+      return {x,z,arms,connector:connectedNodes.has(id)};
+    }),
     circuits:streetCircuits(nodes,open,openLinks,origin.ring),
   };
 }

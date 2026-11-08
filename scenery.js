@@ -1,4 +1,5 @@
 import {regionSurface,roadElevation,riverAt} from './regions.js';
+import {STREET_TURN_RADIUS} from './street-grid.js';
 
 export const box = (x,z,w,d,h,color,y=0,studs=0) => ({shape:'box',x,y,z,w,d,h,color,studs});
 export const tube = (x,z,w,d,h,color,y=0,axis='y') => ({shape:'tube',x,y,z,w,d,h,color,axis});
@@ -319,7 +320,8 @@ export function regionActors(theme,layout,plan,completed) {
     const circuit=plan.circuits?.[i%plan.circuits.length];
     const points=circuit?circuit.map(({x,z})=>[x,z]):laneLoop(path,.32);
     actors.push(actor(vehicle(moon?'rover':theme==='island'?'cart':'car',colors[i]),points,{
-      kind:'road',elevation:(x,z)=>roadElevation(layout,x,z),speed:moon?2.3:2.9,phase:i*.23+.12,corner:1.12,
+      kind:'road',elevation:(x,z)=>roadElevation(layout,x,z),speed:moon?2.3:2.9,phase:i*.23+.12,
+      corner:circuit?STREET_TURN_RADIUS:1.12,
     }));
   }
   for (let i=0;completed.length&&i<Math.min(paths.length,4,1+Math.floor(completed.length/4));i++) {
