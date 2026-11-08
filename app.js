@@ -283,11 +283,15 @@ function showProject(id, demo = false) {
         if (previous.disabled && document.activeElement === previous) next.focus({preventScroll:true});
         if (next.disabled && document.activeElement === next) previous.focus({preventScroll:true});
         dialog.querySelector('[data-demo-progress]').textContent = `Byggedemo · ${projectProgress(project, completed)}`;
-        viewer.querySelector('[data-demo-status]').innerHTML = `<small>Steg ${completed} av ${project.total}</small>${latest()}`;
+        viewer.querySelector('[data-demo-status]').innerHTML = `<small>Steg ${completed} av ${project.total}</small>${scene.finished ? `<strong>${escapeHtml(scene.finished)} er på plass!</strong>` : latest()}`;
         dialog.querySelector('#project-milestone').textContent = milestone();
         dispose();
         dispose = mount(amount > 0);
-        sounds.play('build', state.sound);
+        dialog.querySelector('.confetti')?.remove();
+        if (amount > 0 && scene.finished) {
+          dialog.insertAdjacentHTML('beforeend', confetti(true));
+          sounds.play('landmark', state.sound);
+        } else sounds.play('build', state.sound);
       };
       previous.addEventListener('click', () => step(-1));
       next.addEventListener('click', () => step(1));
@@ -311,25 +315,34 @@ function breakButtonLabel() {
 }
 
 const BADGES = [
-  { stars:3, name:'God start', symbol:'✦', tone:'leaf' },
-  { stars:10, name:'Tallvenn', symbol:'★', tone:'sun' },
-  { stars:25, name:'Talloppdager', symbol:'◆', tone:'sky' },
-  { stars:50, name:'Stjernesamler', symbol:'✶', tone:'rose' },
-  { stars:100, name:'Tallmester', symbol:'✺', tone:'violet' },
+  { stars:3, name:'God start', tone:'leaf', shape:'M32 5 54 16v24L32 57 10 40V16Z',
+    motif:'<path d="M32 44V29m0 8c-9 0-13-4-13-12 8 0 13 4 13 12Zm0-4c0-8 4-13 13-14 0 8-5 14-13 14Z" />' },
+  { stars:10, name:'Tallvenn', tone:'sun', shape:'M32 5 42 8 52 15 57 28 53 42 44 53 32 57 20 53 11 42 7 28 12 15 22 8Z',
+    motif:'<path d="M32 17 36.5 26.5 47 28 39.5 35.5 41 46 32 41 23 46l1.5-10.5L17 28l10.5-1.5Z" />' },
+  { stars:25, name:'Talloppdager', tone:'sky', shape:'M32 3 59 31 32 59 5 31Z',
+    motif:'<circle cx="32" cy="31" r="13" fill="none"/><path d="m39 23-4 12-11 4 4-12Z"/><circle cx="32" cy="31" r="1.7" />' },
+  { stars:50, name:'Stjernesamler', tone:'rose', shape:'M32 4 40 9 50 9 53 18 60 25 56 34 56 44 47 48 41 56 32 54 23 56 17 48 8 44 8 34 4 25 11 18 14 9 24 9Z',
+    motif:'<path d="M32 15q3 12 13 15-10 3-13 16-3-13-13-16 10-3 13-15Zm12 2 2.5 4.5L51 24l-4.5 2.5L44 31l-2.5-4.5L37 24l4.5-2.5ZM21 33l2 4 4 2-4 2-2 4-2-4-4-2 4-2Z" />' },
+  { stars:100, name:'Tallmester', tone:'violet', shape:'M32 3 54 11v25c0 12-12 19-22 25C22 55 10 48 10 36V11Z',
+    motif:'<path d="m18 25 8 6 6-11 6 11 8-6-4 16H22Z"/><path d="M23 45h18M32 13v3m-10 3 2 2m18-2-2 2" fill="none"/>' },
 ];
 
 function badgeArt(badge) {
-  return `<span class="badge-medal ${badge.tone}" aria-hidden="true">${badge.symbol}</span>`;
+  return `<span class="badge-medal ${badge.tone}" aria-hidden="true"><svg viewBox="0 0 64 64" focusable="false">
+    <path class="medal-ribbon" d="m19 37-7 25 11-5 6 5 4-19 4 19 6-5 10 5-7-25Z"/>
+    <path class="medal-frame" d="${badge.shape}"/><path class="medal-inset" d="${badge.shape}"/>
+    <g class="medal-motif">${badge.motif}</g>
+  </svg></span>`;
 }
 
 function badgeShelf(stars) {
   const earned = BADGES.filter(badge => stars >= badge.stars);
   const next = BADGES.find(badge => stars < badge.stars);
   if (!stars) return '';
-  return `<section class="badge-shelf" aria-label="Merker">
+  return `<section class="badge-shelf" aria-label="Utmerkelser">
     ${earned.length ? `<ul class="badge-list">${earned.map(badge =>
       `<li>${badgeArt(badge)}<strong>${badge.name}</strong><small>${badge.stars} stjerner</small></li>`).join('')}</ul>` : ''}
-    ${next ? `<p class="shelf-note">Neste merke ved ${next.stars} stjerner</p>` : ''}
+    ${next ? `<p class="shelf-note">Neste utmerkelse ved ${next.stars} stjerner</p>` : ''}
   </section>`;
 }
 
@@ -395,10 +408,10 @@ function showCollectible(kind, id) {
   } else showDialog(content, 'collection-dialog');
 }
 
-function confetti() {
+function confetti(landmark = false) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return '';
-  const colors = ['#79a85d','#efbd57','#8bb6d5','#d99da5','#b5ce8b'];
-  return `<div class="confetti" aria-hidden="true">${Array.from({ length: 38 }, (_, i) => `<i style="--x:${(i*37)%100}%;--drift:${(i%2?1:-1)*(25+i%7*15)}px;--delay:${(i%9)*.055}s;--duration:${2.3+i%5*.2}s;--turn:${220+i*29}deg;background:${colors[i%colors.length]}"></i>`).join('')}</div>`;
+  const colors = landmark ? ['#efbd57','#ffd993','#58a893','#86b2e6','#d993ac'] : ['#79a85d','#efbd57','#8bb6d5','#d99da5','#b5ce8b'];
+  return `<div class="confetti${landmark ? ' landmark-confetti' : ''}" aria-hidden="true">${Array.from({ length: landmark ? 48 : 38 }, (_, i) => `<i style="--x:${(i*37)%100}%;--drift:${(i%2?1:-1)*(25+i%7*15)}px;--delay:${(landmark ? .83 : 0)+(i%9)*.055}s;--duration:${2.3+i%5*.2}s;--turn:${220+i*29}deg;background:${colors[i%colors.length]}"></i>`).join('')}</div>`;
 }
 
 function renderHome() {
@@ -412,11 +425,11 @@ function renderHome() {
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="home">
     ${profile ? `<button class="profile-switch" data-action="show-profiles">${avatarArt(profile.avatar)}<strong>${escapeHtml(profile.name)}</strong><span>Bytt spiller</span></button>` : ''}
     ${rewardArt(false, next)}<p class="home-eyebrow">${g.label}</p>
-    <h1 tabindex="-1">Klar for en<br>liten runde?</h1>
-    <p class="home-description">${state.active?.tasks.length ?? state.roundLength} oppgaver. I ditt tempo.</p>
+    <h1 tabindex="-1">${total % 2 ? 'Klar for en til økt?' : 'Klar for flere oppgaver?'}</h1>
+    <p class="home-description">${state.active?.tasks.length ?? state.roundLength} oppgaver venter.</p>
     <button class="primary" data-action="start">${state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : 'Start runden'}${icon('arrow')}</button>
     <p class="gentle-note">${state.active ? `Du har gjort ${state.active.index + (state.active.solved ? 1 : 0)} av ${state.active.tasks.length} oppgaver.` : 'Vi ser, teller og finner ut sammen.'}</p>
-    <div class="star-shelf"><p class="shelf-label">Dine små steg</p><div class="stars" aria-label="${total} ${total === 1 ? 'stjerne' : 'stjerner'}">${stars}${total > 5 ? `<span>+${total - 5}</span>` : ''}</div><p class="shelf-note">${shelf}</p>${badgeShelf(total)}${collectionShelf()}</div>
+    <div class="star-shelf"><p class="shelf-label">Så langt har du kommet</p><div class="stars" aria-label="${total} ${total === 1 ? 'stjerne' : 'stjerner'}">${stars}${total > 5 ? `<span>+${total - 5}</span>` : ''}</div><p class="shelf-note">${shelf}</p>${badgeShelf(total)}${collectionShelf()}</div>
   </main></div>`;
 }
 
@@ -870,7 +883,7 @@ function renderRound() {
     ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 ? 'disabled' : ''}>${icon('help')}${stage === 3 ? 'Vi ser sammen' : stage ? 'Et hint til' : 'Vis meg'}</button>` : ''}
     ${stage && !r.solved ? `<div class="hint" id="hint-panel">${escapeHtml(hintText(t))}</div>` : ''}
     ${t.mode === 'input' ? r.solved ? `<div class="entered-correct" aria-label="Svaret ${t.answer} er riktig">${t.answer} ${icon('check')}</div>` : keypad() : renderAnswers(t, r.solved)}
-    <div class="feedback-area">${feedback}</div></main><footer class="round-footer">Små steg teller.</footer></div>`;
+    <div class="feedback-area">${feedback}</div></main></div>`;
 }
 
 function renderAnswers(t, solved) {
@@ -886,18 +899,19 @@ function renderAnswers(t, solved) {
 
 function renderComplete() {
   const g = rewardDetails(completedReward);
-  const projectStep = g.added && projectScene(g.mode, g.completed).last;
+  const stage = g.added ? projectScene(g.mode, g.completed) : null;
+  const projectStep = stage?.last;
   const length = state.history.at(-1)?.length ?? ROUND_LENGTH;
   const message = g.project
     ? `${g.label}${g.full ? ' er ferdig!' : ''}<br>${projectProgress(g.project, g.completed)}.`
     : g.mode === 'bricks' ? g.full ? `${g.model.done}<br>Fem klosser, ett flott bygg!` : `En ny kloss på plass!<br>${g.build.pieces} av ${g.model.pieces.length} klosser.` : `${g.label}<br>${g.garden.stage} av 5 vekststeg.`;
   const earnedBrick = g.mode === 'bricks' || g.added;
-  const party = celebrateOnRender ? confetti() : '';
+  const party = celebrateOnRender ? confetti(Boolean(stage?.finished)) : '';
   const newBadge = BADGES.find(badge => badge.stars === state.roundsCompleted);
-  const badge = newBadge ? `<div class="new-badge">${badgeArt(newBadge)}<span>Nytt merke <strong>${newBadge.name}</strong></span></div>` : '';
+  const badge = newBadge ? `<div class="new-badge">${badgeArt(newBadge)}<span>Ny utmerkelse <strong>${newBadge.name}</strong></span></div>` : '';
   const next = g.mode === 'bricks' && upcomingBuild(g.build);
   const preview = next ? `<div class="next-build-card">${renderBuildSvg(next, {mini:true, preview:true})}<div>Neste bygg<strong>Hva tror du det blir?</strong></div></div>` : '';
-  const latest = projectStep ? `<div class="project-latest result-latest"><div><small>Nytt byggesteg · ${g.completed} av ${g.project.total}</small><strong>${escapeHtml(projectStep)}</strong></div><button class="secondary" data-project-latest>Vis igjen</button></div>` : '';
+  const latest = projectStep ? `<div class="project-latest result-latest${stage.finished ? ' landmark-complete' : ''}"><div><small>${stage.finished ? 'Ferdig på kartet' : 'Nytt byggesteg'} · ${g.completed} av ${g.project.total}</small><strong>${escapeHtml(stage.finished || projectStep)}${stage.finished ? ' er på plass!' : ''}</strong></div><button class="secondary" data-project-latest>Vis igjen</button></div>` : '';
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">Du klarte runden!</h1>${latest}${(!projectStep || g.full) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="primary" data-action="home">Ferdig for nå${icon('check')}</button><button class="secondary secondary-cta" data-action="again">${state.focusBreakPending ? breakButtonLabel() : 'En runde til'}</button></main></div>${party}`;
   celebrateOnRender = false;
 }
@@ -1285,7 +1299,8 @@ document.addEventListener('click', e => {
         state = advancePractice(awarded.state, profile?.grade, summary.level); completedReward = awarded.reward;
         state.focusBreakPending = state.focusBreaks && state.roundsCompleted % BREAK_INTERVAL === 0;
       }
-      state.active = null; view = 'complete'; celebrateOnRender = true; feedback('finish', [18,55,25]);
+      const landmark = completedReward?.added && projectScene(completedReward.mode, completedReward.completed).finished;
+      state.active = null; view = 'complete'; celebrateOnRender = true; feedback(landmark ? 'landmark' : 'finish', [18,55,25]);
     } else sounds.play('next', state.sound);
     ui = makeUI(); save(); render(); goTop(); focusHeading();
   }

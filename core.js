@@ -1,6 +1,6 @@
 import {restoreRewards} from './rewards.js';
 import {CURRICULUM_LEVELS, CURRICULUM_TOPICS, curriculumTopic, createCurriculumTask, validCurriculumTask, nextLevelForGrade} from './curriculum.js';
-export const VERSION='1.11.0';
+export const VERSION='1.12.0';
 export const CHANNEL = 'preview';
 export const ROUND_LENGTH=8;
 export const ROUND_LENGTHS=Object.freeze([5,6,ROUND_LENGTH]);

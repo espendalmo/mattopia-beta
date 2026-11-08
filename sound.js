@@ -9,6 +9,8 @@ SOUND_PATTERNS.select=[[79,0,.075,.013]];
 SOUND_PATTERNS.open=[[69,0,.095,.014],[76,.049,.13,.012]];
 SOUND_PATTERNS.next=[[74,0,.085,.011],[79,.046,.09,.009]];
 SOUND_PATTERNS.build=[[67,0,.06,.015],[84,.07,.105,.014]];
+SOUND_PATTERNS.landmark=[[64,.8,.14,.043],[67,.9,.17,.05],[72,1.01,.2,.055],[76,1.13,.22,.052],
+  [84,1.27,.44,.062],[79,1.27,.41,.038],[72,1.27,.46,.029],[60,1.27,.49,.033]];
 const lightSounds=new Set(['key','select','open','next','build']);
 export function createSoundPlayer(getContext=()=>new(window.AudioContext||window.webkitAudioContext)()){
   let context,voices=[],generation=0;

@@ -3,18 +3,48 @@ const cross = ([ax,ay,az],[bx,by,bz]) => [ay*bz-az*by,az*bx-ax*bz,ax*by-ay*bx];
 const difference = (a,b) => a.map((value,i)=>value-b[i]);
 const dot = (a,b) => a.reduce((sum,value,i)=>sum+value*b[i],0);
 
-function partFaces({shape,x,y,z,w,d,h,outline}) {
+function ringFaces(rings) {
+  const first=rings[0], last=rings.at(-1);
+  return [first,[...last].reverse(),...rings.slice(1).flatMap((upper,j)=>{
+    const lower=rings[j];
+    return lower.map((point,i)=>{
+      const next=(i+1)%lower.length;
+      return [point,upper[i],upper[next],lower[next]];
+    });
+  })];
+}
+
+function partFaces({shape,x,y,z,w,d,h,outline,angle=0}) {
   if (shape==='landscape') return [outline];
+  if (shape==='dome') {
+    const rings=[0,.44,.78,1.08,1.38,1.52].map(incline=>{
+      const radius=Math.cos(incline)/2;
+      return Array.from({length:12},(_,i)=>{
+        const a=i*Math.PI/6;
+        const px=w*Math.cos(a)*radius, pz=d*Math.sin(a)*radius;
+        return [x+px*Math.cos(angle)-pz*Math.sin(angle),y+h*Math.sin(incline),z+px*Math.sin(angle)+pz*Math.cos(angle)];
+      });
+    });
+    return ringFaces(rings);
+  }
+  if (shape==='rounded') {
+    const bevel=Math.min(.24,w*.13,d*.13,h*.22);
+    const rings=[[0,bevel],[bevel,0],[h-bevel,0],[h,bevel]].map(([height,inset])=>
+      [[1,1],[-1,1],[-1,-1],[1,-1]].flatMap(([sx,sz],j)=>
+        [0,.25,.5].map(turn=>{
+          const a=(j*.5+turn)*Math.PI;
+          const r=bevel*1.7-inset;
+          return [x+sx*(w/2-bevel*1.7)+r*Math.cos(a),y+height,z+sz*(d/2-bevel*1.7)+r*Math.sin(a)];
+        })));
+    return ringFaces(rings);
+  }
   if (shape==='tube') {
     const lower=Array.from({length:12},(_,i)=>{
       const angle=i*Math.PI/6;
       return [x+w*Math.cos(angle)/2,y,z+d*Math.sin(angle)/2];
     });
     const upper=lower.map(([a,b,c])=>[a,b+h,c]);
-    return [lower,[...upper].reverse(),...lower.map((point,i)=>{
-      const next=(i+1)%lower.length;
-      return [point,upper[i],upper[next],lower[next]];
-    })];
+    return ringFaces([lower,upper]);
   }
 
   const left=x-w/2,right=x+w/2,back=z-d/2,front=z+d/2;
@@ -84,6 +114,8 @@ function canvasPainter(canvas, faces, background) {
         return [width/2+camera.x+(x*cos-z*sin)*scale,
           height/2+camera.y-(heightFromCenter*slope-forward*rise)*scale];
       });
+      if (points.every(([x])=>x<0) || points.every(([x])=>x>width) ||
+          points.every(([,y])=>y<0) || points.every(([,y])=>y>height)) continue;
       const paint=face.group===1&&effects.highlight ? paintColor(face.color.map((value,i)=>
         value+([1,.8,.24][i]-value)*effects.highlight)) : face.paint;
       polygons.push({points,depth:depth/points.length,paint,layer:face.layer});
@@ -206,9 +238,10 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   const paint=engine?.draw || canvasPainter(canvas,faces,scene.background);
   if (!paint) return ()=>{};
   const initial={yaw:scene.yaw,pitch:scene.pitch,zoom:1,x:0,y:0,anchorX:0,anchorZ:0,center:scene.center};
+  const maxZoom=MAX_ZOOM*scene.size/(scene.closeSize??scene.size);
   const latest=scene.latest ?? [];
   const average=key=>latest.length ? latest.reduce((sum,part)=>sum+part[key],0)/latest.length : 0;
-  const detail=scene.world ? {...initial,zoom:MAX_ZOOM,anchorX:average('x'),anchorZ:average('z'),
+  const detail=scene.world ? {...initial,zoom:maxZoom,anchorX:average('x'),anchorZ:average('z'),
     center:Math.max(1.8,average('y')+.6)}
     : {...initial,zoom:1.12};
   const camera={...initial};
@@ -267,7 +300,7 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
     camera.y=clamp(camera.y,-height*camera.zoom*.63,height*camera.zoom*.63);
   }
   function zoom(factor,x=width/2,y=height/2) {
-    const next=clamp(camera.zoom*factor,.75,MAX_ZOOM);
+    const next=clamp(camera.zoom*factor,.75,maxZoom);
     const ratio=next/camera.zoom;
     const dx=x-width/2, dy=y-height/2;
     camera.x=dx+(camera.x-dx)*ratio;

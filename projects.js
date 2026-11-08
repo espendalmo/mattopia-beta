@@ -1,6 +1,8 @@
 const box = (x,z,w,d,h,color,y=0,studs=0) => ({shape:'box',x,z,w,d,h,color,y,studs});
 const tube = (x,z,w,d,h,color,y=0) => ({shape:'tube',x,z,w,d,h,color,y});
 const roof = (x,z,w,d,h,color,y) => ({shape:'roof',x,z,w,d,h,color,y});
+const rounded = (x,z,w,d,h,color,y=0) => ({shape:'rounded',x,z,w,d,h,color,y});
+const dome = (x,z,w,d,h,color,y=0,angle=0) => ({shape:'dome',x,z,w,d,h,color,y,angle});
 const stage = (label, ...parts) => ({label,parts:parts.flat()});
 
 export const PROJECTS = {
@@ -102,10 +104,15 @@ const PLACES = {
 };
 
 function tree(x,z,theme) {
-  const trunk = box(x,z,.45,.48,1.85,'#9f7961');
+  const trunk = tube(x,z,.34,.37,1.93,'#9f7961');
   return theme==='island'
-    ? [trunk,box(x,z,2.52,.72,.32,'#489c62',1.82),box(x,z,.74,2.34,.31,'#73b870',1.92),box(x+.19,z-.12,1.13,1.14,.53,'#8abf75',2.08)]
-    : [trunk,tube(x,z,1.7,1.64,1.2,THEMES[theme].leaves,1.11),tube(x,z,1.15,1.05,.73,'#86b68a',2.31)];
+    ? [trunk,...Array.from({length:5},(_,i)=>{
+      const angle=i*Math.PI*2/5;
+      return dome(x+.62*Math.cos(angle),z+.62*Math.sin(angle),1.85,.57,.33,
+        i%2?'#519b70':'#75b875',1.87+i*.025,angle);
+    })]
+    : [trunk,dome(x,z,1.95,1.72,1.48,THEMES[theme].leaves,1.13),
+      dome(x+.25,z-.18,1.19,1.15,.98,'#76ad80',1.99)];
 }
 
 function beacon(x,z,color) {
@@ -128,7 +135,7 @@ function mixColor(from,to,amount) {
 }
 
 function landscapeEdge(color,sky) {
-  return Array.from({length:25},(_,i)=>landscape(0,0,146-i*2.7,132-i*2.45,-.62+i*.0175,
+  return Array.from({length:25},(_,i)=>landscape(0,0,174-i*3.05,154-i*2.7,-.62+i*.0175,
     mixColor(sky,color,(i/24)**1.7)));
 }
 
@@ -160,36 +167,36 @@ function terrain(theme) {
   const p=THEMES[theme];
   const floor=(...parts)=>parts.map((part,layer)=>({...part,layer}));
   if(theme==='city') return [
-    ...floor(...landscapeEdge(p.grass,p.sky),landscape(0,0,81,73,0,p.grass),...groundTexture(theme),
+    ...floor(...landscapeEdge(p.grass,p.sky),landscape(0,0,101,89,0,p.grass),...groundTexture(theme),
       ...river(p.grass,p.sky),
       ...Array.from({length:26},(_,i)=>box((i*11%27-13)/6,-36+i*2.8,1.02+i%4*.3,.12+i%3*.055,.01,i%3===0?'#6fb6ca':'#82c6d6',.036)),
       ...[-16,16].flatMap(x=>[box(x,0,2.25,51.7,.1,p.road,.02),...Array.from({length:12},(_,i)=>box(x,-23+i*4,.14,1.35,.02,p.white,.13))]),
       ...[0,11].flatMap(z=>[box(0,z,56.4,1.9,.17,p.road,.11),box(0,z-.91,8.8,.22,.25,p.white,.24),box(0,z+.91,8.8,.22,.25,p.white,.24)])),
-    box(-7,-12,3.5,3.1,1.73,'#e9c39a',0,2),roof(-7,-12,4,3.4,1,'#ad6c62',1.73),
-    box(7,-17,3.1,3,1.65,'#e9d1a2',0,2),roof(7,-17,3.55,3.5,.95,'#688ba3',1.65),...tree(-5.4,-8,'city'),...tree(6.4,14,'city'),
+    rounded(-7,-12,3.5,3.1,1.73,'#e9c39a'),roof(-7,-12,4,3.4,1,'#ad6c62',1.73),
+    rounded(7,-17,3.1,3,1.65,'#e9d1a2'),roof(7,-17,3.55,3.5,.95,'#688ba3',1.65),...tree(-5.4,-8,'city'),...tree(6.4,14,'city'),
   ];
   if(theme==='moon') return [
-    ...floor(...landscapeEdge(p.grass,p.sky),landscape(0,0,81,73,0,p.grass,1.4),...groundTexture(theme),
+    ...floor(...landscapeEdge(p.grass,p.sky),landscape(0,0,101,89,0,p.grass,1.4),...groundTexture(theme),
       ...[-15,15].map(x=>box(x,0,2.1,51,.07,p.road,.01)),
       ...[-.75,11].map(z=>box(0,z,56.2,1.75,.08,p.road,.1)),
       ...[[-2,-18],[0,7],[.7,19]].flatMap(([x,z])=>[tube(x,z,5.9,5.5,.2,'#7d7a91',.01),tube(x,z,4.7,4.35,.12,'#646881',.21),tube(x-.23,z+.2,3.75,3.45,.13,'#6f6d83',.33)])),
-    box(-6.4,1,3.7,3.05,1.23,'#c3c8dc',.06,2),tube(-6.4,1,2.6,2.1,.91,'#a6bbd4',1.28),
+    rounded(-6.4,1,3.7,3.05,1.23,'#c3c8dc',.06),dome(-6.4,1,3.5,2.9,1.36,'#a6bbd4',1.28),
     ...[[-6,-4],[5,1],[-8,13],[6,17]].flatMap(([x,z])=>beacon(x,z,'#92dfdf')),
   ];
   return [
     ...floor(...landscapeEdge('#72c2cd',p.sky),
-      landscape(0,0,65,58,.02,'#8bd3d7',1),landscape(0,0,60,53,.16,'#e7c58d',1),
-      landscape(0,-.9,54.6,46.5,.45,p.grass,1),...groundTexture(theme),
+      landscape(0,0,86,76,.02,'#8bd3d7',1),landscape(0,0,80,70,.16,'#e7c58d',1),
+      landscape(0,-.9,74,64,.45,p.grass,1),...groundTexture(theme),
       ...Array.from({length:32},(_,i)=>{
         const a=i*2.39996, spread=1.21+(i%8)*.049;
-        return box(Math.cos(a)*29*spread,Math.sin(a)*25*spread,1.6+i%4*.5,.11,.013,
+        return box(Math.cos(a)*38*spread,Math.sin(a)*34*spread,1.6+i%4*.5,.11,.013,
           mixColor('#72c2cd','#e2f8f2',.13+i%4*.035),-.186);
       }),
       ...[-15,15].map(x=>box(x,-.25,1.65,40.6,.07,p.road,.46)),
       ...[.85,11].map(z=>box(0,z,48.3,1.5,.09,p.road,.46)),
       ...[-17,-9,3,14].map(x=>box(x,24.8,3.34,.24,.05,'#c5eef1',.025))),
     ...[[-3,18],[0,18],[3,18],[-1,-17],[-4,-17],[3,-17],[1,7]].flatMap(([x,z])=>tree(x,z,'island').map(part=>({...part,y:part.y+.43}))),
-    box(0,-10,4.15,3,1.85,'#efcb91',.44,3),roof(0,-10,4.75,3.55,1.04,'#c47f71',2.28),
+    rounded(0,-10,4.15,3,1.85,'#efcb91',.45),dome(0,-10,4.75,3.55,1.26,'#c47f71',2.28),
   ];
 }
 
@@ -205,7 +212,7 @@ function ambientParts(theme) {
 }
 
 const plot = (index, theme) => {
-  const x = [-21,-9,9,21][index%4], z = [-18,-6,6,18][Math.floor(index/4)];
+  const x = [-21,-9,theme==='city'?10.3:9,21][index%4], z = [-18,-6,6,18][Math.floor(index/4)];
   const shoreline = theme==='island' && Math.abs(z)===18 && Math.abs(x)>18;
   return [shoreline?Math.sign(x)*17.8:x, shoreline?Math.sign(z)*15.4:z];
 };
@@ -218,20 +225,27 @@ function landmark(theme, index, definition) {
   const w=wide?6.55:5.45, d=wide?5.8:4.68;
   const wall=type==='tower'?4.1:type==='dome'?1.55:2.17;
   const flat=['field','park','square','pool','dance','dock','solar','launch'].includes(type);
-  const B=(dx,dz,bw,bd,h,c,dy=0,studs=0)=>box(x+dx,z+dz,bw,bd,h,c,y+dy,studs);
+  const B=(dx,dz,bw,bd,h,c,dy=0)=>(Math.min(bw,bd)>=.7&&h>=.2?rounded:box)(x+dx,z+dz,bw,bd,h,c,y+dy);
   const T=(dx,dz,bw,bd,h,c,dy=0)=>tube(x+dx,z+dz,bw,bd,h,c,y+dy);
-  const R=(dx,dz,bw,bd,h,c,dy)=>roof(x+dx,z+dz,bw,bd,h,c,y+dy);
+  const R=(dx,dz,bw,bd,h,c,dy)=>(theme==='island'?dome:roof)(x+dx,z+dz,bw,bd,h,c,y+dy);
   const stages = [[B(0,0,w+1.8,d+1.65,.2,p.foundation)],[],[],[],[],[]];
   if (!flat) {
-    stages[1]=[B(0,0,w,d,wall,color,.2,3)];
-    stages[2]=[B(0,0,w+.3,d+.25,.26,p.white,wall+.12),...[-1.75,0,1.75].flatMap(dx=>
+    stages[1]=[B(0,0,w,d,wall,color,.2)];
+    stages[2]=[...[-1,1].flatMap(side=>[
+      B(0,side*d/2,w+.3,.24,.26,p.white,wall+.12),
+      B(side*w/2,0,.29,d-.24,.26,p.white,wall+.12),
+    ]),...[-1.75,0,1.75].flatMap(dx=>
       [B(dx,d/2+.04,1.12,.14,.75,'#6d9daf',.99),B(dx-w/2+.12,-d/2-.04,.81,.17,.63,'#6d9daf',1.03)])];
     stages[3]=type==='house'||type==='church'||type==='mill'
       ? [R(0,0,w+.6,d+.52,1.32,accent,wall+.39)]
-      : type==='dome'||type==='tank'
-        ? [T(0,0,w-.46,d-.34,.66,accent,wall+.36),T(0,0,w-1.43,d-1.2,.68,color,wall+.98),T(0,0,w-2.47,d-2.15,.32,accent,wall+1.6)]
-        : [B(0,0,w+.59,d+.45,.4,accent,wall+.37,3),...(type==='tower'?[B(0,0,w-.75,d-.79,1.2,color,wall+.77,3),B(0,0,w-.39,d-.43,.29,accent,wall+1.97,2)]:[])];
+      : ['dome','tank','hangar'].includes(type)
+        ? [dome(x,z,w+.15,d+.08,type==='dome'?2.25:1.3,accent,y+wall+.36)]
+        : [B(0,0,w+.59,d+.45,.4,accent,wall+.37),...(type==='tower'?[B(0,0,w-.75,d-.79,1.2,color,wall+.77),B(0,0,w-.39,d-.43,.29,accent,wall+1.97)]:[])];
     stages[4]=[B(0,d/2+.14,1.11,.22,1.42,p.dark,.28),B(0,d/2+.29,2.03,.89,.15,p.white,1.86)];
+    if(type==='house') {
+      const awning=theme==='island'?'#fff3cd':'#f6d9a2';
+      stages[4].push(...Array.from({length:7},(_,i)=>B((i-3)*.29,d/2+.31,.29,.9,.13,i%2?accent:awning,1.93)));
+    }
     if(type==='tower') stages[4].push(...[-1.7,0,1.7].map(dx=>B(dx,d/2+.03,1.04,.16,.75,'#7aa7bd',2.7)),B(1.23,-.7,.19,.2,1.25,p.dark,wall+2.2),B(1.24,-.7,.55,.27,.18,'#f4d577',wall+3.28));
     if(type==='mill') stages[4].push(B(0,d/2+.28,.37,.4,4.16,p.white,1.31),B(0,d/2+.31,4.26,.37,.39,p.white,3.29),T(0,d/2+.43,.6,.51,.49,accent,3.24));
     if(type==='church') stages[4].push(B(-1.35,.78,1.64,1.66,2.16,color,wall+.45),R(-1.35,.78,1.94,1.96,.97,accent,wall+2.61));
@@ -249,7 +263,7 @@ function landmark(theme, index, definition) {
     } else if(type==='launch') {
       stages[2]=[T(0,0,4.35,4.1,.13,'#909ab9',.31),T(0,0,3.52,3.37,.14,'#6e789c',.44)];
       stages[3]=[T(0,0,1.58,1.58,2.97,'#e0e6ef',.55),T(0,0,1.68,1.68,.24,'#da927e',1.43)];
-      stages[4]=[T(0,0,1.48,1.48,.35,accent,3.51),T(0,0,1.01,1,.38,'#e3c3a8',3.86),T(0,0,.48,.48,.38,p.white,4.24),...[-1,1].map(s=>B(s*.68,0,.57,.76,.85,accent,.57))];
+      stages[4]=[dome(x,z,1.58,1.58,1.12,accent,y+3.51),...[-1,1].map(s=>B(s*.68,0,.57,.76,.85,accent,.57))];
     } else if(type==='solar') {
       stages[2]=[-1.68,0,1.68].map(dx=>B(dx,0,.27,.28,1.12,p.dark,.29));
       stages[3]=[-1.68,0,1.68].map(dx=>B(dx,0,1.33,3.25,.28,'#4e68a3',1.31));
@@ -265,7 +279,7 @@ function landmark(theme, index, definition) {
     } else {
       stages[2]=[B(0,0,1.21,d-.14,.08,p.white,.35),B(0,0,w-.25,1.04,.09,p.white,.36)];
       stages[3]=[T(0,0,2.3,2.25,.23,accent,.47),T(0,0,1.64,1.62,.27,theme==='moon'?'#8db8ca':'#77bed0',.68)];
-      stages[4]=theme==='moon' ? [B(-1.67,-1.37,1.08,1.19,1.02,'#c8b8d8',.33,1),B(1.67,-1.37,1.18,1.19,.73,'#adc6d5',.33,1)]
+      stages[4]=theme==='moon' ? [B(-1.67,-1.37,1.08,1.19,1.02,'#c8b8d8',.33),B(1.67,-1.37,1.18,1.19,.73,'#adc6d5',.33)]
         : [...tree(x-1.83,z-1.42,theme).map(a=>({...a,y:a.y+y+.33})),...tree(x+1.83,z-1.42,theme).map(a=>({...a,y:a.y+y+.33}))];
     }
   }
@@ -274,34 +288,38 @@ function landmark(theme, index, definition) {
   stages[5]=edges.map(part=>({...part,y:part.y+y}));
   const labels = flat ? ['grunnen','flaten','merkingen','utstyret','detaljene','omgivelsene']
     : ['grunnmuren','veggene','fasaden','taket','inngangen og detaljene','omgivelsene'];
-  return stages.map((parts,i)=>stage(`${label} · ${labels[i]}`,parts));
+  return stages.map((parts,i)=>({...stage(`${label} · ${labels[i]}`,parts),finished:i===stages.length-1?label:null}));
 }
 
 function worldDetail(theme,i) {
-  const x=[-26,26,-5.6,5.6][i%4], z=-21+Math.floor(i/4)*8.3;
+  const x=[-26,26,-6.7,6.7][i%4], z=-21+Math.floor(i/4)*8.3;
   const p=THEMES[theme], y=theme==='island'?.45:.06;
-  const xPos=theme==='island'&&Math.abs(x)>20 ? Math.sign(x)*22.4 : x;
+  const xPos=theme==='island'&&Math.abs(x)>20 ? Math.sign(x)*20 : x;
   const colors=['#edb275','#dd8695','#82b8d0','#9ba2c9'];
   const color=colors[i%colors.length];
   if(i%6===1 || i%6===5) {
     const name=theme==='moon'?'En rover':theme==='city'?'Et kjøretøy':'En strandvogn';
-    return stage(name,box(xPos,z,1.55,2.45,.35,p.dark,y+.04),box(xPos,z,1.66,2.23,.41,color,y+.32),box(xPos,z-.32,1.17,1.11,.5,'#c9e0e4',y+.72));
+    return stage(name,rounded(xPos,z,1.55,2.45,.35,p.dark,y+.04),rounded(xPos,z,1.66,2.23,.41,color,y+.32),dome(xPos,z-.32,1.17,1.11,.5,'#c9e0e4',y+.72));
   }
   if(i%6===2 || i%6===4) {
     return stage(theme==='moon'?'Et nytt lyspunkt':'Et nytt hvilested',...beacon(xPos,z,'#f6d997').map(part=>({...part,y:part.y+y})),
       box(xPos+.88,z,.92,1.39,.26,color,y+.09),box(xPos+.88,z-.53,.94,.22,.36,p.dark,y+.24));
   }
   return stage(theme==='moon'?'En liten forsyningsstasjon':theme==='island'?'En palme ved stien':'Et tre langs elva',
-    theme==='moon' ? [box(xPos,z,1.94,1.72,.76,color,y,2),box(xPos,z,1.18,1.28,.21,p.white,y+.76,1)]
+    theme==='moon' ? [rounded(xPos,z,1.94,1.72,.76,color,y),dome(xPos,z,1.18,1.28,.34,p.white,y+.76)]
       : tree(xPos,z,theme).map(part=>({...part,y:part.y+y})));
 }
 
 function worldScene(theme) {
   const steps=[];
+  const detail=i=>{
+    const item=worldDetail(theme,i);
+    return {...item,finished:item.label};
+  };
   PLACES[theme].forEach((definition,i)=>{
     steps.push(...landmark(theme,i,definition));
-    steps.push(worldDetail(theme,i));
-    if(i%2===1) steps.push(worldDetail(theme,16+Math.floor(i/2)));
+    steps.push(detail(i));
+    if(i%2===1) steps.push(detail(16+Math.floor(i/2)));
   });
   return {base:terrain(theme),ambient:ambientParts(theme),steps,background:THEMES[theme].sky,yaw:-.62,pitch:.57,world:true};
 }
@@ -319,7 +337,9 @@ export function projectScene(id, completed=0) {
     parts, ambient, background, yaw, pitch, world, id,
     latest:steps[built-1]?.parts ?? [],
     center:world ? 1 : Math.max(0,height*.43),
-    size:world ? 79 : Math.max(14,height*1.38),
+    size:world ? 99 : Math.max(14,height*1.38),
+    closeSize:world ? 79 : undefined,
+    finished:steps[built-1]?.finished || null,
     last:steps[built-1]?.label, next:steps[built]?.label,
   };
 }
