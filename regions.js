@@ -147,7 +147,7 @@ function closestCell(layout,point) {
   return best;
 }
 
-function routeCells(layout,start,end,stayOnBank=false) {
+function routeCells(layout,start,end,stayOnBank=false,orthogonal=false) {
   const first=closestCell(layout,start), last=closestCell(layout,end);
   if (first<0||last<0) return [];
   const {grid,theme}=layout;
@@ -168,7 +168,7 @@ function routeCells(layout,start,end,stayOnBank=false) {
     }
     settled.add(index);
     const x=index%GRID,z=Math.floor(index/GRID);
-    for (const [dx,dz] of NEIGHBORS) {
+    for (const [dx,dz] of orthogonal?NEIGHBORS.slice(0,4):NEIGHBORS) {
       if (x+dx<0||x+dx>=GRID||z+dz<0||z+dz>=GRID) continue;
       const next=(z+dz)*GRID+x+dx, cell=grid[next];
       if (settled.has(next)||cell.blocked) continue;
@@ -201,10 +201,14 @@ function ordinaryEntrance(site,target) {
   return {yaw,entry:{x:site.x+offset.x,z:site.z+offset.z}};
 }
 
-function specialEntrances(site,kind) {
+export function specialEntrances(site,kind) {
   if (kind==='bridge') return [-1,1].map(side=>({x:site.x+side*site.span*.5,y:site.y+.514,z:site.z}));
   const land=polar(site.yaw+Math.PI,3.4);
   return [{x:site.x+land.x,z:site.z+land.z}];
+}
+
+export function connectWaterfront(layout,start,end,bankOnly) {
+  return curvePath([start,...routeCells(layout,start,end,bankOnly,true),end]);
 }
 
 export function planRegion(layout,buildings) {

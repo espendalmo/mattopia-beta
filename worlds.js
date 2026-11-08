@@ -4,7 +4,8 @@ export const WORLD_PLACES=16;
 export const REGION_PLACES=24;
 export const LEGACY_WORLD_STEPS=120;
 export const isWorld=id=>WORLD_IDS.includes(id);
-export const worldCapacity=map=>!map||map.layout===2?REGION_PLACES:WORLD_PLACES;
+export const isRegion=map=>map?.layout===2||map?.layout===3;
+export const worldCapacity=map=>!map||isRegion(map)?REGION_PLACES:WORLD_PLACES;
 
 export function randomGenerator(seed){
   let n=seed>>>0;
@@ -50,6 +51,7 @@ export function worldCompletedPlaces(map) {
 }
 
 export function currentWorld(state,id) {
+  if (!isWorld(id)) return null;
   const maps=state.worlds?.[id];
   if (maps?.length) return maps.at(-1);
   return state.projects?.[id]>0 ? legacyMap(state.projects[id]) : null;
@@ -82,7 +84,7 @@ export function worldAdvance(map) {
 
 export function freshWorld(rng=Math.random,previous=null) {
   const seed=Math.floor(rng()*2**32)>>>0;
-  return {layout:2,seed:seed===previous?.seed?(seed+1)>>>0:seed,legacy:0,order:[],progress:0};
+  return {layout:3,seed:seed===previous?.seed?(seed+1)>>>0:seed,legacy:0,order:[],progress:0};
 }
 
 function restoreWorld(raw,budget,first) {
@@ -91,7 +93,7 @@ function restoreWorld(raw,budget,first) {
   const legacy=first&&integer(raw.legacy)?Math.min(raw.legacy,budget,LEGACY_WORLD_STEPS):0;
   if (!legacy && (!integer(raw.seed)||raw.seed>=2**32)) return null;
   const {finished,partial}=legacyPlacement(legacy);
-  const layout=raw.layout===2&&!legacy?2:1;
+  const layout=isRegion(raw)&&!legacy?raw.layout:1;
   const capacity=worldCapacity({layout});
   const remaining=capacity-finished.length-Number(Boolean(partial));
   const used=new Set([...finished,partial?.id]);
@@ -100,7 +102,7 @@ function restoreWorld(raw,budget,first) {
   const progress=integer(raw.progress)?Math.min(raw.progress,budget-legacy,ids.length*WORLD_BUILD_STEPS+catchUp):0;
   // There can be at most one selected building beyond completed and in-progress buildings.
   const limit=catchUp&&progress===0?0:Math.floor(Math.max(0,progress-catchUp)/WORLD_BUILD_STEPS)+1;
-  return {...(layout===2?{layout}:{}),seed:legacy?null:raw.seed,legacy,order:ids.slice(0,limit),progress};
+  return {...(layout>1?{layout}:{}),seed:legacy?null:raw.seed,legacy,order:ids.slice(0,limit),progress};
 }
 
 export function restoreWorlds(raw, projects, total) {

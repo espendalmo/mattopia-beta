@@ -1,4 +1,4 @@
-import {box as b,rounded as r,dome as d,tube as t,roof,beam,worldSign} from './scenery.js';
+import {box as b,rounded as r,dome as d,tube as t,roof,beam,worldSign,placeParts} from './scenery.js';
 
 const cream='#f3e5c8', stone='#c9bda6', dark='#344451', glass='#68a4ba', ice='#a1dae2';
 const brass='#e5bc68', teal='#347e81', rose='#c86173';
@@ -20,6 +20,25 @@ function glazing(xs,ys,z,{w=.72,h=.74,color=glass}={}) {
     b(x,z,w+.16,.123,h+.14,cream,y-.055),b(x,z+.079,w,.071,h,color,y),
     b(x-w*.26,z+.12,w*.18,.024,h*.78,ice,y+.077),
   ]));
+}
+
+function flankWindows(distance,zs,ys,options) {
+  return pair.flatMap(side=>placeParts(glazing(zs.map(z=>-z*side),ys,distance,options),
+    {x:0,y:0,z:0,yaw:side*Math.PI/2}));
+}
+
+function hotelLetters(y,z,color) {
+  const strokes=[
+    [[0,0,0,1],[1,0,1,1],[0,.5,1,.5]],
+    [[0,0,0,1],[1,0,1,1],[0,0,1,0],[0,1,1,1]],
+    [[0,1,1,1],[.5,0,.5,1]],
+    [[0,0,0,1],[0,0,1,0],[0,.5,.85,.5],[0,1,1,1]],
+    [[0,0,0,1],[0,0,1,0]],
+  ];
+  return strokes.flatMap((letter,i)=>letter.map(([a,b,c,d])=>{
+    const x=-.89+i*.37;
+    return beam([x+a*.26,y+b*.37,z],[x+c*.26,y+d*.37,z],.055,color);
+  }));
 }
 
 function shrub(x,z,color='#5f9565',height=.48) {
@@ -56,17 +75,23 @@ function grandHotel(tropical) {
       ...[-3,-1.53,0,1.53,3].map(x=>b(x,1.77,.085,.08,.54,brass,y-.02))]),
     ...glazing([-3.64,3.64],[2.48,3.57],.93),
     ...glazing([-1.45,0,1.45],[6.16],.12,{w:.82,h:.63}),
+    ...flankWindows(3.04,[-2.5,-1.4,-.26],[4.74],{w:.65,h:.69}),
+    ...flankWindows(4.49,[-2.21,-.65],[2.46,3.48],{w:.63,h:.72}),
+    ...pair.flatMap(s=>[b(s*4.47,-1.04,.21,3.97,.14,cream,4.41),b(s*4.48,-1.04,.17,3.96,.1,brass,3.28)]),
     ...entrance(1.08,1.93,1.42),r(0,1.89,3.15,1.86,.25,roofColor,1.86),
     ...pair.flatMap(s=>[t(s*1.36,2.53,.16,.16,1.6,brass,.3),
       ...(tropical?palm(s*4.32,2.49,2.67):shrub(s*3.64,2.42,'#639079',.73))]),
     ...worldSign('bed',0,6.85,.38,roofColor),
+    r(0,2.77,2.22,.16,.61,roofColor,2.03),...hotelLetters(2.17,2.88,'#f6dfa2'),
   ];
   if (tropical) details.push(r(1.23,3.32,5.22,1.85,.21,cream,.35),
     b(1.23,3.32,4.85,1.48,.055,'#54bdcd',.57),
     b(1.8,3.48,3.3,.078,.014,'#a2e3da',.631),
     ...umbrella(-2.42,3.4,'#f2b761'),...umbrella(4.11,3.45,'#ed8f8e'));
   else details.push(...pair.map(s=>b(s*2.97,1.63,1.09,.14,.14,brass,5.66)),t(0,-1.5,.13,.13,1.1,brass,7.8),
-    b(.31,-1.5,.62,.072,.29,'#cc6c75',8.51));
+    b(.31,-1.5,.62,.072,.29,'#cc6c75',8.51),
+    ...pair.flatMap(s=>[r(s*2.86,2.7,1.15,.58,.25,'#c9b7ab',.34),r(s*2.86,2.7,1.02,.45,.31,'#7a9f75',.56),
+      b(s*1.39,2.67,.14,.12,.18,'#ffe1a0',1.59)]));
   return [ground,main,details];
 }
 
@@ -86,6 +111,8 @@ function civic(bank) {
     ...columnX.flatMap(x=>[t(x,2.64,.29,.29,2.17,cream,.36),b(x,2.65,.45,.45,.18,trim,.34),
       b(x,2.65,.45,.45,.15,cream,2.4)]),
     ...entrance(2.64,1.55,1.96),...glazing([-3.05,3.05],[.74,1.89],1.71,{h:.91}),
+    ...flankWindows(3.7,[-2.48,-.92,.6],[1.36],{w:.86,h:1.31,color:bank?'#87a9a6':'#75a3ae'}),
+    ...pair.flatMap(s=>[b(s*3.71,-.8,.15,4.91,.15,trim,2.86),b(s*3.71,-.8,.15,4.9,.105,trim,.53)]),
     ...[0,1,2].map(i=>b(0,3.07+i*.24,4.67+i*.17,.59,.15,trim,.31-i*.10)),
     ...shrub(-3.73,2.78,'#618b6c'),...shrub(3.73,2.78,'#618b6c'),
   ];
@@ -197,38 +224,53 @@ function suspension(span=14.6) {
   ];
 }
 
+export const WHEEL_HUB=[.44,4.72,-.45];
 function ferris(tropical) {
   const wheelColor=tropical?'#e9a25d':'#b4667c', colors=['#dd8d8c','#e6b96b','#71aabd','#8abb83'];
-  const hub=[.44,4.72,-.45];
+  const hub=WHEEL_HUB;
   const rim=Array.from({length:16},(_,i)=>{
     const a=i*Math.PI/8;
     return [hub[0]+Math.cos(a)*3.29,hub[1]+Math.sin(a)*3.29,hub[2]];
   });
   return [base(10.2,8.6,'#bdb29e'),
     [...pair.flatMap(s=>[beam([s*2.86,.34,-1.78],hub,.25,cream),beam([s*2.86,.34,.84],hub,.25,cream)]),
-      ...rim.map((point,i)=>beam(point,rim[(i+1)%rim.length],.19,wheelColor)),
-      ...rim.filter((_,i)=>i%2===0).map(point=>beam(hub,point,.094,'#decfba')),
+      ...rim.map((point,i)=>({...beam(point,rim[(i+1)%rim.length],.19,wheelColor),wheel:true})),
+      ...rim.filter((_,i)=>i%2===0).map(point=>({...beam(hub,point,.094,'#decfba'),wheel:true})),
       t(hub[0],hub[2]+.065,.83,.39,.83,wheelColor,hub[1]-.41,'z')],
     [...rim.filter((_,i)=>i%2===0).flatMap(([x,y,z],i)=>[b(x,z,.078,.08,.46,cream,y-.45),
       r(x,z,.84,.67,.42,colors[i%4],y-.73),b(x,z+.356,.66,.06,.17,ice,y-.6),
-      d(x,z,.94,.77,.27,colors[i%4],y-.32)]),
+      d(x,z,.94,.77,.27,colors[i%4],y-.32)].map(part=>({...part,wheel:true,hinge:[x,y]}))),
       r(-3.33,2.29,1.77,1.59,1.27,'#e1ab86',.35),roof(-3.33,2.29,2.04,1.87,.66,rose,1.57),
       ...worldSign('flag',-3.34,1.22,3.19,'#9b617d'),...shrub(3.59,2.5),...umbrella(2.37,2.56,'#e6bb72')],
   ];
 }
 
+const COASTER_POSTS=[[-3,.73,2.4],[-3.7,2.1,.05],[-2.65,4.2,-2.52],[-.1,4.82,-3.03],
+  [2.9,3.3,-2.23],[3.89,1.82,-.14],[2.48,1.07,2.43],[-.4,1.17,3.01]];
+export const COASTER_TRACK=COASTER_POSTS.flatMap((point,i)=>{
+  const previous=COASTER_POSTS.at(i-1),next=COASTER_POSTS[(i+1)%COASTER_POSTS.length];
+  return [point.map((v,j)=>.22*previous[j]+.78*v),
+    point.map((v,j)=>.065*previous[j]+.87*v+.065*next[j]),
+    point.map((v,j)=>.78*v+.22*next[j])];
+});
 function coaster() {
-  const points=[[-3,.73,2.4],[-3.7,2.1,.05],[-2.65,4.2,-2.52],[-.1,4.82,-3.03],
-    [2.9,3.3,-2.23],[3.89,1.82,-.14],[2.48,1.07,2.43],[-.4,1.17,3.01]];
+  const rail=(point,i,side)=>{
+    const before=COASTER_TRACK.at(i-1),after=COASTER_TRACK[(i+1)%COASTER_TRACK.length];
+    const yaw=Math.atan2(after[0]-before[0],after[2]-before[2]);
+    return [point[0]+side*.27*Math.cos(yaw),point[1],point[2]-side*.27*Math.sin(yaw)];
+  };
   return [base(10.9,10,'#d9ba87'),
-    [...points.flatMap(([x,y,z])=>[t(x,z,.16,.16,y-.27,'#698a95',.31),b(x,z,.6,.55,.15,'#98a0a0',.32)]),
-      ...pair.flatMap(s=>points.map(([x,y,z],i)=>{
-        const [a,b,c]=points[(i+1)%points.length];
-        return beam([x+s*.28,y,z],[a+s*.28,b,c],.13,'#d37766');
+    [...COASTER_POSTS.flatMap(([x,y,z])=>[t(x,z,.16,.16,y-.27,'#698a95',.31),b(x,z,.6,.55,.15,'#98a0a0',.32)]),
+      ...pair.flatMap(side=>COASTER_TRACK.map((point,i)=>{
+        const next=(i+1)%COASTER_TRACK.length;
+        return beam(rail(point,i,side),rail(COASTER_TRACK[next],next,side),.115,'#d37766');
       }))],
-    [...points.flatMap(([x,y,z],i)=>[b(x,z,.77,.29,.095,cream,y-.06),
-      ...(i%3===0?[r(x,z,.67,.71,.33,['#f2b467','#7eadb2','#d4949e'][i%3],y+.08)]:[])]),
+    [...COASTER_TRACK.map((point,i)=>beam(rail(point,i,-1),rail(point,i,1),.074,cream)),
       r(-1.79,2.12,1.4,1.77,1.24,'#edb186',.34),roof(-1.79,2.12,1.67,1.99,.67,'#699681',1.51),
+      ...glazing([-1.8],[.81],3.01,{w:.71,h:.46}),b(-1.79,3.12,1.04,.36,.095,'#bd9770',.78),
+      r(.74,.18,2.81,2.4,.065,'#a9bd82',.38),
+      ...[.4,1.49,2.58,3.67].flatMap(x=>[t(x,3.63,.095,.095,.76,'#b18062',.34),d(x,3.63,.19,.19,.12,brass,1.08)]),
+      b(2.04,3.63,3.33,.09,.10,'#d4a179',.89),
       ...palm(3.48,3.49,2.18),...palm(-4.34,-.79,2.19),...umbrella(1.03,-.28,'#e6bd75')],
   ];
 }

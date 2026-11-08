@@ -1,5 +1,5 @@
 import {box,tube,roof,rounded,dome,at,worldSign,vehicle,worldActors,districtActors} from './scenery.js';
-import {isWorld,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,randomGenerator} from './worlds.js';
+import {isWorld,isRegion,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,randomGenerator} from './worlds.js';
 import {expandedWorldScene} from './region-scenery.js';
 import {NEW_LANDMARKS,landmarkStages} from './world-landmarks.js';
 
@@ -422,7 +422,7 @@ const DETAILS = {
 };
 
 export function worldBuilding(id,index,map=null) {
-  const custom=map?.layout===2?NEW_LANDMARKS[id]?.[index]:null;
+  const custom=isRegion(map)?NEW_LANDMARKS[id]?.[index]:null;
   if (custom) {
     const [name,description,kind]=custom;
     return {name,description,kind};
@@ -435,7 +435,7 @@ export function worldBuilding(id,index,map=null) {
 export function worldBuildingOptions(id,map) {
   const available=worldChoices(map).filter(index=>{
     const {kind}=worldBuilding(id,index,map);
-    return map.layout!==2||map.progress>=2*WORLD_BUILD_STEPS||!['pier','marina','quay','bridge'].includes(kind);
+    return !isRegion(map)||map.progress>=2*WORLD_BUILD_STEPS||!['pier','marina','quay','bridge'].includes(kind);
   });
   const types=new Set();
   const varied=[];
@@ -465,7 +465,7 @@ function regionLandmarkParts(id,index,site) {
 export function worldBuildingPreview(id,index,map=null) {
   const info=worldBuilding(id,index,map);
   if (!info) return null;
-  const parts=map?.layout===2?regionLandmarkParts(id,index).flat():landmark(id,index,PLACES[id][index],[0,0]).flatMap(step=>step.parts);
+  const parts=isRegion(map)?regionLandmarkParts(id,index).flat():landmark(id,index,PLACES[id][index],[0,0]).flatMap(step=>step.parts);
   const height=Math.max(...parts.map(part=>part.y+part.h));
   const span=Math.max(...parts.map(part=>2*Math.abs(part.x)+(part.w??0)));
   return {parts,background:THEMES[id].sky,yaw:-.52,pitch:.47,center:height*.39,size:Math.max(9.7,height*1.47,span*.91),latest:[]};
@@ -648,8 +648,8 @@ const regionScenes = new Map();
 export function projectScene(id, completed=0) {
   const project=projectById(id);
   if(!project) return null;
-  if (isWorld(id)&&completed?.layout===2) {
-    const key=`${id}:${completed.seed}:${completed.progress}:${completed.order.join(',')}`;
+  if (isWorld(id)&&isRegion(completed)) {
+    const key=`${id}:${completed.layout}:${completed.seed}:${completed.progress}:${completed.order.join(',')}`;
     if (regionScenes.has(key)) return regionScenes.get(key);
     const scene=expandedWorldScene(id,completed,THEMES[id],index=>worldBuilding(id,index,completed),(index,site)=>regionLandmarkParts(id,index,site));
     regionScenes.set(key,scene);

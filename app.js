@@ -8,7 +8,7 @@ import { BREAK_ATTEMPTS, BREAK_INTERVAL, BREAK_TITLES, BRICK_COLORS, breakKind, 
 import { AVATARS, GRADES, NAME_LIMIT, profileDetails, readProfiles, saveProfile } from './profiles.js';
 import { curriculumTopic, levelForGrade, levelsForGrade, nextLevelForGrade } from './curriculum.js';
 import { PROJECTS, projectById, projectScene, worldBuilding, worldBuildingOptions, worldBuildingPreview } from './projects.js';
-import { isWorld, currentWorld, worldStatus, worldCompletedPlaces, worldSelect, worldAdvance, freshWorld, replaceCurrentWorld, startNewWorld, WORLD_IDS, REGION_PLACES } from './worlds.js';
+import { isWorld, isRegion, currentWorld, worldStatus, worldCompletedPlaces, worldSelect, worldAdvance, freshWorld, replaceCurrentWorld, startNewWorld, WORLD_IDS, REGION_PLACES } from './worlds.js';
 import { mountProjectView } from './project-view.js';
 
 const root = document.querySelector('#app');
@@ -309,8 +309,9 @@ function mountProjectPreview(container) {
   const id=canvas.dataset.projectPreview;
   const map=view==='complete' && completedReward?.mode===id ? completedReward.map : currentWorld(state,id);
   const scene = projectScene(id, map || Number(canvas.dataset.completed));
+  const reveal=canvas.hasAttribute('data-reveal');
   if (scene) return mountProjectView(canvas.closest('.complete') || canvas.parentElement, scene, false, {
-    closeUp:true, reveal:canvas.hasAttribute('data-reveal'),
+    closeUp:true, reveal, still:!reveal&&scene.parts.length>2200,
   });
 }
 
@@ -359,11 +360,11 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
   const latest = () => `<strong>${scene.last ? escapeHtml(scene.last) : 'Klar til å bygge'}</strong>`;
   const milestone = () => progress().full ? 'Hele byggeprosjektet er ferdig!'
     : scene.next ? `Neste byggesteg er «${scene.next}».`
-    : map?.layout===2 && map.progress===0 ? 'Bygg videre for å se hva som skjuler seg i tåka.' : 'Velg neste bygg før en ny runde.';
+    : isRegion(map) && map.progress===0 ? 'Bygg videre for å se hva som skjuler seg i tåka.' : 'Velg neste bygg før en ny runde.';
   showDialog(`<div class="dialog-header"><div><h2 id="dialog-title" tabindex="-1" autofocus>${title}</h2>
       <p data-demo-progress>${demo ? 'Byggedemo · ' : target ? project.name+' · ' : ''}${projectProgress(progress())}</p></div><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggeprosjektet">${icon('close')}</button></div>
     ${galleryMap!==null ? `<button class="secondary project-back" data-action="collection" data-project="${id}" data-map="${galleryMap}" ${place===null?'':`data-place="${place}"`}>Tilbake til samlingen</button>` : ''}
-    <div class="project-viewer" data-drag-mode="move">
+    <div class="project-viewer${scene.world?' map-viewer':''}" data-drag-mode="move">
       ${demo ? `<div class="demo-controls" role="group" aria-label="Byggesteg i demoen">
         <button class="secondary" data-demo-step="-1" disabled aria-label="Forrige byggesteg"><span class="demo-back">${icon('arrow')}</span> Forrige</button>
         <p data-demo-status aria-live="polite">${latest()}</p>
@@ -371,10 +372,10 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       </div>` : ''}
       <canvas tabindex="0" role="img" aria-label="${title} i 3D" aria-describedby="project-instructions project-milestone"></canvas>
       <div class="project-controls">
-        <div class="project-control-group" role="group" aria-label="Velg hva som skjer når du drar">
+        ${scene.world?'':`<div class="project-control-group" role="group" aria-label="Velg hva som skjer når du drar">
           <button class="secondary" data-project-mode="move" aria-pressed="true">Flytt</button>
           <button class="secondary" data-project-mode="rotate" aria-pressed="false">Roter</button>
-        </div>
+        </div>`}
         <div class="project-control-group" role="group" aria-label="Zoom og tilbakestill">
           <button class="secondary project-zoom" data-project-zoom=".8" aria-label="Zoom ut">−</button>
           <button class="secondary project-zoom" data-project-zoom="1.25" aria-label="Zoom inn">+</button>
@@ -1167,7 +1168,7 @@ function render() {
     : view === 'focus-break' ? `${view}-${focusGame.kind}-${focusGame.phase}` : view;
   if (renderedScreen !== screen && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
     root.querySelector(view === 'round' ? '.task' : 'main')?.animate?.(
-      [{opacity:.76, transform:'translateY(4px)'},{opacity:1, transform:'translateY(0)'}],
+      [{transform:'translateY(4px)'},{transform:'translateY(0)'}],
       {duration:200, easing:'cubic-bezier(.18,.65,.32,1)'});
   }
   renderedScreen = screen;

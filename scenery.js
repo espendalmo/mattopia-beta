@@ -9,14 +9,18 @@ export const at = (parts,x,y,z) => parts.map(part=>({...part,x:part.x+x,y:part.y
 export const beam = (from,to,width,color) => ({
   shape:'beam',from,to,width,color,x:(from[0]+to[0])/2,z:(from[2]+to[2])/2,y:Math.min(from[1],to[1]),h:Math.abs(from[1]-to[1])+width,
 });
-export const MAX_ACTORS=12;
+export const MAX_ACTORS=16;
 
-export function placeParts(parts,{x,y,z,yaw=0}) {
+export function pointOnSite([a,b,d],{x,y,z,yaw=0}) {
   const c=Math.cos(yaw),s=Math.sin(yaw);
-  const point=([a,b,d])=>[x+a*c+d*s,y+b,z+d*c-a*s];
+  return [x+a*c+d*s,y+b,z+d*c-a*s];
+}
+
+export function placeParts(parts,site) {
+  const point=local=>pointOnSite(local,site);
   return parts.map(part=>{
     const [px,py,pz]=point([part.x,part.y,part.z]);
-    const placed={...part,x:px,y:py,z:pz,angle:(part.angle??0)-yaw};
+    const placed={...part,x:px,y:py,z:pz,angle:(part.angle??0)-(site.yaw??0)};
     if (part.shape==='beam') {
       placed.from=point(part.from); placed.to=point(part.to);
     } else if (part.outline) {
@@ -215,6 +219,11 @@ export function districtActors(theme,lots) {
 }
 
 export function actorPose(actor, seconds) {
+  if (actor.kind==='wheel') {
+    const {x,y,z,yaw}=actor;
+    const roll=seconds*.39;
+    return {x,y,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll)};
+  }
   const {segments,length}=actor.route;
   const traveled=seconds*actor.speed;
   const distance=(traveled+length*actor.phase)%length;
@@ -224,11 +233,22 @@ export function actorPose(actor, seconds) {
   const yaw=segment.yaw;
   const walking=actor.kind==='walk';
   const nearestRoad=Math.min(...actor.roads.map(row=>Math.abs(row-z)));
-  const y=actor.elevation?.(x,z)??(actor.ground+actor.roadRise*Math.max(0,1-Math.max(0,nearestRoad-.85)/.61));
+  const y=actor.kind==='coaster'?segment.y+segment.dy*t:
+    actor.elevation?.(x,z)??(actor.ground+actor.roadRise*Math.max(0,1-Math.max(0,nearestRoad-.85)/.61));
   const bob=actor.kind==='bird' ? Math.sin(traveled*.44)*.35 : actor.kind==='boat' ? Math.sin(traveled*2.1)*.045 : walking ? Math.abs(Math.sin(traveled*6))*.035 : 0;
-  return {x,y:y+bob,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking?Math.sin(traveled*6)*.17:0};
+  return {x,y:y+bob,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking?Math.sin(traveled*6)*.17:0,rollCos:1,rollSin:0};
 }
 
+export function coasterActor(parts,points,phase) {
+  let length=0;
+  const segments=points.map(([x,y,z],i)=>{
+    const [a,b,c]=points[(i+1)%points.length];
+    const dx=a-x,dy=b-y,dz=c-z,start=length;
+    length+=Math.hypot(dx,dy,dz);
+    return {x,y,z,dx,dy,dz,start,end:length,yaw:Math.atan2(dx,dz)};
+  });
+  return {kind:'coaster',parts,phase,speed:3.4,route:{segments,length},roads:[]};
+}
 
 function laneLoop(path,offset) {
   const lane=side=>path.map((point,i)=>{
@@ -276,7 +296,7 @@ function boatRoute(theme,layout,plot) {
 }
 
 export function regionActors(theme,layout,plan,completed) {
-  if (!completed.length) return [];
+  if (!completed.length&&!plan.circuits?.length) return [];
   const actors=[], moon=theme==='moon';
   const paths=plan.paths.filter(path=>path.length>=4);
   const colors=['#deaa73','#8eb1c6','#d27d84','#e0bb83'];
@@ -296,12 +316,13 @@ export function regionActors(theme,layout,plan,completed) {
   }
   for (let i=0;i<Math.min(paths.length,suspension?3:4,1+Math.floor(completed.length/5));i++) {
     const path=paths[(paths.length-1-i*3+paths.length*3)%paths.length];
-    const points=laneLoop(path,.32);
+    const circuit=plan.circuits?.[i%plan.circuits.length];
+    const points=circuit?circuit.map(({x,z})=>[x,z]):laneLoop(path,.32);
     actors.push(actor(vehicle(moon?'rover':theme==='island'?'cart':'car',colors[i]),points,{
-      kind:'road',elevation:(x,z)=>roadElevation(layout,x,z),speed:moon?2.12+i*.19:2.7+i*.21,phase:i*.29+.12,corner:.7,
+      kind:'road',elevation:(x,z)=>roadElevation(layout,x,z),speed:moon?2.3:2.9,phase:i*.23+.12,corner:1.12,
     }));
   }
-  for (let i=0;i<Math.min(paths.length,4,1+Math.floor(completed.length/4));i++) {
+  for (let i=0;completed.length&&i<Math.min(paths.length,4,1+Math.floor(completed.length/4));i++) {
     const path=paths[(i*3+1)%paths.length];
     const points=laneLoop(path.slice(0,Math.min(path.length,24)),theme==='island'?1:1.29);
     actors.push(actor(walker(walkers[i%walkers.length],colors[(i+1)%4],i%2?'#a97963':'#edb88c'),points,{
