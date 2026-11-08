@@ -67,25 +67,21 @@ dialog{border:1px solid var(--line);border-radius:28px;box-shadow:0 25px 80px #1
 .keypad button:disabled:not(.submit-number){opacity:.4}
 .keypad .submit-number:active:not(:disabled){box-shadow:0 1px 0 var(--green-dark)}
 
+.brand-wrap { position: relative; flex-shrink: 0; }
 .beta-mark {
-  position: sticky;
-  top: max(4px, env(safe-area-inset-top));
-  z-index: 2;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: fit-content;
-  margin: 0 auto 12px;
-  padding: 4px 10px;
+  vertical-align: middle;
+  padding: 1px 5px;
   border: 1px solid #d2c4ea;
-  border-radius: 999px;
+  border-radius: 5px;
   background: #efe6fb;
   color: #553680;
-  font-size: .75rem;
+  font-size: .58rem;
+  line-height: 1.16;
+  letter-spacing: .08em;
 }
-.beta-mark svg { width: 16px; height: 16px; }
-.beta-mark strong { letter-spacing: .08em; }
+.brand-wrap > .beta-mark { position: absolute; top: -7px; right: 0; }
 .brand-mark .brand-friend { width: 27px; height: 27px; }
 .beta-test-links {
   margin: 0 0 24px;
@@ -462,7 +458,6 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 .focus-check { display: none; position: absolute; right: 4px; top: 4px; color: #59458a; }
 .focus-check svg { width: 14px; height: 14px; }
 .focus-options button[aria-pressed="true"] .focus-check { display: block; }
-.focus-icon { font-size: clamp(2rem, 8.7vw, 3.05rem); line-height: 1.32; }
 .focus-result { display: grid; justify-items: center; gap: 8px; margin: 12px 0 18px; }
 .focus-count { color: var(--muted); font-size: .9rem; }
 .focus-game .primary:disabled { opacity: .5; }
@@ -736,4 +731,36 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
   .group-model .unit-group { grid-template-columns: repeat(3, 11px); gap: 3px; padding: 4px; }
   .group-model .unit { width: 11px; height: 11px; }
   .group-model .loose-dots .unit-group { grid-template-columns: repeat(8, 11px); }
+}
+
+.player-avatar > svg { width: 90%; height: 90%; display: block; }
+.focus-icon { display: grid; place-items: center; width: 46px; height: 46px; margin: 0 0 4px; }
+.focus-icon > svg { width: 100%; height: 100%; }
+.project-demos summary { cursor: pointer; font-weight: 750; min-height: 32px; }
+.demo-controls { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 7px; margin: 9px 0; }
+.demo-controls p { margin: 0; text-align: center; overflow-wrap: anywhere; }
+.demo-controls strong, .demo-controls small { display: block; }
+.demo-controls button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; min-height: 44px; }
+.demo-controls svg { display: block; width: 16px; height: 16px; }
+.demo-back { rotate: 180deg; }
+.secondary-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  width: 100%;
+  margin: 12px auto 0;
+  border-color: #bdcdb9;
+  background: #fff;
+  font-size: .96rem;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .primary, .secondary, .focus-options button, .avatar-option .player-avatar {
+    transition: background-color 145ms ease, border-color 145ms ease, box-shadow 145ms ease, scale 115ms ease;
+  }
+  .primary:active:not(:disabled), .secondary:active:not(:disabled), .focus-options button:active:not(:disabled) { scale: .985; }
+}
+@media (max-width: 380px) {
+  .focus-icon { width: 40px; height: 40px; }
+  .demo-controls button { padding-inline: 6px; font-size: .82rem; }
 }

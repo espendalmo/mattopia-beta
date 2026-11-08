@@ -189,11 +189,13 @@ function webGLPainter(canvas, faces, background) {
   };
 }
 
-export function mountProjectView(container, scene, interactive=false, {closeUp=false, reveal=false}={}) {
+const MAX_ZOOM=4.5;
+
+export function mountProjectView(container, scene, interactive=false, {closeUp=false, reveal=false, demo=false}={}) {
   let canvas=container.querySelector('canvas');
   const faces=projectFaces(scene);
   let engine;
-  if (interactive) {
+  if (interactive && !demo) {
     try { engine=webGLPainter(canvas,faces,scene.background); }
     catch {
       const fallback=canvas.cloneNode();
@@ -206,7 +208,8 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   const initial={yaw:scene.yaw,pitch:scene.pitch,zoom:1,x:0,y:0,anchorX:0,anchorZ:0,center:scene.center};
   const latest=scene.latest ?? [];
   const average=key=>latest.length ? latest.reduce((sum,part)=>sum+part[key],0)/latest.length : 0;
-  const detail=scene.world ? {...initial,zoom:2.25,anchorX:average('x'),anchorZ:average('z'),center:1.8}
+  const detail=scene.world ? {...initial,zoom:MAX_ZOOM,anchorX:average('x'),anchorZ:average('z'),
+    center:Math.max(1.8,average('y')+.6)}
     : {...initial,zoom:1.12};
   const camera={...initial};
   const pointers=new Map();
@@ -215,7 +218,8 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   const listen=(node,name,handler,options={})=>node.addEventListener(name,handler,{...options,signal:events.signal});
   const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
   let marked=reveal&&latest.length>0, started=null, from={...camera}, visible=true, lastFrame=-Infinity;
-  if (closeUp && (!reveal || motion.matches)) Object.assign(camera,detail);
+  if (closeUp && (!reveal || motion.matches || demo)) Object.assign(camera,detail);
+  from={...camera};
   if (marked && !motion.matches) started=performance.now();
 
   function draw(now=performance.now()) {
@@ -263,7 +267,7 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
     camera.y=clamp(camera.y,-height*camera.zoom*.63,height*camera.zoom*.63);
   }
   function zoom(factor,x=width/2,y=height/2) {
-    const next=clamp(camera.zoom*factor,.75,4.5);
+    const next=clamp(camera.zoom*factor,.75,MAX_ZOOM);
     const ratio=next/camera.zoom;
     const dx=x-width/2, dy=y-height/2;
     camera.x=dx+(camera.x-dx)*ratio;
@@ -307,6 +311,7 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   });
 
   if (interactive) {
+    setMode('move');
     const position=event=>[event.clientX,event.clientY];
     const midpoint=([a,b],[c,d])=>[(a+c)/2,(b+d)/2];
     const distance=([a,b],[c,d])=>Math.hypot(a-c,b-d);

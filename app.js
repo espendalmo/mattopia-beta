@@ -77,7 +77,6 @@ function icon(name, css = '') {
     muted: '<path d="m11 5-5 4H3v6h3l5 4V5Z"/><path d="m16 9 5 6m0-6-5 6"/>',
     backspace: '<path d="M10 5h10a1.5 1.5 0 0 1 1.5 1.5v11A1.5 1.5 0 0 1 20 19H10a2 2 0 0 1-1.5-.7L3 12l5.5-6.3A2 2 0 0 1 10 5Z"/><path d="m11.5 9.5 5 5m0-5-5 5"/>',
     brick: '<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M6 8V4h4v4m4 0V4h4v4M3 12h18"/>',
-    flask: '<path d="M9 3h6m-5 0v7l-5 8a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-8V3M8 15h8"/>',
   };
   return `<svg class="${css}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || ''}</svg>`;
 }
@@ -85,9 +84,9 @@ function buddy(happy = false, surprised = false) {
   return `<div class="buddy ${happy ? 'happy' : surprised ? 'surprised' : ''}" aria-hidden="true"><div class="buddy-shadow"></div><div class="buddy-leaf"></div><div class="buddy-body"><i class="buddy-eye left"></i><i class="buddy-eye right"></i><i class="buddy-smile"></i><i class="buddy-cheek left"></i><i class="buddy-cheek right"></i></div><span class="buddy-spark">✦</span><span class="buddy-spark right">✦</span></div>`;
 }
 function brand() { return `<div class="brand"><span class="brand-mark">${icon('brand-friend', 'brand-friend')}</span><span>tallvenn</span></div>`; }
-function betaMark() { return CHANNEL === 'preview' ? `<p class="beta-mark">${icon('flask')}<strong>BETA</strong><span>Testversjon</span></p>` : ''; }
+function betaMark() { return CHANNEL === 'preview' ? '<span class="beta-mark"><strong>BETA</strong><span class="sr-only"> Testversjon</span></span>' : ''; }
 function soundButton() { return `<button class="icon-button sound-toggle" data-action="sound" aria-label="${state.sound ? 'Lyd på. Slå av lyd' : 'Lyd av. Slå på lyd'}" aria-pressed="${state.sound}">${icon(state.sound ? 'sound' : 'muted')}</button>`; }
-function header(showAdult = true, showSound = true) { return `${betaMark()}<header class="site-header">${brand()}<div class="header-controls">${showSound ? soundButton() : ''}${showAdult ? `<button class="adult-link" data-action="adult">${icon('settings')}For voksne</button>` : ''}</div></header>`; }
+function header(showAdult = true, showSound = true) { return `<header class="site-header"><div class="brand-wrap">${brand()}${betaMark()}</div><div class="header-controls">${showSound ? soundButton() : ''}${showAdult ? `<button class="adult-link" data-action="adult">${icon('settings')}For voksne</button>` : ''}</div></header>`; }
 function updateBanner() { return updateStatus.ready ? `<aside class="update-banner"><span>${updateStatus.applying ? 'Oppdaterer appen …' : 'Ny versjon klar.'}</span><button data-action="apply-update" ${updateStatus.applying ? 'disabled' : ''}>${updateStatus.applying ? 'Oppdaterer …' : 'Oppdater'}</button></aside>` : ''; }
 function say(text) { announcer.textContent = ''; requestAnimationFrame(() => { announcer.textContent = text; }); }
 function focusHeading() { root.querySelector('h1')?.focus({ preventScroll: true }); }
@@ -235,16 +234,21 @@ function projectProgress(project, completed) {
   return `${completed} av ${project.total} byggesteg`;
 }
 
-function showProject(id) {
+function showProject(id, demo = false) {
   const project = projectById(id);
-  if (!project) return;
-  const completed = state.projects[id] || 0;
-  const scene = projectScene(id, completed);
-  const milestone = scene.next ? `Neste byggesteg er «${scene.next}».` : 'Hele byggeprosjektet er ferdig!';
-  const latest = scene.last ? `<div class="project-latest"><div><small>Siste byggesteg · ${completed} av ${project.total}</small><strong>${escapeHtml(scene.last)}</strong></div><button class="secondary" data-project-latest>Vis siste steg</button></div>` : '';
+  if (!project || (demo && CHANNEL !== 'preview')) return;
+  let completed = demo ? 0 : state.projects[id] || 0;
+  let scene = projectScene(id, completed);
+  const latest = () => `<strong>${scene.last ? escapeHtml(scene.last) : 'Klar til å bygge'}</strong>`;
+  const milestone = () => scene.next ? `Neste byggesteg er «${scene.next}».` : 'Hele byggeprosjektet er ferdig!';
   showDialog(`<div class="dialog-header"><div><h2 id="dialog-title" tabindex="-1" autofocus>${project.name}</h2>
-      <p>${projectProgress(project, completed)}</p></div><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggeprosjektet">${icon('close')}</button></div>
+      <p data-demo-progress>${demo ? 'Byggedemo · ' : ''}${projectProgress(project, completed)}</p></div><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggeprosjektet">${icon('close')}</button></div>
     <div class="project-viewer" data-drag-mode="move">
+      ${demo ? `<div class="demo-controls" role="group" aria-label="Byggesteg i demoen">
+        <button class="secondary" data-demo-step="-1" disabled aria-label="Forrige byggesteg"><span class="demo-back">${icon('arrow')}</span> Forrige</button>
+        <p data-demo-status aria-live="polite">${latest()}</p>
+        <button class="secondary" data-demo-step="1" aria-label="Neste byggesteg">Neste ${icon('arrow')}</button>
+      </div>` : ''}
       <canvas tabindex="0" role="img" aria-label="${project.name} i 3D" aria-describedby="project-instructions project-milestone"></canvas>
       <div class="project-controls">
         <div class="project-control-group" role="group" aria-label="Velg hva som skjer når du drar">
@@ -258,11 +262,42 @@ function showProject(id) {
         </div>
       </div>
       <p id="project-instructions" data-project-instructions>Dra for å flytte. Klyp eller bruk pluss og minus for å zoome.</p>
-      ${latest}
+      ${!demo && completed ? `<div class="project-latest"><div><small>Siste byggesteg · ${completed} av ${project.total}</small>${latest()}</div><button class="secondary" data-project-latest>Vis siste steg</button></div>` : ''}
     </div>
-    <p id="project-milestone" class="project-milestone">${milestone}</p>`, 'project-dialog', dialog => {
-    const dispose = mountProjectView(dialog.querySelector('.project-viewer'), scene, true, {closeUp:Boolean(completed)});
-    dialog.addEventListener('close', dispose, {once:true});
+    <p id="project-milestone" class="project-milestone">${milestone()}</p>`, 'project-dialog', dialog => {
+    const viewer = dialog.querySelector('.project-viewer');
+    const mount = reveal => mountProjectView(viewer, scene, true, {
+      closeUp:Boolean(completed), reveal, demo,
+    });
+    let dispose = mount(false);
+    if (demo) {
+      const previous = viewer.querySelector('[data-demo-step="-1"]');
+      const next = viewer.querySelector('[data-demo-step="1"]');
+      const step = amount => {
+        const target = completed + amount;
+        if (target < 0 || target > project.total) return;
+        completed = target;
+        scene = projectScene(id, completed);
+        previous.disabled = completed === 0;
+        next.disabled = completed === project.total;
+        if (previous.disabled && document.activeElement === previous) next.focus({preventScroll:true});
+        if (next.disabled && document.activeElement === next) previous.focus({preventScroll:true});
+        dialog.querySelector('[data-demo-progress]').textContent = `Byggedemo · ${projectProgress(project, completed)}`;
+        viewer.querySelector('[data-demo-status]').innerHTML = `<small>Steg ${completed} av ${project.total}</small>${latest()}`;
+        dialog.querySelector('#project-milestone').textContent = milestone();
+        dispose();
+        dispose = mount(amount > 0);
+        sounds.play('build', state.sound);
+      };
+      previous.addEventListener('click', () => step(-1));
+      next.addEventListener('click', () => step(1));
+      dialog.addEventListener('keydown', event => {
+        if (event.target.matches('canvas') || !['ArrowLeft','ArrowRight'].includes(event.key)) return;
+        event.preventDefault();
+        step(event.key === 'ArrowLeft' ? -1 : 1);
+      });
+    }
+    dialog.addEventListener('close', () => dispose(), {once:true});
   });
 }
 
@@ -554,6 +589,7 @@ function selectFocusImage(button) {
   if (selected.has(index)) selected.delete(index);
   else if (selected.size < study.length) selected.add(index);
   else return;
+  sounds.play('select', state.sound);
   button.setAttribute('aria-pressed', String(selected.has(index)));
   root.querySelector('.focus-count').textContent = `${selected.size} av ${study.length} valgt`;
   root.querySelector('[data-action="focus-check"]').disabled = selected.size !== study.length;
@@ -828,7 +864,7 @@ function renderRound() {
     const messages = ['Der satt den!', 'Godt tenkt!', 'Du fant det!', 'Fint jobbet!'];
     feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${messages[r.index % messages.length]}</p><p class="feedback-detail">${escapeHtml(equationText(t))}</p></div></div><button class="primary" data-action="next">${r.index === length - 1 ? 'Fullfør runden' : 'Neste'}${icon('arrow')}</button>`;
   } else feedback = '<p class="idle-note">Ta den tiden du trenger.</p>';
-  root.innerHTML = `<div class="round-shell">${betaMark()}<header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>Din lille runde</span><strong>Oppgave ${r.index + 1} av ${length}</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="${length}" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
+  root.innerHTML = `<div class="round-shell"><header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>${CHANNEL === 'preview' ? betaMark() : 'Din lille runde'}</span><strong>Oppgave ${r.index + 1} av ${length}</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="${length}" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
     <main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-buddy">${buddy(r.solved, ui.retry)}</div><p>${r.solved ? 'Se hva du fikk til!' : r.attempts[r.index] ? 'Vi prøver igjen sammen.' : 'Vi finner det ut.'}</p></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
     ${equation(t, r.solved)}${renderVisual(t, r.solved)}
     ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 ? 'disabled' : ''}>${icon('help')}${stage === 3 ? 'Vi ser sammen' : stage ? 'Et hint til' : 'Vis meg'}</button>` : ''}
@@ -862,7 +898,7 @@ function renderComplete() {
   const next = g.mode === 'bricks' && upcomingBuild(g.build);
   const preview = next ? `<div class="next-build-card">${renderBuildSvg(next, {mini:true, preview:true})}<div>Neste bygg<strong>Hva tror du det blir?</strong></div></div>` : '';
   const latest = projectStep ? `<div class="project-latest result-latest"><div><small>Nytt byggesteg · ${g.completed} av ${g.project.total}</small><strong>${escapeHtml(projectStep)}</strong></div><button class="secondary" data-project-latest>Vis igjen</button></div>` : '';
-  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">Du klarte runden!</h1>${latest}${(!projectStep || g.full) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="primary" data-action="home">Ferdig for nå${icon('check')}</button><button class="text-button" data-action="again">${state.focusBreakPending ? breakButtonLabel() : 'En runde til'}</button></main></div>${party}`;
+  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">Du klarte runden!</h1>${latest}${(!projectStep || g.full) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="primary" data-action="home">Ferdig for nå${icon('check')}</button><button class="secondary secondary-cta" data-action="again">${state.focusBreakPending ? breakButtonLabel() : 'En runde til'}</button></main></div>${party}`;
   celebrateOnRender = false;
 }
 
@@ -875,11 +911,12 @@ function render() {
   else if (view === 'onboarding') renderOnboarding();
   else renderHome();
   disposeProjectPreview = mountProjectPreview(root);
-  const screen = view === 'round' ? `round-${state.active?.id}-${state.active?.index}` : view;
+  const screen = view === 'round' ? `round-${state.active?.id}-${state.active?.index}`
+    : view === 'focus-break' ? `${view}-${focusGame.kind}-${focusGame.phase}` : view;
   if (renderedScreen !== screen && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
     root.querySelector(view === 'round' ? '.task' : 'main')?.animate?.(
-      [{opacity:.6, transform:'translateY(5px)'},{opacity:1, transform:'translateY(0)'}],
-      {duration:220, easing:'ease-out'});
+      [{opacity:.76, transform:'translateY(4px)'},{opacity:1, transform:'translateY(0)'}],
+      {duration:200, easing:'cubic-bezier(.18,.65,.32,1)'});
   }
   renderedScreen = screen;
 }
@@ -933,7 +970,8 @@ function showDialog(content, css = '', afterOpen) {
 }
 function closeDialog() { document.querySelector('dialog')?.close(); }
 function showPause() {
-  showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>En liten pause?</h2><p>Oppgavene venter på deg.<br>Du kan fortsette senere.</p><button class="primary" data-action="close-dialog">Fortsett runden</button><button class="text-button" data-action="pause-home">Ta en pause</button>`, 'pause-dialog');
+  sounds.play('open', state.sound);
+  showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>En liten pause?</h2><p>Oppgavene venter på deg.<br>Du kan fortsette senere.</p><button class="primary" data-action="close-dialog">Fortsett runden</button><button class="secondary secondary-cta" data-action="pause-home">Ta en pause</button>`, 'pause-dialog');
 }
 
 function markAway() {
@@ -1012,6 +1050,10 @@ function adultView() {
   const testLinks = CHANNEL === 'preview' ? `<nav class="beta-test-links" aria-labelledby="test-links-title">
     <h3 id="test-links-title">Test pauseleker</h3><p>Prøv en lek direkte, uten å endre øvingsframgangen.</p>
     <div>${Object.entries(TEST_BREAK_LINKS).map(([kind, href]) => `<a class="secondary" href="${href}">${BREAK_TITLES[kind]}</a>`).join('')}</div></nav>` : '';
+  const demos = CHANNEL === 'preview' ? `<details class="beta-test-links project-demos">
+    <summary>Byggedemoer</summary><p>Prøv byggestegene med piltastene eller knappene. Demoen lagrer ingen framgang.</p>
+    <div>${Object.entries(PROJECTS).map(([id,project]) => `<button class="secondary" data-action="project-demo" data-project="${id}">${project.name}</button>`).join('')}</div>
+  </details>` : '';
   const playerSettings = profile ? `<section class="adult-profile">
     <h3>${avatarArt(profile.avatar)}${escapeHtml(profile.name)}</h3>
     <label class="profile-field"><span>Klassetrinn</span><select id="player-grade" aria-describedby="grade-note">${gradeOptions(profile.grade)}</select></label>
@@ -1019,7 +1061,7 @@ function adultView() {
     <button class="secondary" data-action="show-profiles">Bytt eller legg til spiller</button>
   </section>` : '';
   showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>For voksne</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk voksenvisningen">${icon('close')}</button></div><p class="adult-intro">Ingen tidsfrist, liv eller poengtrekk. En stjerne betyr at barnet har øvd.</p>
-    ${testLinks}
+    ${testLinks}${demos}
     ${!storageWorks ? '<p class="storage-warning">Nettleseren tillater ikke lagring akkurat nå. Appen virker, men framgangen kan forsvinne når siden lukkes.</p>' : ''}
     ${playerSettings}
     <div class="round-length-setting"><label class="profile-field"><span>Oppgaver per runde</span>
@@ -1197,6 +1239,7 @@ document.addEventListener('click', e => {
     showCollectible(kind, id);
   }
   if (action === 'focus-hide' && view === 'focus-break' && focusGame.phase === 'study') {
+    sounds.play('next', state.sound);
     focusGame.phase = 'guess';
     render(); focusHeading();
   }
@@ -1243,11 +1286,14 @@ document.addEventListener('click', e => {
         state.focusBreakPending = state.focusBreaks && state.roundsCompleted % BREAK_INTERVAL === 0;
       }
       state.active = null; view = 'complete'; celebrateOnRender = true; feedback('finish', [18,55,25]);
-    }
+    } else sounds.play('next', state.sound);
     ui = makeUI(); save(); render(); goTop(); focusHeading();
   }
   if (action === 'home') { view = 'home'; render(); goTop(); focusHeading(); }
-  if (action === 'project-open') showProject(e.target.closest('[data-project]').dataset.project);
+  if (action === 'project-open' || (action === 'project-demo' && CHANNEL === 'preview')) {
+    sounds.play('open', state.sound);
+    showProject(e.target.closest('[data-project]').dataset.project, action === 'project-demo');
+  }
   if (action === 'adult') adultView();
   if (action === 'show-profiles' && profile) showProfiles();
   if (action === 'new-profile' && profile) showProfileForm('new');
@@ -1265,6 +1311,10 @@ document.addEventListener('submit', event => {
   if (!form.matches('[data-profile-form]')) return;
   event.preventDefault();
   submitProfile(form.dataset.profileForm, Object.fromEntries(new FormData(form)));
+});
+
+document.addEventListener('change', event => {
+  if (event.target.matches('.avatar-option input')) sounds.play('select', state.sound);
 });
 
 document.addEventListener('keydown', e => {

@@ -1,12 +1,14 @@
+import { illustration } from './illustrations.js';
+
 export const BREAK_ITEMS = [
-  { icon:'🐱', label:'Katt' }, { icon:'🚀', label:'Rakett' },
-  { icon:'🍓', label:'Jordbær' }, { icon:'🐢', label:'Skilpadde' },
-  { icon:'🎈', label:'Ballong' }, { icon:'🌙', label:'Måne' },
-  { icon:'🦋', label:'Sommerfugl' }, { icon:'⚓', label:'Anker' },
-  { icon:'🌻', label:'Solsikke' }, { icon:'🎸', label:'Gitar' },
-  { icon:'🦉', label:'Ugle' }, { icon:'🚲', label:'Sykkel' },
-  { icon:'🍉', label:'Melon' }, { icon:'⛵', label:'Seilbåt' },
-  { icon:'🐙', label:'Blekksprut' }, { icon:'🍄', label:'Sopp' },
+  { icon:illustration('cat'), label:'Katt' }, { icon:illustration('rocket'), label:'Rakett' },
+  { icon:illustration('strawberry'), label:'Jordbær' }, { icon:illustration('turtle'), label:'Skilpadde' },
+  { icon:illustration('balloon'), label:'Ballong' }, { icon:illustration('moon'), label:'Måne' },
+  { icon:illustration('butterfly'), label:'Sommerfugl' }, { icon:illustration('anchor'), label:'Anker' },
+  { icon:illustration('sunflower'), label:'Solsikke' }, { icon:illustration('guitar'), label:'Gitar' },
+  { icon:illustration('owl'), label:'Ugle' }, { icon:illustration('bike'), label:'Sykkel' },
+  { icon:illustration('melon'), label:'Melon' }, { icon:illustration('sailboat'), label:'Seilbåt' },
+  { icon:illustration('octopus'), label:'Blekksprut' }, { icon:illustration('mushroom'), label:'Sopp' },
 ];
 
 export const BREAK_ATTEMPTS = 3;

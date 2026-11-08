@@ -5,12 +5,17 @@ SOUND_PATTERNS.key=[[86,0,.035,.018]];
 SOUND_PATTERNS.retry=[[78,0,.14,.045,74],[90,0,.13,.012,86],[75,.105,.19,.043,81]];
 SOUND_PATTERNS.recover=[[74,0,.13,.045,81],[86,0,.13,.012,93],[81,.10,.27,.05,86]];
 SOUND_PATTERNS.memory=[[72,0,.13,.05],[76,.09,.14,.05],[79,.18,.16,.055],[84,.29,.34,.055],[76,.29,.34,.028]];
+SOUND_PATTERNS.select=[[79,0,.075,.013]];
+SOUND_PATTERNS.open=[[69,0,.095,.014],[76,.049,.13,.012]];
+SOUND_PATTERNS.next=[[74,0,.085,.011],[79,.046,.09,.009]];
+SOUND_PATTERNS.build=[[67,0,.06,.015],[84,.07,.105,.014]];
+const lightSounds=new Set(['key','select','open','next','build']);
 export function createSoundPlayer(getContext=()=>new(window.AudioContext||window.webkitAudioContext)()){
   let context,voices=[],generation=0;
   function stop(){generation++;for(const v of voices){try{v.osc.stop();v.osc.disconnect();v.gain.disconnect();}catch{}}voices=[];}
   function unlock(){try{context||=getContext();return context.resume();}catch{return Promise.resolve();}}
   function play(kind,enabled=true){
-    if(kind!=='key')stop();if(!enabled||!SOUND_PATTERNS[kind])return;const token=generation;
+    if(!lightSounds.has(kind))stop();if(!enabled||!SOUND_PATTERNS[kind])return;const token=generation;
     unlock().then(()=>{
       if(!context||token!==generation)return;const now=context.currentTime+(kind==='key'?0:.015);
       for(const[midi,offset,duration,volume,endMidi]of SOUND_PATTERNS[kind]){
