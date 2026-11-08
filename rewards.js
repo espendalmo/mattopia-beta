@@ -261,6 +261,20 @@ export function awardPractice(state,roundId,rng=Math.random) {
 function tint(hex,amount) {
   return '#'+hex.slice(1).match(/../g).map(v=>Math.max(0,Math.min(255,parseInt(v,16)+amount)).toString(16).padStart(2,'0')).join('');
 }
+let buildArtId=0;
+
+function brickMaterials(prefix,colors) {
+  return `<defs>${[...new Set(colors)].map(color=>{
+    const front=PALETTE[color];
+    return `<linearGradient id="${prefix}-${color}-front" x2="0" y2="1">
+      <stop stop-color="${tint(front,18)}"/><stop offset=".22" stop-color="${front}"/><stop offset="1" stop-color="${tint(front,-16)}"/>
+    </linearGradient><linearGradient id="${prefix}-${color}-top" x2="1" y2="1">
+      <stop stop-color="${tint(front,47)}"/><stop offset="1" stop-color="${tint(front,12)}"/>
+    </linearGradient><linearGradient id="${prefix}-${color}-side" x2="1" y2="1">
+      <stop stop-color="${tint(front,-5)}"/><stop offset="1" stop-color="${tint(front,-36)}"/>
+    </linearGradient>`;
+  }).join('')}</defs>`;
+}
 function printOn(p) {
   const {x,y,w,h}=p,cx=x+w/2,cy=y+h/2;
   if (['cat', 'dog', 'owl', 'penguin', 'snowman'].includes(p.print)) {
@@ -296,8 +310,8 @@ function printOn(p) {
   if (p.print === 'mission') return `<circle cx="${cx}" cy="${cy}" r="14" fill="#5b86b7"/><path d="M${cx-9} ${cy+5}q16-18 22-13 5 4-16 18" fill="none" stroke="#f1d676" stroke-width="2"/>`;
   if(p.print==='face')return `<g fill="#283d44"><circle cx="${cx-13}" cy="${cy-3}" r="3.5"/><circle cx="${cx+13}" cy="${cy-3}" r="3.5"/><path d="M${cx-8} ${cy+7}q8 8 16 0" fill="none" stroke="#283d44" stroke-width="2.7" stroke-linecap="round"/></g>`;
   if(p.print==='buttons')return `<g fill="#4c6b6d"><circle cx="${cx-11}" cy="${cy}" r="4"/><circle cx="${cx+11}" cy="${cy}" r="4"/></g>`;
-  if(p.print==='window')return `<rect x="${cx-12}" y="${cy-12}" width="24" height="24" rx="7" fill="#d8f1f5" stroke="#50717d" stroke-width="3"/><path d="M${cx-6} ${cy-5}l5-4" stroke="white" stroke-width="3" stroke-linecap="round"/>`;
-  if(p.print==='door')return `<rect x="${cx-11}" y="${y+9}" width="22" height="${h-10}" rx="5" fill="#a87556"/><circle cx="${cx+5}" cy="${cy+5}" r="2" fill="#fff0bf"/>`;
+  if(p.print==='window')return `<rect x="${cx-14}" y="${cy-13}" width="28" height="26" rx="6" fill="#f8e5c4" stroke="#50717d" stroke-width="2"/><rect x="${cx-11}" y="${cy-10}" width="22" height="20" rx="3" fill="#8eb9cc"/><path d="M${cx-10} ${cy-6}h20m-10-4v20" stroke="#e3f2ec" stroke-width="1.4"/><path d="M${cx-15} ${cy+13}h30" stroke="#f4d4a2" stroke-width="3" stroke-linecap="round"/>`;
+  if(p.print==='door')return `<rect x="${cx-12}" y="${y+8}" width="24" height="${h-9}" rx="6" fill="#7c5b51" stroke="#e5bf98" stroke-width="1.4"/><rect x="${cx-7}" y="${y+13}" width="14" height="7" rx="2" fill="#a5cfd5"/><circle cx="${cx+6}" cy="${cy+6}" r="2" fill="#fff0bf"/>`;
   if(p.print==='wheels')return [x+30,x+w-30].map(wx=>`<circle cx="${wx}" cy="${y+h-1}" r="10" fill="#405966"/><circle cx="${wx}" cy="${y+h-1}" r="4" fill="#c1d4db"/>`).join('');
   if(p.print==='feet')return `<path d="M${x+22} ${y+h-3}h25m37 0h25" stroke="#c67c38" stroke-width="5" stroke-linecap="round"/>`;
   if(p.print==='duck')return `<circle cx="${x+25}" cy="${y+12}" r="3.6" fill="#283d44"/><path d="M${x+w-22} ${y+15}h20v12h-20z" fill="#df8a3d"/><path d="M${x+w-19} ${y+22}h16" stroke="#a45c31" stroke-width="1.5"/>`;
@@ -307,27 +321,28 @@ function printOn(p) {
   if(p.print==='hero-mask')return `<g class="hero-mask"><path d="M${x+5} ${y+7}h${w-10}v17l-13-3-14 3-13-3-14 3Z" fill="#284f80"/><ellipse cx="${cx-13}" cy="${y+15}" rx="6" ry="4" fill="white"/><ellipse cx="${cx+13}" cy="${y+15}" rx="6" ry="4" fill="white"/><circle cx="${cx-12}" cy="${y+15}" r="2.4" fill="#20374b"/><circle cx="${cx+12}" cy="${y+15}" r="2.4" fill="#20374b"/><path d="M${cx-7} ${y+29}q7 6 14 0" fill="none" stroke="#7d5a37" stroke-width="2.6" stroke-linecap="round"/></g>`;
   return '';
 }
-function brick(p,ghost=false,newPiece=false,outline=false) {
+function brick(p,ghost=false,newPiece=false,outline=false,prefix='') {
   const {x,y,w,h}=p,front=ghost?'#d6dfcf':PALETTE[p.color],top=tint(front,20),side=tint(front,-24);
   const edge=tint(front,-38),faceTransform='matrix(.866 .5 0 1 0 0)';
+  const finish=(surface,flat)=>!prefix||ghost ? flat : `url(#${prefix}-${p.color}-${surface})`;
   const paint=(fill,stroke,width)=>outline?'':` fill="${fill}" stroke="${stroke}" stroke-width="${width}"`;
   let surface,face,studs='';
   if(p.shape==='roof'){
-    surface=`<polygon class="brick-side" points="${points([[x+w/2,y],[x+w/2,y,DEPTH],[x+w,y+h,DEPTH],[x+w,y+h]])}"${paint(top,edge,.7)}/>`;
+    surface=`<polygon class="brick-side" points="${points([[x+w/2,y],[x+w/2,y,DEPTH],[x+w,y+h,DEPTH],[x+w,y+h]])}"${paint(finish('top',top),edge,.9)}/>`;
     face=`<path d="M${x} ${y+h} ${x+w/2} ${y} ${x+w} ${y+h}Z"/>`;
   }else{
     const inset = p.shape === 'cape' ? 22 : 0;
     const left = x + inset, right = x + w - inset;
     const baseInset = p.shape === 'hull' ? 16 : 0;
-    surface=`<polygon class="brick-top" points="${points([[left,y],[right,y],[right,y,DEPTH],[left,y,DEPTH]])}"${paint(top,edge,.7)}/><polygon class="brick-side" points="${points([[right,y],[right,y,DEPTH],[x+w-baseInset,y+h,DEPTH],[x+w-baseInset,y+h]])}"${paint(side,edge,.7)}/>`;
+    surface=`<polygon class="brick-top" points="${points([[left,y],[right,y],[right,y,DEPTH],[left,y,DEPTH]])}"${paint(finish('top',top),edge,.9)}/><polygon class="brick-side" points="${points([[right,y],[right,y,DEPTH],[x+w-baseInset,y+h,DEPTH],[x+w-baseInset,y+h]])}"${paint(finish('side',side),edge,.9)}/>`;
     face=(inset||baseInset)?`<path d="M${left} ${y}H${right}L${x+w-baseInset} ${y+h}H${x+baseInset}Z"/>`:`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2"/>`;
     const columns=Math.max(1,Math.round((right-left)/32));
     studs=Array.from({length:2},(_,row)=>Array.from({length:columns},(_,col)=>{
       const [sx,sy]=project(left+(col+.5)*(right-left)/columns,y,(row+.5)*DEPTH/2);
-      return `<g class="brick-stud"><path d="M${sx-8.5} ${sy-8}v8a8.5 4.8 0 0 0 17 0v-8Z"${paint(front,edge,.6)}/><ellipse cx="${sx}" cy="${sy-8}" rx="8.5" ry="4.8"${paint(top,side,.8)}/>${outline?'':`<path d="M${sx-5} ${sy-9}q4-2 8 0" fill="none" stroke="white" stroke-opacity=".35" stroke-width="1.4" stroke-linecap="round"/>`}</g>`;
+      return `<g class="brick-stud"><path d="M${sx-8.5} ${sy-8}v8a8.5 4.8 0 0 0 17 0v-8Z"${paint(finish('side',front),edge,.65)}/><ellipse cx="${sx}" cy="${sy-8}" rx="8.5" ry="4.8"${paint(finish('top',top),side,.8)}/>${outline?'':`<ellipse cx="${sx}" cy="${sy-8}" rx="5.6" ry="2.8" fill="none" stroke="#fff" stroke-opacity=".24"/><path d="M${sx-5} ${sy-9}q4-2 8 0" fill="none" stroke="white" stroke-opacity=".35" stroke-width="1.4" stroke-linecap="round"/>`}</g>`;
     }).join('')).join('');
   }
-  const geometry=`${surface}<g class="brick-front" transform="${faceTransform}"${paint(front,edge,.7)}>${face}</g>`;
+  const geometry=`${surface}<g class="brick-front" transform="${faceTransform}"${paint(finish('front',front),edge,.9)}>${face}</g>`;
   if (outline) return geometry+studs;
   return `<g class="brick-piece ${ghost?'unbuilt-piece':''} ${newPiece?'new-brick':''}">${geometry}<g transform="${faceTransform}">${ghost?'':printOn(p)}</g>${studs}</g>`;
 }
@@ -346,5 +361,11 @@ export function renderBuildSvg(build,{animate=false,mini=false,preview=false}={}
     // Fill the shapes again to cover the strokes inside the silhouette.
     return `${svg}<g fill="#edf1e8" stroke="#778f72" stroke-width="5" stroke-linejoin="round">${silhouette}</g><g fill="#edf1e8" stroke="#edf1e8" stroke-width="1.6" stroke-linejoin="round">${silhouette}</g></svg>`;
   }
-  return `${svg}<g transform="matrix(.866 .5 .866 -.5 0 ${floor})"><ellipse cx="${(left+right)/2}" cy="${DEPTH/2}" rx="${(right-left)/2+5}" ry="${DEPTH/2+3}" fill="#dce5db"/></g>${ordered.filter(x=>x.i>=pieces).map(({p})=>brick(p,true)).join('')}${ordered.filter(x=>x.i<pieces).map(({p,i})=>brick(p,false,animate&&i===pieces-1)).join('')}</svg>`;
+  const finish=`brick-art-${++buildArtId}`;
+  const built=ordered.filter(item=>item.i<pieces);
+  const base=`<g transform="matrix(.866 .5 .866 -.5 0 ${floor})">
+    <ellipse cx="${(left+right)/2}" cy="${DEPTH/2-1}" rx="${(right-left)/2+6}" ry="${DEPTH/2+4}" fill="#dae5da"/>
+    <ellipse cx="${(left+right)/2}" cy="${DEPTH/2}" rx="${(right-left)/2-2}" ry="${DEPTH/2}" fill="#c5d4ca"/>
+  </g>`;
+  return `${svg}${brickMaterials(finish,built.map(({p})=>p.color))}${base}${ordered.filter(x=>x.i>=pieces).map(({p})=>brick(p,true)).join('')}${built.map(({p,i})=>brick(p,false,animate&&i===pieces-1,false,finish)).join('')}</svg>`;
 }

@@ -94,6 +94,19 @@ dialog{border:1px solid var(--line);border-radius:28px;box-shadow:0 25px 80px #1
 .beta-test-links p { color: var(--muted); font-size: .85rem; line-height: 1.5; }
 .beta-test-links > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .beta-test-links a { display: inline-flex; align-items: center; color: var(--ink); text-decoration: none; }
+.beta-release {
+  display: grid;
+  gap: 6px;
+  padding: 13px 15px;
+  margin: 0 0 18px;
+  border-radius: 15px;
+  border: 1px solid #ded3ec;
+  background: #f2edf9;
+  font-size: .85rem;
+}
+.beta-release > div { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.beta-release span { color: #58446d; font-variant-numeric: tabular-nums; }
+.beta-release button { justify-self: start; margin-top: 4px; }
 .collection-shelf, .badge-shelf { margin-top: 18px; }
 .collection-shelf > .secondary { margin-top: 12px; }
 .collection-dialog h3 { margin: 16px 0 8px; font-size: 1rem; }
@@ -164,7 +177,7 @@ dialog{border:1px solid var(--line);border-radius:28px;box-shadow:0 25px 80px #1
 }
 .badge-medal svg { width: 100%; height: 100%; filter: drop-shadow(0 3px 3px #293d342b); }
 .medal-ribbon { fill: var(--medal-ribbon); }
-.medal-frame { fill: var(--medal-fill); stroke: var(--medal-edge); stroke-width: 2.6; stroke-linejoin: round; }
+.medal-frame { stroke: var(--medal-edge); stroke-width: 2.6; stroke-linejoin: round; }
 .medal-inset { fill: none; stroke: #fff9; stroke-width: 1.55; transform-origin: center; transform: scale(.84); }
 .medal-motif { fill: var(--medal-light); stroke: var(--medal-edge); stroke-width: 1.45; stroke-linecap: round; stroke-linejoin: round; }
 .badge-medal.leaf { --medal-fill:#98c3a0; --medal-edge:#355c48; --medal-light:#eef7cc; --medal-ribbon:#619378; }
@@ -718,6 +731,11 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 .project-control-group > button { min-width: 42px; min-height: 42px; padding: 6px 9px; }
 .project-control-group > button[aria-pressed="true"] { background: var(--mint); border-color: #8eb281; color: var(--green); }
 .project-zoom { font-size: 1.2rem; }
+.project-atmosphere { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 11px; margin: 9px 0; }
+.project-atmosphere button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 6px 10px; }
+.project-atmosphere button[aria-pressed="true"] { background: var(--mint); border-color: #8eb281; color: var(--green); }
+.project-atmosphere svg { width: 17px; height: 17px; }
+.project-atmosphere small { color: var(--muted); }
 .project-latest {
   display: flex;
   align-items: center;

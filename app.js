@@ -1,7 +1,7 @@
 import { VERSION, CHANNEL, ROUND_LENGTH, ROUND_LENGTHS, PROGRESSION_ROUNDS, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, advanceRound, noteHelp, roundSummary, freshState, restoreState, progressionPreview, advancePractice } from './core.js';
 import { hintFor } from './learning.js';
 import { createSoundPlayer } from './sound.js';
-import { createUpdater } from './update.js';
+import { createUpdater, readPublishedVersion } from './update.js';
 import { modelById, selectRewardMode, prepareReward, awardPractice, upcomingBuild, renderBuildSvg } from './rewards.js';
 import { plantById, renderPlant } from './plants.js';
 import { BREAK_ATTEMPTS, BREAK_INTERVAL, BREAK_TITLES, BRICK_COLORS, breakKind, createBreakGame, placeBreakBrick, retryBreak, scoreBreak } from './breaks.js';
@@ -234,6 +234,33 @@ function projectProgress(project, completed) {
   return `${completed} av ${project.total} byggesteg`;
 }
 
+function projectAmbience(dialog, id) {
+  const button = dialog.querySelector('[data-project-ambience]');
+  if (!button) return;
+  const events = new AbortController();
+  let enabled = state.sound;
+  let revision = 0;
+  async function sync() {
+    const turn = ++revision;
+    const playing = enabled && dialog.open && !document.hidden;
+    if (!playing) sounds.stopAmbience();
+    const audible = playing && await sounds.startAmbience(id);
+    if (turn !== revision || !dialog.open) return;
+    button.setAttribute('aria-pressed', String(audible));
+    button.innerHTML = `${icon(audible ? 'sound' : 'muted')} Omgivelseslyd`;
+    if (playing && !audible) enabled = false;
+  }
+  button.addEventListener('click', () => { enabled = !enabled; sync(); });
+  document.addEventListener('visibilitychange', sync, {signal:events.signal});
+  window.addEventListener('pageshow', sync, {signal:events.signal});
+  dialog.addEventListener('close', () => {
+    revision++;
+    events.abort();
+    sounds.stopAmbience();
+  }, {once:true});
+  sync();
+}
+
 function showProject(id, demo = false) {
   const project = projectById(id);
   if (!project || (demo && CHANNEL !== 'preview')) return;
@@ -262,6 +289,7 @@ function showProject(id, demo = false) {
         </div>
       </div>
       <p id="project-instructions" data-project-instructions>Dra for å flytte. Klyp eller bruk pluss og minus for å zoome.</p>
+      ${scene.world ? `<div class="project-atmosphere"><button class="secondary" data-project-ambience aria-pressed="false" ${state.sound ? '' : 'disabled'}>${icon('muted')} Omgivelseslyd</button>${state.sound ? '' : '<small>Applyden er slått av.</small>'}</div>` : ''}
       ${!demo && completed ? `<div class="project-latest"><div><small>Siste byggesteg · ${completed} av ${project.total}</small>${latest()}</div><button class="secondary" data-project-latest>Vis siste steg</button></div>` : ''}
     </div>
     <p id="project-milestone" class="project-milestone">${milestone()}</p>`, 'project-dialog', dialog => {
@@ -270,6 +298,7 @@ function showProject(id, demo = false) {
       closeUp:Boolean(completed), reveal, demo,
     });
     let dispose = mount(false);
+    projectAmbience(dialog, id);
     if (demo) {
       const previous = viewer.querySelector('[data-demo-step="-1"]');
       const next = viewer.querySelector('[data-demo-step="1"]');
@@ -327,10 +356,16 @@ const BADGES = [
     motif:'<path d="m18 25 8 6 6-11 6 11 8-6-4 16H22Z"/><path d="M23 45h18M32 13v3m-10 3 2 2m18-2-2 2" fill="none"/>' },
 ];
 
+let badgeArtId = 0;
 function badgeArt(badge) {
+  const surface = `badge-surface-${++badgeArtId}`;
   return `<span class="badge-medal ${badge.tone}" aria-hidden="true"><svg viewBox="0 0 64 64" focusable="false">
+    <defs><linearGradient id="${surface}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="var(--medal-light)"/><stop offset=".37" stop-color="var(--medal-fill)"/>
+      <stop offset=".75" stop-color="var(--medal-fill)"/><stop offset="1" stop-color="var(--medal-ribbon)"/>
+    </linearGradient></defs>
     <path class="medal-ribbon" d="m19 37-7 25 11-5 6 5 4-19 4 19 6-5 10 5-7-25Z"/>
-    <path class="medal-frame" d="${badge.shape}"/><path class="medal-inset" d="${badge.shape}"/>
+    <path class="medal-frame" fill="url(#${surface})" d="${badge.shape}"/><path class="medal-inset" d="${badge.shape}"/>
     <g class="medal-motif">${badge.motif}</g>
   </svg></span>`;
 }
@@ -1057,6 +1092,29 @@ function projectOptions() {
   </details>`;
 }
 
+function checkPublishedRelease(dialog) {
+  const result = dialog.querySelector('[data-published-version]');
+  const retry = dialog.querySelector('[data-published-check]');
+  let active;
+  async function check() {
+    active?.abort();
+    const controller = active = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6500);
+    retry.disabled = true;
+    result.textContent = 'Sjekker …';
+    let version;
+    try { version = await readPublishedVersion(window.location.origin, {signal:controller.signal}); }
+    catch { version = null; }
+    finally { clearTimeout(timer); }
+    if (controller !== active || !dialog.open) return;
+    result.textContent = version || 'Kunne ikke sjekke nå';
+    retry.disabled = false;
+  }
+  retry.addEventListener('click', check);
+  dialog.addEventListener('close', () => active?.abort(), {once:true});
+  check();
+}
+
 function adultView() {
   const recent = state.history.slice(-5).reverse();
   const days = new Set(state.history.map(r => new Date(r.date).toLocaleDateString('nb-NO'))).size;
@@ -1064,6 +1122,11 @@ function adultView() {
   const testLinks = CHANNEL === 'preview' ? `<nav class="beta-test-links" aria-labelledby="test-links-title">
     <h3 id="test-links-title">Test pauseleker</h3><p>Prøv en lek direkte, uten å endre øvingsframgangen.</p>
     <div>${Object.entries(TEST_BREAK_LINKS).map(([kind, href]) => `<a class="secondary" href="${href}">${BREAK_TITLES[kind]}</a>`).join('')}</div></nav>` : '';
+  const release = CHANNEL === 'preview' ? `<section class="beta-release" aria-label="Versjonsoversikt">
+    <div><strong>Beta</strong><span>${VERSION}</span></div>
+    <div><strong>Publisert på /tallvenn/</strong><span data-published-version role="status">Sjekker …</span></div>
+    <button class="secondary" data-published-check>Sjekk på nytt</button>
+  </section>` : '';
   const demos = CHANNEL === 'preview' ? `<details class="beta-test-links project-demos">
     <summary>Byggedemoer</summary><p>Prøv byggestegene med piltastene eller knappene. Demoen lagrer ingen framgang.</p>
     <div>${Object.entries(PROJECTS).map(([id,project]) => `<button class="secondary" data-action="project-demo" data-project="${id}">${project.name}</button>`).join('')}</div>
@@ -1075,7 +1138,7 @@ function adultView() {
     <button class="secondary" data-action="show-profiles">Bytt eller legg til spiller</button>
   </section>` : '';
   showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>For voksne</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk voksenvisningen">${icon('close')}</button></div><p class="adult-intro">Ingen tidsfrist, liv eller poengtrekk. En stjerne betyr at barnet har øvd.</p>
-    ${testLinks}${demos}
+    ${release}${testLinks}${demos}
     ${!storageWorks ? '<p class="storage-warning">Nettleseren tillater ikke lagring akkurat nå. Appen virker, men framgangen kan forsvinne når siden lukkes.</p>' : ''}
     ${playerSettings}
     <div class="round-length-setting"><label class="profile-field"><span>Oppgaver per runde</span>
@@ -1098,6 +1161,7 @@ function adultView() {
     <details class="adult-details"><summary>Tips til en god økt</summary><p>La barnet tenke ferdig. Spør av og til «Hvordan fant du det ut?». Bruk gjerne klosser ved siden av. Avslutt når overskuddet er brukt opp; en halv runde kan fortsettes senere.</p><p>Appen gir øving og erstatter ikke lærerens kartlegging eller oppfølging.</p></details>
     <details class="adult-details"><summary>Legg appen på hjemskjermen</summary><p>På iPad og iPhone: åpne adressen i Safari, velg Del og «Legg til på Hjem-skjerm». Åpne appen på nett én gang før dere bruker den uten nett.</p><p>Profiler og framgang lagres lokalt i denne nettleseren eller i den installerte appen. Safari og hjemskjermappen kan ha hver sine profiler. Det er ingen konto, sporing eller eksterne ressurser.</p></details>
     <button class="delete-button" data-action="reset">${profile ? 'Slett denne spillerens øvingshistorikk' : 'Slett øvingshistorikken'}</button><button class="primary" data-action="close-dialog">Ferdig</button><p class="version">Tallvenn ${VERSION}</p>`, '', d => {
+      if (CHANNEL === 'preview') checkPublishedRelease(d);
       d.addEventListener('change', e => {
         if (e.target.name === 'level' && levelsForGrade(profile?.grade).includes(Number(e.target.value))) {
           state.level = Number(e.target.value);
@@ -1342,7 +1406,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && ui.entry && !e.target.closest('[data-action="help"], [data-action="sound"], [data-action="pause"]')) { e.preventDefault(); submitAnswer(Number(ui.entry)); }
   }
 });
-window.addEventListener('pagehide', markAway);
+window.addEventListener('pagehide', () => { markAway(); sounds.stop(); });
 window.addEventListener('pageshow', welcomeBack);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { markAway(); sounds.stop(); }

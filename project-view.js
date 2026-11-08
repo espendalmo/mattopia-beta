@@ -1,3 +1,5 @@
+import {actorPose} from './scenery.js';
+
 const clamp = (value,min,max) => Math.max(min,Math.min(value,max));
 const cross = ([ax,ay,az],[bx,by,bz]) => [ay*bz-az*by,az*bx-ax*bz,ax*by-ay*bx];
 const difference = (a,b) => a.map((value,i)=>value-b[i]);
@@ -14,8 +16,16 @@ function ringFaces(rings) {
   })];
 }
 
-function partFaces({shape,x,y,z,w,d,h,outline,angle=0}) {
+function partFaces({shape,x,y,z,w,d,h,outline,profile,axis='y',angle=0}) {
   if (shape==='landscape') return [outline];
+  if (shape==='plate') {
+    const area=profile.reduce((sum,[a,b],i)=>{
+      const [c,d]=profile[(i+1)%profile.length];
+      return sum+a*d-b*c;
+    },0);
+    const front=(area>0?profile:[...profile].reverse()).map(([a,b])=>[x+a,y+b,z]);
+    return [front,[...front].reverse()];
+  }
   if (shape==='dome') {
     const rings=[0,.44,.78,1.08,1.38,1.52].map(incline=>{
       const radius=Math.cos(incline)/2;
@@ -27,7 +37,7 @@ function partFaces({shape,x,y,z,w,d,h,outline,angle=0}) {
     });
     return ringFaces(rings);
   }
-  if (shape==='rounded') {
+  if (shape==='rounded' && Math.min(w,d,h)>.2) {
     const bevel=Math.min(.24,w*.13,d*.13,h*.22);
     const rings=[[0,bevel],[bevel,0],[h-bevel,0],[h,bevel]].map(([height,inset])=>
       [[1,1],[-1,1],[-1,-1],[1,-1]].flatMap(([sx,sz],j)=>
@@ -41,9 +51,11 @@ function partFaces({shape,x,y,z,w,d,h,outline,angle=0}) {
   if (shape==='tube') {
     const lower=Array.from({length:12},(_,i)=>{
       const angle=i*Math.PI/6;
+      if (axis==='x') return [x+w/2,y+(1+Math.cos(angle))*h/2,z+d*Math.sin(angle)/2];
+      if (axis==='z') return [x+w*Math.cos(angle)/2,y+(1-Math.sin(angle))*h/2,z-d/2];
       return [x+w*Math.cos(angle)/2,y,z+d*Math.sin(angle)/2];
     });
-    const upper=lower.map(([a,b,c])=>[a,b+h,c]);
+    const upper=lower.map(([a,b,c])=>axis==='x'?[a-w,b,c]:axis==='z'?[a,b,c+d]:[a,b+h,c]);
     return ringFaces([lower,upper]);
   }
 
@@ -68,22 +80,40 @@ function studs(part) {
   }));
 }
 
+function domeNormal(part,[x,y,z]) {
+  const cos=Math.cos(part.angle), sin=Math.sin(part.angle);
+  const dx=x-part.x,dz=z-part.z;
+  const localX=(dx*cos+dz*sin)/(part.w*.5)**2;
+  const localZ=(-dx*sin+dz*cos)/(part.d*.5)**2;
+  const normal=[localX*cos-localZ*sin,(y-part.y)/part.h**2,localX*sin+localZ*cos];
+  const length=Math.hypot(...normal);
+  return normal.map(value=>value/length);
+}
+
 export function projectFaces(scene) {
-  const light=[.24,.88,.4];
+  const light=[.28,.84,.43];
   const latest=new Set(scene.latest);
-  return [...scene.parts,...(scene.ambient ?? [])].flatMap((part,i)=>[part,...studs(part)].flatMap(piece=>{
+  const layers=[scene.parts, ...(scene.ambient ?? []).map(actor=>actor.parts)];
+  return layers.flatMap((parts,layerIndex)=>parts.flatMap(part=>[part,...studs(part)].flatMap(piece=>{
     const rgb=piece.color.slice(1).match(/../g).map(channel=>parseInt(channel,16)/255);
-    return partFaces(piece).map(points=>{
+    const shaded=normal=>{
+      const illumination=Math.max(0,dot(normal,light));
+      const reflection=Math.max(0,illumination-.72)**2*.34;
+      return rgb.map(value=>Math.min(1,value*(.62+.37*illumination)+reflection));
+    };
+    return partFaces(piece).map((points,faceIndex)=>{
       const landscape=piece.shape==='landscape';
-      const normal=landscape ? [0,1,0] : cross(difference(points[1],points[0]),difference(points[2],points[0]));
+      const normal=landscape ? [0,1,0] : piece.shape==='plate' ? [0,0,faceIndex===0?1:-1]
+        : cross(difference(points[1],points[0]),difference(points[2],points[0]));
       const length=Math.hypot(...normal);
       const unit=normal.map(value=>value/length);
-      const shade=landscape ? 1 : .68+.32*Math.max(0,dot(unit,light));
-      return {points,normal:unit,color:rgb.map(value=>value*shade),layer:part.layer??Infinity,
-        origin:landscape ? [piece.x,piece.y,piece.z] : null,
-        group:i>=scene.parts.length?2:latest.has(part)?1:0};
+      const vertexColors=piece.shape==='dome'&&faceIndex>0 ? points.map(point=>shaded(domeNormal(piece,point))) : null;
+      const color=landscape ? rgb : vertexColors ? rgb.map((_,i)=>vertexColors.reduce((sum,vertex)=>sum+vertex[i],0)/points.length) : shaded(unit);
+      return {points,normal:unit,color,vertexColors,layer:part.layer??Infinity,
+        origin:landscape||piece.radial ? [piece.x,piece.y,piece.z] : null,
+        group:layerIndex?layerIndex+1:latest.has(part)?1:0,stride:part.stride??0};
     });
-  }));
+  })));
 }
 
 function backgroundRGB(hex) {
@@ -101,12 +131,24 @@ function canvasPainter(canvas, faces, background) {
     const facing=[sin*slope,rise,cos*slope];
     const polygons=[];
     for (const face of flat) {
-      if (dot(face.normal,facing)<=0) continue;
+      const actor=face.group>=2?effects.actors[face.group-2]:null;
+      const [nx,ny,nz]=face.normal;
+      const facingLight=actor ? (nx*actor.cos+nz*actor.sin)*facing[0]+ny*facing[1]+(nz*actor.cos-nx*actor.sin)*facing[2]
+        : dot(face.normal,facing);
+      if (facingLight<=0) continue;
       let depth=0;
+      let modelY=0;
       const points=face.points.map(([x,y,z])=>{
-        if (face.group===1) y+=effects.lift;
-        if (face.group===2) {
-          x+=effects.actor[0]; y+=effects.actor[1]; z+=effects.actor[2];
+        if (face.group===1) {
+          modelY+=y;
+          y=effects.ground+(y-effects.ground)*effects.growth+effects.lift;
+        }
+        if (actor) {
+          const step=actor.stride*face.stride;
+          const strideZ=z+step;
+          z=actor.z+strideZ*actor.cos-x*actor.sin;
+          x=actor.x+x*actor.cos+strideZ*actor.sin;
+          y+=actor.y+Math.max(0,step)*.58;
         }
         const forward=x*sin+z*cos;
         const heightFromCenter=y-center;
@@ -116,8 +158,10 @@ function canvasPainter(canvas, faces, background) {
       });
       if (points.every(([x])=>x<0) || points.every(([x])=>x>width) ||
           points.every(([,y])=>y<0) || points.every(([,y])=>y>height)) continue;
-      const paint=face.group===1&&effects.highlight ? paintColor(face.color.map((value,i)=>
-        value+([1,.8,.24][i]-value)*effects.highlight)) : face.paint;
+      const shimmer=Math.max(0,1-Math.abs(modelY/points.length-effects.sweep)/.7)*.36;
+      const highlight=face.group===1?Math.min(.58,effects.highlight+shimmer):0;
+      const paint=highlight ? paintColor(face.color.map((value,i)=>
+        value+([1,.86,.46][i]-value)*highlight)) : face.paint;
       polygons.push({points,depth:depth/points.length,paint,layer:face.layer});
     }
     // Broad terrain faces must be drawn before buildings, regardless of their center depth.
@@ -150,29 +194,50 @@ function webGLPainter(canvas, faces, background) {
     attribute vec3 position;
     attribute vec3 color;
     attribute float group;
+    attribute float stride;
     uniform vec2 yaw;
     uniform vec2 pitch;
     uniform vec2 zoom;
     uniform vec2 pan;
     uniform float center;
-    uniform vec2 reveal;
-    uniform vec3 actor;
-    varying vec3 shade;
+    uniform vec4 reveal;
+    uniform vec4 actorPose[3];
+    uniform vec2 actorMotion[3];
+    varying mediump vec3 shade;
+    varying mediump float modelHeight;
+    varying mediump float latest;
     void main() {
       vec3 pos = position;
-      if (group == 1.0) pos.y += reveal.x;
-      if (group == 2.0) pos += actor;
+      latest = group == 1.0 ? 1.0 : 0.0;
+      modelHeight = pos.y;
+      if (latest == 1.0) pos.y = reveal.z + (pos.y-reveal.z)*reveal.y + reveal.x;
+      for (int i = 0; i < 3; i++) {
+        if (group == 2.0+float(i)) {
+          vec4 pose = actorPose[i];
+          vec2 motion = actorMotion[i];
+          float step = stride*motion.y;
+          float z = pos.z+step;
+          pos = vec3(pose.x+pos.x*pose.w+z*motion.x,pos.y+pose.y+max(0.0,step)*.58,
+            pose.z+z*pose.w-pos.x*motion.x);
+        }
+      }
       float forward = pos.x*yaw.y + pos.z*yaw.x;
       float y = pos.y-center;
       vec2 point = vec2(pos.x*yaw.x-pos.z*yaw.y,y*pitch.x-forward*pitch.y);
       gl_Position = vec4(point*zoom+pan,-(y*pitch.y+forward*pitch.x)/160.0,1.0);
-      shade = group == 1.0 ? mix(color,vec3(1.0,.8,.24),reveal.y) : color;
+      shade = color;
     }
   `);
   const fragment=shader(gl.FRAGMENT_SHADER,`
     precision mediump float;
-    varying vec3 shade;
-    void main() { gl_FragColor = vec4(shade,1.0); }
+    varying mediump vec3 shade;
+    varying mediump float modelHeight;
+    varying mediump float latest;
+    uniform vec2 shine;
+    void main() {
+      float sweep = max(0.0,1.0-abs(modelHeight-shine.y)/.7)*.36;
+      gl_FragColor = vec4(mix(shade,vec3(1.0,.86,.46),latest*min(.58,shine.x+sweep)),1.0);
+    }
   `);
   const program=gl.createProgram();
   gl.attachShader(program,vertex);
@@ -183,20 +248,25 @@ function webGLPainter(canvas, faces, background) {
   gl.deleteShader(vertex);
   gl.deleteShader(fragment);
   const data=[];
-  for (const {points,color,group,origin} of faces) {
+  for (const {points,color,vertexColors,group,origin,stride} of faces) {
     for (let i=origin?0:1;i<(origin?points.length:points.length-1);i++) {
-      for (const point of [origin??points[0],points[i],points[(i+1)%points.length]]) data.push(...point,...color,group);
+      const next=(i+1)%points.length;
+      data.push(...(origin??points[0]),...(vertexColors?.[0]??color),group,stride,
+        ...points[i],...(vertexColors?.[i]??color),group,stride,
+        ...points[next],...(vertexColors?.[next]??color),group,stride);
     }
   }
   const buffer=gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
   gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);
-  for (const [name,size,offset] of [['position',3,0],['color',3,12],['group',1,24]]) {
+  for (const [name,size,offset] of [['position',3,0],['color',3,12],['group',1,24],['stride',1,28]]) {
     const location=gl.getAttribLocation(program,name);
     gl.enableVertexAttribArray(location);
-    gl.vertexAttribPointer(location,size,gl.FLOAT,false,28,offset);
+    gl.vertexAttribPointer(location,size,gl.FLOAT,false,32,offset);
   }
-  const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','reveal','actor'].map(name=>[name,gl.getUniformLocation(program,name)]));
+  const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','reveal','shine','actorPose[0]','actorMotion[0]']
+    .map(name=>[name,gl.getUniformLocation(program,name)]));
+  const actorPositions=new Float32Array(12),actorMovement=new Float32Array(6);
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
   gl.clearColor(...backgroundRGB(background),1);
@@ -209,9 +279,15 @@ function webGLPainter(canvas, faces, background) {
       gl.uniform2f(uniforms.zoom,2*scale/width,2*scale/height);
       gl.uniform2f(uniforms.pan,2*camera.x/width,-2*camera.y/height);
       gl.uniform1f(uniforms.center,center);
-      gl.uniform2f(uniforms.reveal,effects.lift,effects.highlight);
-      gl.uniform3f(uniforms.actor,...effects.actor);
-      gl.drawArrays(gl.TRIANGLES,0,data.length/7);
+      gl.uniform4f(uniforms.reveal,effects.lift,effects.growth,effects.ground,0);
+      gl.uniform2f(uniforms.shine,effects.highlight,effects.sweep);
+      effects.actors.forEach(({x,y,z,cos,sin,stride},i)=>{
+        actorPositions.set([x,y,z,cos],i*4);
+        actorMovement.set([sin,stride],i*2);
+      });
+      gl.uniform4fv(uniforms['actorPose[0]'],actorPositions);
+      gl.uniform2fv(uniforms['actorMotion[0]'],actorMovement);
+      gl.drawArrays(gl.TRIANGLES,0,data.length/8);
     },
     dispose() {
       gl.deleteBuffer(buffer);
@@ -223,11 +299,24 @@ function webGLPainter(canvas, faces, background) {
 
 const MAX_ZOOM=4.5;
 
+export function buildMotion(world, elapsed, ground, top, marked) {
+  const t=clamp((elapsed-90)/725,0,1);
+  const growing=t*t*(3-2*t);
+  const settled=clamp((elapsed-700)/500,0,1);
+  return {
+    ground,
+    growth:world ? Math.max(.012,growing) : 1,
+    lift:world ? 0 : 3.8*(1-clamp((elapsed-230)/620,0,1))**3,
+    highlight:marked ? .1+.22*(1-settled) : 0,
+    sweep:world&&marked&&t>0&&t<1 ? ground+(top-ground)*growing : -999,
+  };
+}
+
 export function mountProjectView(container, scene, interactive=false, {closeUp=false, reveal=false, demo=false}={}) {
   let canvas=container.querySelector('canvas');
   const faces=projectFaces(scene);
   let engine;
-  if (interactive && !demo) {
+  if ((interactive || scene.world) && !demo) {
     try { engine=webGLPainter(canvas,faces,scene.background); }
     catch {
       const fallback=canvas.cloneNode();
@@ -240,6 +329,9 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   const initial={yaw:scene.yaw,pitch:scene.pitch,zoom:1,x:0,y:0,anchorX:0,anchorZ:0,center:scene.center};
   const maxZoom=MAX_ZOOM*scene.size/(scene.closeSize??scene.size);
   const latest=scene.latest ?? [];
+  const heights=faces.filter(face=>face.group===1).flatMap(face=>face.points.map(point=>point[1]));
+  const low=heights.length ? Math.min(...heights) : 0;
+  const high=heights.length ? Math.max(...heights) : 0;
   const average=key=>latest.length ? latest.reduce((sum,part)=>sum+part[key],0)/latest.length : 0;
   const detail=scene.world ? {...initial,zoom:maxZoom,anchorX:average('x'),anchorZ:average('z'),
     center:Math.max(1.8,average('y')+.6)}
@@ -263,7 +355,7 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
     if (!width || !height) return;
     const playing=!motion.matches && started!==null;
     const alive=!motion.matches && scene.ambient?.length;
-    if ((playing||alive) && now-lastFrame<32) { schedule(); return; }
+    if ((playing||alive) && now-lastFrame<(engine||playing?32:48)) { schedule(); return; }
     lastFrame=now;
     const pixelRatio=Math.min(window.devicePixelRatio||1,2);
     const pixelsWide=Math.round(width*pixelRatio),pixelsHigh=Math.round(height*pixelRatio);
@@ -277,19 +369,15 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
       for (const key of Object.keys(detail)) camera[key]=from[key]+(detail[key]-from[key])*ease;
       if (elapsed>=1950) started=null;
     }
-    const drop=clamp((elapsed-230)/620,0,1);
-    const lift=(scene.world?5:3.8)*(1-drop)**3;
-    const highlight=marked ? .19+.45*(1-clamp((elapsed-770)/950,0,1)) : 0;
-    const phase=motion.matches ? 0 : now*.00034;
-    const actor=scene.id==='island' ? [Math.sin(phase)*13,Math.sin(phase*9)*.25,Math.cos(phase)*5]
-      : [Math.sin(phase)*.25,0,Math.sin(phase)*19];
+    const effects=buildMotion(scene.world,elapsed,low,high,marked);
+    effects.actors=(scene.ambient??[]).map(actor=>actorPose(actor,motion.matches?0:now/1000));
     const scale=Math.min(width,height)*camera.zoom/scene.size;
     const forward=camera.anchorX*Math.sin(camera.yaw)+camera.anchorZ*Math.cos(camera.yaw);
     const position={...camera,
       x:camera.x-(camera.anchorX*Math.cos(camera.yaw)-camera.anchorZ*Math.sin(camera.yaw))*scale,
       y:camera.y-forward*Math.sin(camera.pitch)*scale,
     };
-    paint(width,height,position,scale,camera.center,{lift,highlight,actor});
+    paint(width,height,position,scale,camera.center,effects);
     if (started!==null || alive) schedule();
   }
   function schedule() {
