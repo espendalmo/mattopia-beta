@@ -112,20 +112,64 @@ function beacon(x,z,color) {
   return [box(x,z,.23,.23,1.35,'#62728a'),box(x,z,.55,.49,.27,color,1.33)];
 }
 
+function landscape(x,z,w,d,y,color,phase=0) {
+  const outline=Array.from({length:40},(_,i)=>{
+    const a=-i*Math.PI/20;
+    const radius=1+.07*Math.sin(a*3+phase)+.043*Math.cos(a*5+phase);
+    return [x+Math.cos(a)*w*radius/2,y,z+Math.sin(a)*d*radius/2];
+  });
+  return {shape:'landscape',outline,x,y,z,w,d,h:0,color};
+}
+
+function mixColor(from,to,amount) {
+  const channels=color=>color.slice(1).match(/../g).map(value=>parseInt(value,16));
+  const target=channels(to);
+  return '#'+channels(from).map((value,i)=>Math.round(value+(target[i]-value)*amount).toString(16).padStart(2,'0')).join('');
+}
+
+function landscapeEdge(color,sky) {
+  return Array.from({length:25},(_,i)=>landscape(0,0,146-i*2.7,132-i*2.45,-.62+i*.0175,
+    mixColor(sky,color,(i/24)**1.7)));
+}
+
+function river(ground,sky) {
+  const bend=z=>.82*Math.sin(z*.095);
+  return Array.from({length:40},(_,i)=>{
+    const z=-60+i*3, next=z+3;
+    const color=mixColor('#5caac3',mixColor(ground,sky,.48),Math.max(0,(Math.abs(z+1.5)-32)/26));
+    return {shape:'landscape',x:bend(z+1.5),y:.027,z:z+1.5,h:0,color,
+      outline:[[bend(z)-3.7,.027,z],[bend(next)-3.7,.027,next],
+        [bend(next)+3.7,.027,next],[bend(z)+3.7,.027,z]]};
+  });
+}
+
+function groundTexture(theme) {
+  const p=THEMES[theme];
+  return Array.from({length:95},(_,i)=>{
+    const x=((i*137)%607)/10-30.3, z=((i*113+21)%573)/10-28.6;
+    if (theme==='city' && Math.abs(x)<4.25) return null;
+    const onIsland=(x/22)**2+(z/18)**2<1;
+    if (theme==='island' && !onIsland && (x/33)**2+(z/30)**2<1) return null;
+    const color=theme==='island'&&!onIsland?'#72c2cd':p.grass;
+    const y=theme==='island'?(onIsland?.451:-.196):.003;
+    return box(x,z,.31+(i%6)*.19,.11+(i%5)*.13,.012,mixColor(color,i%3===0?p.dark:p.white,.1+i%5*.027),y);
+  }).filter(Boolean);
+}
+
 function terrain(theme) {
   const p=THEMES[theme];
   const floor=(...parts)=>parts.map((part,layer)=>({...part,layer}));
   if(theme==='city') return [
-    ...floor(box(0,0,57,52,1.19,p.edge,-1.25),box(-16.1,0,24.8,51.6,.22,p.grass,-.22),box(16.1,0,24.8,51.6,.22,p.grass,-.22),
-      box(0,0,7.4,51.6,.15,'#5caac3',-.19),box(-3.83,0,.58,51.6,.18,'#adc291',-.17),box(3.83,0,.58,51.6,.18,'#adc291',-.17),
-      ...Array.from({length:9},(_,i)=>box(i%2?1.72:-1.26,-22+i*5.2,1.52,.25,.02,'#86cbda',-.01)),
+    ...floor(...landscapeEdge(p.grass,p.sky),landscape(0,0,81,73,0,p.grass),...groundTexture(theme),
+      ...river(p.grass,p.sky),
+      ...Array.from({length:26},(_,i)=>box((i*11%27-13)/6,-36+i*2.8,1.02+i%4*.3,.12+i%3*.055,.01,i%3===0?'#6fb6ca':'#82c6d6',.036)),
       ...[-16,16].flatMap(x=>[box(x,0,2.25,51.7,.1,p.road,.02),...Array.from({length:12},(_,i)=>box(x,-23+i*4,.14,1.35,.02,p.white,.13))]),
       ...[0,11].flatMap(z=>[box(0,z,56.4,1.9,.17,p.road,.11),box(0,z-.91,8.8,.22,.25,p.white,.24),box(0,z+.91,8.8,.22,.25,p.white,.24)])),
     box(-7,-12,3.5,3.1,1.73,'#e9c39a',0,2),roof(-7,-12,4,3.4,1,'#ad6c62',1.73),
     box(7,-17,3.1,3,1.65,'#e9d1a2',0,2),roof(7,-17,3.55,3.5,.95,'#688ba3',1.65),...tree(-5.4,-8,'city'),...tree(6.4,14,'city'),
   ];
   if(theme==='moon') return [
-    ...floor(box(0,0,58,53,1.25,p.edge,-1.34),box(0,0,57.6,52.6,.2,p.grass,-.2),
+    ...floor(...landscapeEdge(p.grass,p.sky),landscape(0,0,81,73,0,p.grass,1.4),...groundTexture(theme),
       ...[-15,15].map(x=>box(x,0,2.1,51,.07,p.road,.01)),
       ...[-.75,11].map(z=>box(0,z,56.2,1.75,.08,p.road,.1)),
       ...[[-2,-18],[0,7],[.7,19]].flatMap(([x,z])=>[tube(x,z,5.9,5.5,.2,'#7d7a91',.01),tube(x,z,4.7,4.35,.12,'#646881',.21),tube(x-.23,z+.2,3.75,3.45,.13,'#6f6d83',.33)])),
@@ -133,14 +177,31 @@ function terrain(theme) {
     ...[[-6,-4],[5,1],[-8,13],[6,17]].flatMap(([x,z])=>beacon(x,z,'#92dfdf')),
   ];
   return [
-    ...floor(box(0,0,61,55,1.33,'#4e93b0',-1.36),box(0,0,60.6,54.6,.16,'#72c2cd',-.16),
-      tube(0,0,59,51.5,.31,'#e7c58d',-.03),tube(0,-.9,54.6,45.5,.18,p.grass,.27),
+    ...floor(...landscapeEdge('#72c2cd',p.sky),
+      landscape(0,0,65,58,.02,'#8bd3d7',1),landscape(0,0,60,53,.16,'#e7c58d',1),
+      landscape(0,-.9,54.6,46.5,.45,p.grass,1),...groundTexture(theme),
+      ...Array.from({length:32},(_,i)=>{
+        const a=i*2.39996, spread=1.21+(i%8)*.049;
+        return box(Math.cos(a)*29*spread,Math.sin(a)*25*spread,1.6+i%4*.5,.11,.013,
+          mixColor('#72c2cd','#e2f8f2',.13+i%4*.035),-.186);
+      }),
       ...[-15,15].map(x=>box(x,-.25,1.65,40.6,.07,p.road,.46)),
       ...[.85,11].map(z=>box(0,z,48.3,1.5,.09,p.road,.46)),
       ...[-17,-9,3,14].map(x=>box(x,24.8,3.34,.24,.05,'#c5eef1',.025))),
     ...[[-3,18],[0,18],[3,18],[-1,-17],[-4,-17],[3,-17],[1,7]].flatMap(([x,z])=>tree(x,z,'island').map(part=>({...part,y:part.y+.43}))),
     box(0,-10,4.15,3,1.85,'#efcb91',.44,3),roof(0,-10,4.75,3.55,1.04,'#c47f71',2.28),
   ];
+}
+
+function ambientParts(theme) {
+  if (theme==='island') return [
+    box(-7,-16,.47,.37,.22,'#f7f2dc',5.6),box(-7.5,-16,.69,.14,.11,'#f7f2dc',5.66),
+    box(-6.5,-16,.69,.14,.11,'#f7f2dc',5.66),box(-7,-16.17,.17,.18,.14,'#e5bd80',5.64),
+  ];
+  const x=theme==='city'?-16.46:-15.4;
+  const y=theme==='city'?.13:.08;
+  return [box(x,0,1.05,1.84,.37,'#5d606d',y),box(x,0,1.16,1.72,.35,theme==='city'?'#eab061':'#dfdbec',y+.27),
+    box(x,.19,.82,.8,.4,'#92b9cc',y+.59),box(x,.19,.89,.81,.13,'#edf0df',y+.94)];
 }
 
 const plot = (index, theme) => {
@@ -242,7 +303,7 @@ function worldScene(theme) {
     steps.push(worldDetail(theme,i));
     if(i%2===1) steps.push(worldDetail(theme,16+Math.floor(i/2)));
   });
-  return {base:terrain(theme),steps,background:THEMES[theme].sky,yaw:-.62,pitch:.57,world:true};
+  return {base:terrain(theme),ambient:ambientParts(theme),steps,background:THEMES[theme].sky,yaw:-.62,pitch:.57,world:true};
 }
 
 const catalog = new Map();
@@ -250,12 +311,13 @@ export function projectScene(id, completed=0) {
   const project=projectById(id);
   if(!project) return null;
   if(!catalog.has(id)) catalog.set(id, Object.hasOwn(HERO_PALETTES,id) ? heroScene(id) : worldScene(id));
-  const {base,steps,background,yaw,pitch,world}=catalog.get(id);
+  const {base,ambient,steps,background,yaw,pitch,world}=catalog.get(id);
   const built=Math.max(0,Math.min(steps.length,completed));
   const parts=base.concat(steps.slice(0,built).flatMap(step=>step.parts));
   const height=Math.max(...parts.map(part=>part.y+part.h));
   return {
-    parts, background, yaw, pitch,
+    parts, ambient, background, yaw, pitch, world, id,
+    latest:steps[built-1]?.parts ?? [],
     center:world ? 1 : Math.max(0,height*.43),
     size:world ? 79 : Math.max(14,height*1.38),
     last:steps[built-1]?.label, next:steps[built]?.label,

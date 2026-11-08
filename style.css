@@ -647,7 +647,7 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 .project-peek {
   position: relative;
   display: block;
-  width: min(100%, 360px);
+  width: min(100%, 410px);
   margin: 0 auto 12px;
   padding: 0;
   border: 1px solid var(--line);
@@ -672,7 +672,7 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 }
 .project-peek svg { width: 15px; height: 15px; }
 .welcome-dialog .project-peek { margin-top: 24px; }
-.completion-garden.completion-project { width: min(100%, 360px); height: auto; margin-bottom: 18px; }
+.completion-garden.completion-project { width: min(100%, 410px); height: auto; margin-bottom: 18px; }
 .completion-project .earned-star svg { fill: none; stroke: #8b6825; stroke-width: 1.8; }
 .project-dialog {
   width: min(100% - 20px, 970px);
@@ -703,6 +703,33 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 .project-control-group > button { min-width: 42px; min-height: 42px; padding: 6px 9px; }
 .project-control-group > button[aria-pressed="true"] { background: var(--mint); border-color: #8eb281; color: var(--green); }
 .project-zoom { font-size: 1.2rem; }
+.project-latest {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+  text-align: left;
+  padding: 11px 13px;
+  border: 1px solid #e4d49c;
+  border-radius: 15px;
+  background: #fff8df;
+}
+.project-latest small { display: block; margin-bottom: 3px; color: #6a592f; font-size: .77rem; }
+.project-latest strong { font-size: .96rem; }
+.project-latest .secondary { min-height: 44px; padding: 6px 11px; font-size: .85rem; }
+.result-latest { width: min(100%, 470px); margin: 12px auto 15px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  dialog[open]:not(.retry-sheet) { animation: dialog-appear 190ms ease-out; }
+  dialog[open]:not(.retry-sheet)::backdrop { animation: backdrop-appear 190ms ease-out; }
+  .complete .result-latest { animation: dialog-appear 240ms ease-out; }
+  @keyframes dialog-appear {
+    from { opacity: 0; translate: 0 6px; }
+    to { opacity: 1; translate: 0 0; }
+  }
+  @keyframes backdrop-appear { from { opacity: 0; } to { opacity: 1; } }
+}
 
 @media (max-width: 380px) {
   .focus-options button { font-size: .68rem; }

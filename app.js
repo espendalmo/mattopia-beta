@@ -214,7 +214,7 @@ function rewardDetails(reward = null) {
 function rewardArt(happy = false, reward = null) {
   const info = rewardDetails(reward);
   if (info.project) return `<button class="project-peek" data-action="project-open" data-project="${info.mode}" aria-label="Utforsk ${info.project.name} i 3D">
-    <canvas data-project-preview="${info.mode}" data-completed="${info.completed}" aria-hidden="true"></canvas><span>Utforsk i 3D ${icon('arrow')}</span>
+    <canvas data-project-preview="${info.mode}" data-completed="${info.completed}" ${happy && info.added && celebrateOnRender ? 'data-reveal' : ''} aria-hidden="true"></canvas><span>Utforsk i 3D ${icon('arrow')}</span>
   </button>`;
   const art = info.mode === 'bricks'
     ? renderBuildSvg(info.build, {animate:happy, preview:info.build.pieces === 0})
@@ -226,7 +226,9 @@ function mountProjectPreview(container) {
   const canvas = container.querySelector('[data-project-preview]');
   if (!canvas) return;
   const scene = projectScene(canvas.dataset.projectPreview, Number(canvas.dataset.completed));
-  if (scene) return mountProjectView(canvas.parentElement, scene);
+  if (scene) return mountProjectView(canvas.closest('.complete') || canvas.parentElement, scene, false, {
+    closeUp:true, reveal:canvas.hasAttribute('data-reveal'),
+  });
 }
 
 function projectProgress(project, completed) {
@@ -239,6 +241,7 @@ function showProject(id) {
   const completed = state.projects[id] || 0;
   const scene = projectScene(id, completed);
   const milestone = scene.next ? `Neste byggesteg er «${scene.next}».` : 'Hele byggeprosjektet er ferdig!';
+  const latest = scene.last ? `<div class="project-latest"><div><small>Siste byggesteg · ${completed} av ${project.total}</small><strong>${escapeHtml(scene.last)}</strong></div><button class="secondary" data-project-latest>Vis siste steg</button></div>` : '';
   showDialog(`<div class="dialog-header"><div><h2 id="dialog-title" tabindex="-1" autofocus>${project.name}</h2>
       <p>${projectProgress(project, completed)}</p></div><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggeprosjektet">${icon('close')}</button></div>
     <div class="project-viewer" data-drag-mode="move">
@@ -251,13 +254,14 @@ function showProject(id) {
         <div class="project-control-group" role="group" aria-label="Zoom og tilbakestill">
           <button class="secondary project-zoom" data-project-zoom=".8" aria-label="Zoom ut">−</button>
           <button class="secondary project-zoom" data-project-zoom="1.25" aria-label="Zoom inn">+</button>
-          <button class="secondary" data-project-reset>Tilbakestill</button>
+          <button class="secondary" data-project-reset>Oversikt</button>
         </div>
       </div>
       <p id="project-instructions" data-project-instructions>Dra for å flytte. Klyp eller bruk pluss og minus for å zoome.</p>
+      ${latest}
     </div>
     <p id="project-milestone" class="project-milestone">${milestone}</p>`, 'project-dialog', dialog => {
-    const dispose = mountProjectView(dialog.querySelector('.project-viewer'), scene, true);
+    const dispose = mountProjectView(dialog.querySelector('.project-viewer'), scene, true, {closeUp:Boolean(completed)});
     dialog.addEventListener('close', dispose, {once:true});
   });
 }
@@ -569,8 +573,8 @@ function checkFocusBreak() {
   }
   if (focusGame.matched) {
     celebrateOnRender = true;
-    sounds.play('memory', state.sound);
-  } else if (!done) sounds.play('retry', state.sound);
+    feedback('memory', [15,42,20]);
+  } else if (!done) feedback('retry', 11);
   render(); goTop(); focusHeading();
 }
 
@@ -849,18 +853,20 @@ function renderComplete() {
   const projectStep = g.added && projectScene(g.mode, g.completed).last;
   const length = state.history.at(-1)?.length ?? ROUND_LENGTH;
   const message = g.project
-    ? g.full ? `${g.label} er ferdig!<br>${projectProgress(g.project, g.completed)}.`
-      : `${projectStep ? `${projectStep} er på plass!` : g.label}<br>${projectProgress(g.project, g.completed)}.`
+    ? `${g.label}${g.full ? ' er ferdig!' : ''}<br>${projectProgress(g.project, g.completed)}.`
     : g.mode === 'bricks' ? g.full ? `${g.model.done}<br>Fem klosser, ett flott bygg!` : `En ny kloss på plass!<br>${g.build.pieces} av ${g.model.pieces.length} klosser.` : `${g.label}<br>${g.garden.stage} av 5 vekststeg.`;
   const earnedBrick = g.mode === 'bricks' || g.added;
-  const party = celebrateOnRender ? confetti() : ''; celebrateOnRender = false;
+  const party = celebrateOnRender ? confetti() : '';
   const newBadge = BADGES.find(badge => badge.stars === state.roundsCompleted);
   const badge = newBadge ? `<div class="new-badge">${badgeArt(newBadge)}<span>Nytt merke <strong>${newBadge.name}</strong></span></div>` : '';
   const next = g.mode === 'bricks' && upcomingBuild(g.build);
   const preview = next ? `<div class="next-build-card">${renderBuildSvg(next, {mini:true, preview:true})}<div>Neste bygg<strong>Hva tror du det blir?</strong></div></div>` : '';
-  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">Du klarte runden!</h1><p>${message}</p><div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="primary" data-action="home">Ferdig for nå${icon('check')}</button><button class="text-button" data-action="again">${state.focusBreakPending ? breakButtonLabel() : 'En runde til'}</button></main></div>${party}`;
+  const latest = projectStep ? `<div class="project-latest result-latest"><div><small>Nytt byggesteg · ${g.completed} av ${g.project.total}</small><strong>${escapeHtml(projectStep)}</strong></div><button class="secondary" data-project-latest>Vis igjen</button></div>` : '';
+  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">Du klarte runden!</h1>${latest}${(!projectStep || g.full) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="primary" data-action="home">Ferdig for nå${icon('check')}</button><button class="text-button" data-action="again">${state.focusBreakPending ? breakButtonLabel() : 'En runde til'}</button></main></div>${party}`;
+  celebrateOnRender = false;
 }
 
+let renderedScreen;
 function render() {
   disposeProjectPreview?.();
   if (view === 'round') renderRound();
@@ -869,9 +875,20 @@ function render() {
   else if (view === 'onboarding') renderOnboarding();
   else renderHome();
   disposeProjectPreview = mountProjectPreview(root);
+  const screen = view === 'round' ? `round-${state.active?.id}-${state.active?.index}` : view;
+  if (renderedScreen !== screen && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    root.querySelector(view === 'round' ? '.task' : 'main')?.animate?.(
+      [{opacity:.6, transform:'translateY(5px)'},{opacity:1, transform:'translateY(0)'}],
+      {duration:220, easing:'ease-out'});
+  }
+  renderedScreen = screen;
 }
 
-function playSuccess(final = false) { sounds.play(final ? 'finish' : 'success', state.sound); }
+function feedback(kind, pulse) {
+  if (state.haptics) navigator.vibrate?.(pulse);
+  sounds.play(kind, state.sound);
+}
+function playSuccess() { sounds.play('success', state.sound); }
 function keypad() { return `<div class="number-entry"><p>Svaret ditt</p><output id="input-value" aria-label="Svaret ditt" aria-live="polite">${ui.entry || '?'}</output><div class="keypad" role="group" aria-label="Skriv svaret">${[1,2,3,4,5,6,7,8,9].map(n => `<button data-digit="${n}" aria-label="Skriv ${n}" ${ui.retry ? 'disabled' : ''}>${n}</button>`).join('')}<button data-action="erase" aria-label="Slett siste siffer" ${ui.retry || !ui.entry ? 'disabled' : ''}>${icon('backspace')}</button><button data-digit="0" aria-label="Skriv 0" ${ui.retry ? 'disabled' : ''}>0</button><button class="submit-number" data-action="submit-number" ${ui.retry || !ui.entry ? 'disabled' : ''}>Svar</button></div></div>`; }
 function keyFeedback(key) {
   sounds.play('key', state.sound);
@@ -1012,6 +1029,7 @@ function adultView() {
     <fieldset class="adult-group reward-options"><legend>Hva vil barnet bygge videre på?</legend><label class="level-option"><input type="radio" name="reward-mode" value="plant" ${state.rewardMode === 'plant' ? 'checked' : ''}><span class="reward-choice-icon" aria-hidden="true">${icon('sprout')}</span><span><strong>Plante</strong><small>En spire som vokser og blomstrer.</small></span></label><label class="level-option"><input type="radio" name="reward-mode" value="bricks" ${state.rewardMode === 'bricks' ? 'checked' : ''}><span class="reward-choice-icon brick-choice" aria-hidden="true">${icon('brick')}</span><span><strong>Klossebygging</strong><small>Fem store klosser blir en tilfeldig figur.</small></span></label>
       ${projectOptions()}<p class="adult-note">Du kan bytte mellom belønningene og fortsette på hvert prosjekt senere.</p></fieldset>
     <label class="sound-setting"><input type="checkbox" id="sound-setting" ${state.sound ? 'checked' : ''}>Lyder ved svar og fullføring</label>
+    ${typeof navigator.vibrate === 'function' ? `<label class="sound-setting"><input type="checkbox" id="haptics-setting" ${state.haptics ? 'checked' : ''}>Vibrasjon ved svar og fullføring</label>` : ''}
     <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="visual-setting" aria-describedby="visual-setting-note" ${state.alwaysShowVisuals ? 'checked' : ''}>Vis alltid brikker og figurer</label>
     <p class="adult-note" id="visual-setting-note">Holder tellebrikker og andre figurer synlige i matteoppgavene. Med valget av kan støtten bli valgfri etter flere trygge runder. Barnet kan da hente den fram med «Vis meg».</p></div>
     <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="focus-break-setting" aria-describedby="focus-break-note" ${state.focusBreaks ? 'checked' : ''}>Pauseleker mellom øvingsrundene</label>
@@ -1051,6 +1069,7 @@ function adultView() {
         }
         if (e.target.name === 'reward-mode') { state = selectRewardMode(state, e.target.value); save(); }
         if (e.target.id === 'sound-setting') { state.sound = e.target.checked; save(); state.sound ? playSuccess() : sounds.stop(); }
+        if (e.target.id === 'haptics-setting') { state.haptics = e.target.checked; save(); }
         if (e.target.id === 'visual-setting') { state.alwaysShowVisuals = e.target.checked; save(); }
         if (e.target.id === 'focus-break-setting') {
           state.focusBreaks = e.target.checked;
@@ -1075,7 +1094,7 @@ function submitAnswer(value) {
   const task = answered.tasks[answered.index];
   if (answered.solved) {
     save(); render();
-    sounds.play(answered.attempts[answered.index] === 1 ? 'success' : 'recover', state.sound);
+    feedback(answered.attempts[answered.index] === 1 ? 'success' : 'recover', 16);
     flashAnswer(task, value, true);
     say(`Riktig. ${equationText(task)} Neste oppgave er klar.`);
     root.querySelector('[data-action="next"]')?.focus({ preventScroll: true });
@@ -1087,7 +1106,7 @@ function submitAnswer(value) {
   ui.retry = true;
   ui.retryUntil = Date.now() + 1100;
   state.active = noteHelp(answered);
-  save(); render(); sounds.play('retry', state.sound);
+  save(); render(); feedback('retry', 11);
   flashAnswer(task, value, false);
   const attempt = ui;
   setTimeout(() => {
@@ -1223,7 +1242,7 @@ document.addEventListener('click', e => {
         state = advancePractice(awarded.state, profile?.grade, summary.level); completedReward = awarded.reward;
         state.focusBreakPending = state.focusBreaks && state.roundsCompleted % BREAK_INTERVAL === 0;
       }
-      state.active = null; view = 'complete'; celebrateOnRender = true; playSuccess(true);
+      state.active = null; view = 'complete'; celebrateOnRender = true; feedback('finish', [18,55,25]);
     }
     ui = makeUI(); save(); render(); goTop(); focusHeading();
   }
@@ -1238,7 +1257,7 @@ document.addEventListener('click', e => {
   if (action === 'pause' && !ui.retry) showPause();
   if (action === 'pause-home') { closeDialog(); view = 'home'; save(); render(); goTop(); focusHeading(); }
   if (action === 'reset') showDialog('<h2 id="dialog-title">Slette historikken?</h2><p>Denne spilleren mister stjerner, plantevekst, bygg og en påbegynt runde.</p><button class="primary" data-action="close-dialog" autofocus>Behold historikken</button><button class="text-button" data-action="confirm-reset">Ja, slett historikken</button>', 'pause-dialog');
-  if (action === 'confirm-reset') { closeDialog(); const { level, sound, rewardMode, focusBreaks, alwaysShowVisuals, autoProgress, roundLength } = state; state = selectRewardMode({ ...freshState(), level, sound, focusBreaks, alwaysShowVisuals, autoProgress, roundLength }, rewardMode); completedReward = null; focusGame = null; save(); view = profile ? 'home' : 'onboarding'; render(); focusHeading(); }
+  if (action === 'confirm-reset') { closeDialog(); const { level, sound, haptics, rewardMode, focusBreaks, alwaysShowVisuals, autoProgress, roundLength } = state; state = selectRewardMode({ ...freshState(), level, sound, haptics, focusBreaks, alwaysShowVisuals, autoProgress, roundLength }, rewardMode); completedReward = null; focusGame = null; save(); view = profile ? 'home' : 'onboarding'; render(); focusHeading(); }
 });
 
 document.addEventListener('submit', event => {
