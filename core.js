@@ -1,6 +1,8 @@
+import {randomGenerator} from './worlds.js';
+export {randomGenerator};
 import {restoreRewards} from './rewards.js';
 import {CURRICULUM_LEVELS, CURRICULUM_TOPICS, curriculumTopic, createCurriculumTask, validCurriculumTask, nextLevelForGrade} from './curriculum.js';
-export const VERSION='1.13.0';
+export const VERSION='1.14.0';
 export const CHANNEL = 'preview';
 export const ROUND_LENGTH=8;
 export const ROUND_LENGTHS=Object.freeze([5,6,ROUND_LENGTH]);
@@ -28,7 +30,6 @@ export function topicOf(task) {
 export const countStep=t=>t.answer<t.n?-1:1;
 export const factKey=t=>curriculumTopic(t.type) ? JSON.stringify([t.type,t.prompt,t.visual])
   : [t.type,t.n??'',t.a??'',t.b??'',...(t.type==='count'?[t.answer]:[])].join(':');
-export function randomGenerator(seed){let n=seed>>>0;return()=>{n+=0x6D2B79F5;let t=n;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;};}
 function shuffle(items,rng){const a=[...items];for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 
 export function topicStats(history=[],level=1){

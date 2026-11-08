@@ -167,6 +167,32 @@ export function worldActors(theme) {
   ];
 }
 
+export function districtActors(theme,lots) {
+  const starter=lots[0];
+  const {left,right,back,front}=starter;
+  const adjacent=lots.slice(0,2);
+  const west=Math.min(...adjacent.map(lot=>lot.left)), east=Math.max(...adjacent.map(lot=>lot.right));
+  const north=Math.min(...adjacent.map(lot=>lot.back)), south=Math.max(...adjacent.map(lot=>lot.front));
+  const circuit=[[west,north],[west,south],[east,south],[east,north]];
+  const path=[[left+2,front-1.75],[right-2,front-1.75],[right-2,front-1.24],[left+2,front-1.24]];
+  const side=[[right-1.95,back+2],[right-1.95,front-2],[right-1.26,front-2],[right-1.26,back+2]];
+  if (theme==='city') return [
+    actor(vehicle('car','#e2a072'),circuit,{kind:'road',ground:.102,speed:2.55,phase:.11,corner:1.15}),
+    actor(walker('human','#ce7779'),path,{kind:'walk',ground:.039,speed:1.04,phase:.2}),
+  ];
+  if (theme==='moon') return [
+    actor(vehicle('rover','#d5b38e'),circuit,{kind:'road',ground:.10,speed:2.25,phase:.19,corner:1.15}),
+    actor(walker('astronaut','#ebe9e0'),path,{kind:'walk',ground:.04,speed:.95,phase:.21}),
+    actor(walker('alien','#79b88d'),side,{kind:'walk',ground:.04,speed:1.08,phase:.59}),
+  ];
+  const bird=[rounded(0,0,.44,.66,.22,'#f6e9da',.06),dome(0,.32,.33,.35,.26,'#fcf2de',.12),
+    ...[-1,1].map(x=>dome(x*.39,-.05,.84,.28,.14,'#eadfd1',.13,x*.32)),rounded(0,.56,.15,.24,.09,'#e8ae70',.15)];
+  return [
+    actor(bird,[[west-3,north-4],[west-3,south+4],[east+3,south+4],[east+3,north-4]],{kind:'bird',ground:5.2,speed:4.1,corner:6}),
+    actor(walker('human','#78a9a6'),path,{kind:'walk',ground:.465,speed:1.11,phase:.38}),
+  ];
+}
+
 export function actorPose(actor, seconds) {
   const {segments,length}=actor.route;
   const traveled=seconds*actor.speed;

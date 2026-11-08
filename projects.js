@@ -1,4 +1,5 @@
-import {box,tube,roof,rounded,dome,at,worldSign,vehicle,worldActors} from './scenery.js';
+import {box,tube,roof,rounded,dome,at,worldSign,vehicle,worldActors,districtActors} from './scenery.js';
+import {isWorld,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,randomGenerator} from './worlds.js';
 
 const stage = (label, ...parts) => ({label,parts:parts.flat()});
 
@@ -257,9 +258,9 @@ const plot = (index, theme) => {
   return [shoreline?Math.sign(x)*17.8:x, shoreline?Math.sign(z)*15.4:z];
 };
 
-function landmark(theme, index, definition) {
+function landmark(theme, index, definition, location=plot(index,theme)) {
   const [label, type, color, accent='#698ba7']=definition;
-  const [x,z]=plot(index,theme);
+  const [x,z]=location;
   const p=THEMES[theme], y=theme==='island'?.45:.04;
   const wide=['school','hangar','tower'].includes(type);
   const w=wide?6.55:5.45, d=wide?5.8:4.68;
@@ -403,10 +404,218 @@ function worldScene(theme) {
   return {base:terrain(theme),ambient:worldActors(theme),steps,background:THEMES[theme].sky,yaw:-.62,pitch:.57,world:true};
 }
 
+const DETAILS = {
+  city:['Brødskilt og stripete markise.','Et sted å lære med lyse vinduer.','En vindmølle med store vinger.','Mål, midtsirkel og tribune.',
+    'Bøker og vinduer i blått.','Et hotell med flere etasjer.','Et lite tårn over hustakene.','Trær, benker og en fontene.',
+    'En butikk med kurv på skiltet.','Rød fasade og flammeskilt.','Et torg med plass til folk.','Basseng med baner.',
+    'Et verksted med tannhjul på veggen.','Kaffekopp på skiltet og en koselig inngang.','Musikkskilt og mange vinduer.','Et grønt pust ved elva.'],
+  moon:['Rakett, landingsmerker og lys.','En stor kuppel å bo i.','Solpaneler som gir strøm.','Et hjem til månebilene.',
+    'En grønn kuppel for planter.','Beholdere for vann.','Et laboratorium med instrumenter.','Et sted å se ut i rommet.',
+    'Antenner til meldinger hjem.','Utstyr til å reparere ting.','Paneler og batterier til basen.','Et område for forsøk.',
+    'Et sted å ta imot forsyninger.','Lager for is og vann.','Et tårn med radiosignal.','En ekstra rakettplass.'],
+  island:['Hotell med balkong ved stranden.','Iskjegleskilt og stripete markise.','En badeplass med basseng.','Surfebrett på skiltet og planter ved døra.',
+    'Et sted å spise på øya.','Palmer og skygge.','Et dansegulv med fargede ruter.','En molo med plass til en båt.',
+    'Et torg for kveldsmarkedet.','Et hotell med utsikt.','En kafé ved vannet.','En rolig plass å bade.',
+    'Et høyt tårn å se øya fra.','En grønn hage under palmene.','En liten bod med fruktskilt.','Et torg der øya kan møtes.'],
+};
+
+export function worldBuilding(id,index) {
+  const definition=PLACES[id]?.[index];
+  if (!definition) return null;
+  return {name:definition[0],description:DETAILS[id][index]};
+}
+
+export function worldBuildingOptions(id,map) {
+  const available=worldChoices(map);
+  const types=new Set();
+  const varied=[];
+  for (const index of available) {
+    const type=PLACES[id][index][1];
+    if (types.has(type)) continue;
+    types.add(type);
+    varied.push(index);
+    if (varied.length===3) return varied;
+  }
+  return [...varied,...available.filter(index=>!varied.includes(index))].slice(0,3);
+}
+
+export function worldBuildingPreview(id,index) {
+  const definition=PLACES[id]?.[index];
+  if (!definition) return null;
+  const parts=landmark(id,index,definition,[0,0]).flatMap(step=>step.parts);
+  const height=Math.max(...parts.map(part=>part.y+part.h));
+  return {parts,background:THEMES[id].sky,yaw:-.52,pitch:.47,center:height*.39,size:Math.max(9.7,height*1.47),latest:[]};
+}
+
+function landShape(x,z,w,d,y,color,layout) {
+  const outline=Array.from({length:48},(_,i)=>{
+    const a=-i*Math.PI/24, cos=Math.cos(a), sin=Math.sin(a);
+    const swell=1+.047*Math.sin(a*3+layout.phase)+.027*Math.cos(a*5-layout.phase);
+    const power=2/layout.shorePower;
+    return [x+Math.sign(cos)*Math.abs(cos)**power*w*swell/2,y,
+      z+Math.sign(sin)*Math.abs(sin)**power*d*swell/2];
+  });
+  return {shape:'landscape',outline,x,y,z,w,d,h:0,color};
+}
+
+function watercourse(layout,back,front,land) {
+  const bend=z=>Math.sin(z*.085+layout.phase)*layout.waterBend;
+  const length=front-back;
+  const strips=Math.ceil(length/1.05);
+  const river=[];
+  for (let i=0;i<strips;i++) {
+    const z1=back+length*i/strips,z2=back+length*(i+1)/strips;
+    const z=(z1+z2)*.5,x=(bend(z1)+bend(z2))*.5;
+    const fade=Math.min(1,Math.min(z-back,front-z)/5.8);
+    const strength=fade*fade*(3-2*fade);
+    const width=3.06+.25*Math.sin(z*.23+layout.phase);
+    const shore=(half,y,color)=>({shape:'landscape',x,y,z,h:0,color,
+      outline:[[bend(z1)-half,y,z1],[bend(z2)-half,y,z2],[bend(z2)+half,y,z2],[bend(z1)+half,y,z1]]});
+    const water=mixColor('#509eab','#80c4c8',.41+.13*Math.sin(z*.38)+.08*Math.cos(z*.71));
+    river.push(shore(width+.42,.024,mixColor(land,'#b2d3ae',strength)),shore(width,.031,mixColor(land,water,strength)));
+    if (i%4===2 && strength>.45) {
+      river.push(box(x+1.24*Math.sin(i*.87),z,.66+i%3*.24,.065,.008,mixColor(water,'#b0e0df',.49),.037));
+    }
+  }
+  return river;
+}
+
+function districtRoads(theme,lots,p,y) {
+  const segments=new Map();
+  const connect=(a,b,c,d,bridge=false)=>segments.set([a,b,c,d].join(','),{a,b,c,d,bridge});
+  for (const {left,right,back,front} of lots) {
+    connect(left,back,left,front);
+    connect(right,back,right,front);
+    connect(left,back,right,back);
+    connect(left,front,right,front);
+  }
+  if (theme==='city') {
+    for (const west of lots.filter(lot=>lot.col===1)) {
+      const east=lots.find(lot=>lot.col===2&&lot.row===west.row);
+      if (east) for (const z of [west.back,west.front]) connect(west.right,z,east.left,z,true);
+    }
+  }
+  const curbs=[],roads=[],paint=[];
+  const width=theme==='island'?1.33:1.98;
+  const border=theme==='moon'?'#b8b8d2':theme==='island'?'#e2c99e':'#bdc5b8';
+  for (const {a,b,c,d,bridge} of segments.values()) {
+    const vertical=a===c, length=Math.abs(vertical?d-b:c-a);
+    const x=(a+c)*.5,z=(b+d)*.5;
+    // Paint every curb first so the asphalt flows through corners and junctions.
+    curbs.push(box(x,z,vertical?width+.52:length+width+.52,vertical?length+width+.52:width+.52,.036,border,y+.009));
+    roads.push(box(x,z,vertical?width:length+width,vertical?length+width:width,.069,p.road,y+.033));
+    if (theme!=='island') {
+      const dashes=Math.floor(length/3.3);
+      paint.push(...Array.from({length:dashes},(_,i)=>{
+        const offset=(i+1)*length/(dashes+1);
+        return box(vertical?a:a+offset,vertical?b+offset:b,vertical?.08:.92,vertical?.92:.08,.01,
+          theme==='moon'?'#b6c6de':'#eadcba',y+.104);
+      }));
+    }
+    if (bridge) paint.push(...[-1,1].flatMap(side=>[
+      box(x,z+side*1.19,length,.16,.19,'#dccba9',y+.1),
+      ...[-.4,0,.4].map(t=>box(x+t*length,z+side*1.19,.25,.24,.38,'#f4e7c2',y+.11)),
+    ]));
+  }
+  return [...curbs,...roads,...paint];
+}
+
+function plotDetails(theme,lot,p,y) {
+  const rng=randomGenerator(lot.seed);
+  const x=lot.left+(lot.right-lot.left)*.16,z=lot.back+(lot.front-lot.back)*.13;
+  const marks=Array.from({length:11},(_,i)=>{
+    const dx=lot.left+1.8+rng()*(lot.right-lot.left-3.6),dz=lot.back+1.8+rng()*(lot.front-lot.back-3.6);
+    const tint=mixColor(p.grass,i%3?p.white:p.dark,.075+rng()*.12);
+    return landscape(dx,dz,.34+rng()*1.07,.21+rng()*.53,y+.008+i*.0005,tint,rng()*6.28);
+  });
+  const natural=theme==='moon' ? [
+    landscape(x,z,2.3,1.82,y+.011,'#7d819f',lot.seed),
+    landscape(x-.12,z+.1,1.66,1.23,y+.021,'#666d8b',lot.seed),
+    dome(x+1.22,z-.43,1.1,.83,.32,'#a6a7bc',y+.035),
+    dome(x+1.7,z-.7,.48,.42,.19,'#bcbaca',y+.03),
+  ] : [
+    dome(x,z,2.6+rng()*1.7,1.92+rng()*1.2,.43+rng()*.38,mixColor(p.grass,p.leaves,.41),y),
+    dome(x+.83,z+.21,1.59,1.28,.36,mixColor(p.grass,p.white,.19),y+.03),
+    ...Array.from({length:4},(_,i)=>dome(x+i*.39,z+1.05+rng()*.51,.22,.23,.14,
+      ['#f7d4a2','#e8a9b7','#d8dab3','#c9a6d1'][i],y+.04)),
+  ];
+  return {marks,natural};
+}
+
+function generatedTerrain(theme,layout,lots) {
+  const p=THEMES[theme];
+  const margin=5.8+lots.length*.13;
+  const riverbank=theme==='city'?8.2:0;
+  const left=Math.min(-riverbank,...lots.map(lot=>lot.left-margin)),right=Math.max(riverbank,...lots.map(lot=>lot.right+margin));
+  const back=Math.min(...lots.map(lot=>lot.back))-margin,front=Math.max(...lots.map(lot=>lot.front))+margin;
+  const x=(left+right)*.5,z=(back+front)*.5,w=right-left,d=front-back,y=theme==='island'?.45:0;
+  const land=mixColor(p.grass,layout.grassTint<.5?p.white:p.leaves,Math.abs(layout.grassTint-.5)*.39);
+  const edge=theme==='island'?'#76c5cd':land;
+  const shape=(expand,height,color)=>landShape(x,z,w+expand,d+expand,height,color,layout);
+  const details=lots.map(lot=>plotDetails(theme,lot,p,y));
+  const waves=theme==='island'
+    ? shape(9,-.018,edge).outline.filter((_,i)=>i%4===0).map(([x,,z],i)=>
+      landscape(x,z,.95+i%3*.26,.11,-.017,mixColor(edge,p.white,.47),layout.phase+i*.3))
+    : [];
+  const floor=[
+    ...Array.from({length:17},(_,i)=>shape(24-i*1.25,-.54+i*.022,mixColor(p.sky,edge,(i/16)**1.5))),
+    ...(theme==='island'?[shape(4.8,.033,'#9cdad6'),shape(2.6,.16,'#eac991'),shape(1.2,.28,'#f2d7a1')]:[]),
+    shape(0,y,land),
+    ...lots.map(lot=>landscape(lot.x-1.1,lot.z+1.3,8.2,6.2,y+.005,mixColor(land,p.white,.1),(lot.seed%900)/143)),
+    ...details.flatMap(detail=>detail.marks),
+    ...waves,
+    ...(theme==='city'?watercourse(layout,back+1,front-1,land):[]),
+    ...districtRoads(theme,lots,p,y),
+  ].map((part,layer)=>({...part,layer}));
+  return {parts:[...floor,...details.flatMap(detail=>detail.natural)],anchorX:x,anchorZ:z,size:Math.max(w,d)*1.21};
+}
+
+const PHASES=['Grunnarbeid','Form og fasade','Siste detaljer'];
+function plannedWorldScene(id,map) {
+  const status=worldStatus(map);
+  const {partial}=legacyPlacement(map.legacy);
+  const previous=map.legacy ? projectScene(id,map.legacy) : null;
+  const layout=previous?null:worldLayout(id,map.seed);
+  const carry=Number(Boolean(partial));
+  const earned=Math.max(0,map.progress-carry);
+  const opened=Math.max(1,Math.ceil(earned/WORLD_BUILD_STEPS));
+  const lots=layout?.lots.slice(0,opened);
+  const terrain=previous??generatedTerrain(id,layout,lots);
+  const parts=terrain.parts.slice();
+  let latest=previous?.latest??[],last=previous?.last,finished=previous?.finished??null;
+  if (partial && map.progress) {
+    const steps=landmark(id,partial.id,PLACES[id][partial.id]);
+    latest=steps.slice(partial.stages).flatMap(step=>step.parts);
+    parts.push(...latest);
+    last=steps.at(-1).label;
+    finished=steps.at(-1).finished;
+  }
+  map.order.forEach((place,i)=>{
+    const amount=Math.max(0,Math.min(WORLD_BUILD_STEPS,earned-i*WORLD_BUILD_STEPS));
+    if (!amount) return;
+    const lot=lots?.[i];
+    const definition=PLACES[id][place];
+    const steps=landmark(id,place,definition,lot?[lot.x,lot.z]:undefined);
+    for (let j=0;j<amount;j++) {
+      latest=steps.slice(j*2,j*2+2).flatMap(step=>step.parts);
+      parts.push(...latest);
+    }
+    last=`${definition[0]} · ${PHASES[amount-1].toLowerCase()}`;
+    finished=amount===WORLD_BUILD_STEPS?definition[0]:null;
+  });
+  return {
+    parts,latest,last,finished,id,world:true,background:THEMES[id].sky,yaw:-.62,pitch:.57,center:1,closeSize:79,
+    size:terrain.size,anchorX:terrain.anchorX,anchorZ:terrain.anchorZ,
+    ambient:previous?.ambient??(earned>=2?districtActors(id,lots):[]),
+    next:status.building!==null?`${PLACES[id][status.building][0]} · ${partial&&!map.progress?'ferdigstilling':PHASES[status.phase].toLowerCase()}`:null,
+  };
+}
+
 const catalog = new Map();
 export function projectScene(id, completed=0) {
   const project=projectById(id);
   if(!project) return null;
+  if(isWorld(id)&&completed&&typeof completed==='object') return plannedWorldScene(id,completed);
   if(!catalog.has(id)) catalog.set(id, Object.hasOwn(HERO_PALETTES,id) ? heroScene(id) : worldScene(id));
   const {base,ambient,steps,background,yaw,pitch,world}=catalog.get(id);
   const built=Math.max(0,Math.min(steps.length,completed));

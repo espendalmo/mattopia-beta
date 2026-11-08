@@ -326,16 +326,16 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   }
   const paint=engine?.draw || canvasPainter(canvas,faces,scene.background);
   if (!paint) return ()=>{};
-  const initial={yaw:scene.yaw,pitch:scene.pitch,zoom:1,x:0,y:0,anchorX:0,anchorZ:0,center:scene.center};
+  const initial={yaw:scene.yaw,pitch:scene.pitch,zoom:1,x:0,y:0,anchorX:scene.anchorX??0,anchorZ:scene.anchorZ??0,center:scene.center};
   const maxZoom=MAX_ZOOM*scene.size/(scene.closeSize??scene.size);
   const latest=scene.latest ?? [];
   const heights=faces.filter(face=>face.group===1).flatMap(face=>face.points.map(point=>point[1]));
   const low=heights.length ? Math.min(...heights) : 0;
   const high=heights.length ? Math.max(...heights) : 0;
   const average=key=>latest.length ? latest.reduce((sum,part)=>sum+part[key],0)/latest.length : 0;
-  const detail=scene.world ? {...initial,zoom:maxZoom,anchorX:average('x'),anchorZ:average('z'),
+  const detail=scene.world && latest.length ? {...initial,zoom:maxZoom,anchorX:average('x'),anchorZ:average('z'),
     center:Math.max(1.8,average('y')+.6)}
-    : {...initial,zoom:1.12};
+    : {...initial,zoom:scene.world?1:1.12};
   const camera={...initial};
   const pointers=new Map();
   let mode='move',frame=0,width=0,height=0;
