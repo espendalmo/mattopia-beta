@@ -1,15 +1,17 @@
 import { illustration } from './illustrations.js';
 
 export const BREAK_ITEMS = [
-  { icon:illustration('cat'), label:'Katt' }, { icon:illustration('rocket'), label:'Rakett' },
-  { icon:illustration('strawberry'), label:'Jordbær' }, { icon:illustration('turtle'), label:'Skilpadde' },
-  { icon:illustration('balloon'), label:'Ballong' }, { icon:illustration('moon'), label:'Måne' },
-  { icon:illustration('butterfly'), label:'Sommerfugl' }, { icon:illustration('anchor'), label:'Anker' },
-  { icon:illustration('sunflower'), label:'Solsikke' }, { icon:illustration('guitar'), label:'Gitar' },
-  { icon:illustration('owl'), label:'Ugle' }, { icon:illustration('bike'), label:'Sykkel' },
-  { icon:illustration('melon'), label:'Melon' }, { icon:illustration('sailboat'), label:'Seilbåt' },
-  { icon:illustration('octopus'), label:'Blekksprut' }, { icon:illustration('mushroom'), label:'Sopp' },
-];
+  ['cat','Katt'], ['rocket','Rakett'], ['strawberry','Jordbær'], ['turtle','Skilpadde'],
+  ['balloon','Ballong'], ['moon','Måne'], ['butterfly','Sommerfugl'], ['anchor','Anker'],
+  ['sunflower','Solsikke'], ['guitar','Gitar'], ['owl','Ugle'], ['bike','Sykkel'],
+  ['melon','Melon'], ['sailboat','Seilbåt'], ['octopus','Blekksprut'], ['mushroom','Sopp'],
+  ['robot','Robot'], ['penguin','Pingvin'], ['kite','Drage'], ['camera','Kamera'],
+  ['umbrella','Paraply'], ['key','Nøkkel'], ['snail','Snegl'], ['fish','Fisk'],
+  ['pear','Pære'], ['boot','Støvel'], ['bell','Bjelle'], ['shell','Skjell'],
+  ['clock','Vekkerklokke'], ['drum','Tromme'], ['planet','Planet med ring'], ['icecream','Iskrem'],
+  ['mittens','Votter'], ['lantern','Lykt'], ['binoculars','Kikkert'], ['crown','Krone'],
+  ['train','Tog'], ['wateringcan','Vannkanne'], ['sandwich','Brødskive'], ['headphones','Hodetelefoner'],
+].map(([key,label])=>({icon:illustration(key),label}));
 
 export const BREAK_ATTEMPTS = 3;
 export const BREAK_INTERVAL = 3;
@@ -22,17 +24,20 @@ export function breakKind(roundsCompleted) {
 }
 
 export const BRICK_COLORS = {
-  red:{ label:'Rød', mark:'●', color:'#c85346' },
-  blue:{ label:'Blå', mark:'◆', color:'#3d79b0' },
-  yellow:{ label:'Gul', mark:'★', color:'#f1bf49' },
-  green:{ label:'Grønn', mark:'✚', color:'#3b8b5e' },
-  purple:{ label:'Lilla', mark:'▲', color:'#855cb0' },
+  red:{ label:'Rød', mark:'●' },
+  blue:{ label:'Blå', mark:'◆' },
+  yellow:{ label:'Gul', mark:'★' },
+  green:{ label:'Grønn', mark:'✚' },
+  purple:{ label:'Lilla', mark:'▲' },
 };
 
+// Each position is [across, depth, level], starting at the floor.
 const BUILD_PATTERNS = [
-  { name:'Robot', slots:[[1,2,1],[2,1,3],[3,1,1],[3,3,1]] },
-  { name:'Trapp', slots:[[1,1,1],[2,1,2],[3,1,2],[3,3,1]] },
-  { name:'Båt', slots:[[1,2,1],[2,1,1],[2,2,2],[3,1,3]] },
+  { name:'To etasjer', slots:[[0,0,0],[1,0,0],[0,0,1],[1,0,1]] },
+  { name:'Høy stabel til høyre', slots:[[0,0,0],[1,0,0],[1,0,1],[1,0,2]] },
+  { name:'Høy stabel til venstre', slots:[[0,0,0],[1,0,0],[0,0,1],[0,0,2]] },
+  { name:'Trapp bakover', slots:[[0,0,0],[0,1,0],[0,1,1],[1,0,0]] },
+  { name:'Trapp framover', slots:[[0,0,0],[0,1,0],[0,0,1],[1,1,0]] },
 ];
 
 function shuffle(items, rng) {

@@ -1,4 +1,5 @@
 import {actorPose,MAX_ACTORS} from './scenery.js';
+import {createFireworks,FIREWORKS_END} from './project-fireworks.js';
 
 const clamp = (value,min,max) => Math.max(min,Math.min(value,max));
 const cross = ([ax,ay,az],[bx,by,bz]) => [ay*bz-az*by,az*bx-ax*bz,ax*by-ay*bx];
@@ -202,6 +203,7 @@ function canvasPainter(canvas, faces, background) {
   const flat=faces.flatMap(splitWideFace).map(face=>({...face,paint:paintColor(face.color)}));
   const terrain=flat.filter(face=>Number.isFinite(face.layer));
   const objects=flat.filter(face=>!Number.isFinite(face.layer));
+  const terrainChanges=terrain.some(face=>face.group===1);
   const backing=terrain.length?canvas.ownerDocument.createElement('canvas'):null;
   const groundContext=backing?.getContext('2d');
   let viewKey;
@@ -269,7 +271,8 @@ function canvasPainter(canvas, faces, background) {
     context.setTransform(sx,0,0,sy,0,0);
     if (groundContext) {
       // Actors can move while the same projected landscape is reused.
-      const key=[canvas.width,canvas.height,width,height,camera.yaw,camera.pitch,camera.x,camera.y,scale,center].join(',');
+      const key=[canvas.width,canvas.height,width,height,camera.yaw,camera.pitch,camera.x,camera.y,scale,center,
+        ...(terrainChanges?[effects.growth,effects.lift,effects.highlight,effects.sweep]:[])].join(',');
       if (key!==viewKey) {
         if (backing.width!==canvas.width||backing.height!==canvas.height) {
           backing.width=canvas.width; backing.height=canvas.height;
@@ -438,7 +441,9 @@ export function projectCameras(scene,target=null,focusLatest=false) {
   }
   const average=key=>latest.reduce((sum,part)=>sum+part[key],0)/latest.length;
   const point=target??scene.latestTarget??{x:average('x'),y:Math.max(0,average('y')-.6),z:average('z'),height:4.2};
-  const close={...initial,zoom:maxZoom,anchorX:point.x,anchorZ:point.z,center:point.y+(point.height??6)*.37};
+  const height=point.height??6;
+  const close={...initial,zoom:Math.min(maxZoom,scene.size/(height*1.13+3.2)),anchorX:point.x,anchorZ:point.z,
+    center:point.y+height*(height>10?.46:.37)};
   const neighbor=Object.values(scene.landmarks??{}).filter(other=>Math.hypot(other.x-point.x,other.z-point.z)>.7)
     .reduce((nearest,other)=>!nearest||Math.hypot(other.x-point.x,other.z-point.z)<Math.hypot(nearest.x-point.x,nearest.z-point.z)?other:nearest,null);
   const context={...initial,zoom:clamp(scene.size/41,1,maxZoom),center:point.y+1.35,
@@ -473,12 +478,18 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   const high=heights.length ? Math.max(...heights) : 0;
   const camera={...initial};
   const pointers=new Map();
-  let mode='move',frame=0,width=0,height=0;
+  let frame=0,width=0,height=0,fireworks;
   const events=new AbortController();
   const listen=(node,name,handler,options={})=>node.addEventListener(name,handler,{...options,signal:events.signal});
   const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
   let marked=reveal&&latest.length>0, started=null, from={...camera}, visible=true, lastFrame=-Infinity;
   const completedBuild=scene.world&&Boolean(scene.finished)&&!target;
+  const canCelebrate=Boolean(scene.finished)&&!target;
+  const fireworkTarget=scene.latestTarget??(scene.world
+    ? {x:detail.anchorX,y:high,z:detail.anchorZ}
+    : {x:0,y:Math.max(...scene.parts.map(part=>part.y+part.h)),z:0});
+  const fireworkY=fireworkTarget.y+(fireworkTarget.height??0)+1.4;
+  const mounted=performance.now();
   if (target || closeUp && (!reveal || motion.matches || demo&&!scene.world || focusLatest&&!completedBuild)) Object.assign(camera,detail);
   else if (reveal&&scene.world) Object.assign(camera,context);
   from={...camera};
@@ -509,10 +520,11 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
         camera[key]=from[key]+(target-from[key])*ease;
       }
       if (finish) canvas.style.opacity=finish.opacity.toFixed(3);
-      if (elapsed>=1950) stopTransition();
+      if (elapsed>=(canCelebrate?FIREWORKS_END:1950)) stopTransition();
     }
     const effects=buildMotion(scene.world,elapsed,low,high,marked);
-    effects.actors=(scene.ambient??[]).map(actor=>actorPose(actor,still||motion.matches?0:now/1000));
+    const age=still||motion.matches?0:Math.max(0,now-mounted)/1000;
+    effects.actors=(scene.ambient??[]).map(actor=>actorPose(actor,age));
     const scale=Math.min(width,height)*camera.zoom/scene.size;
     const forward=camera.anchorX*Math.sin(camera.yaw)+camera.anchorZ*Math.cos(camera.yaw);
     const position={...camera,
@@ -520,6 +532,14 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
       y:camera.y-forward*Math.sin(camera.pitch)*scale,
     };
     paint(width,height,position,scale,camera.center,effects);
+    if (canCelebrate&&playing&&elapsed>=910&&elapsed<FIREWORKS_END) {
+      fireworks??=createFireworks(canvas);
+      const cos=Math.cos(camera.yaw),sin=Math.sin(camera.yaw);
+      const x=width*.5+position.x+(fireworkTarget.x*cos-fireworkTarget.z*sin)*scale;
+      const depth=fireworkTarget.x*sin+fireworkTarget.z*cos;
+      const y=height*.5+position.y-((fireworkY-camera.center)*Math.cos(camera.pitch)-depth*Math.sin(camera.pitch))*scale;
+      fireworks?.draw(x,y,width,height,pixelRatio,elapsed);
+    }
     if (started!==null || alive) schedule();
   }
   function schedule() {
@@ -532,14 +552,14 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   function zoom(factor,x=width/2,y=height/2) {
     const next=clamp(camera.zoom*factor,.75,maxZoom);
     const ratio=next/camera.zoom;
-    const dx=x-width/2, dy=y-height/2;
+    const dx=scene.world?x-width/2:0,dy=scene.world?y-height/2:0;
     camera.x=dx+(camera.x-dx)*ratio;
     camera.y=dy+(camera.y-dy)*ratio;
     camera.zoom=next;
     limitPan();
   }
   function drag(dx,dy) {
-    if (mode==='rotate'&&!scene.world) {
+    if (!scene.world) {
       camera.yaw-=dx*.009;
       camera.pitch=clamp(camera.pitch+dy*.006,.06,1.36);
     } else {
@@ -548,19 +568,11 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
       limitPan();
     }
   }
-  function setMode(value) {
-    mode=scene.world?'move':value;
-    container.dataset.dragMode=mode;
-    for (const button of container.querySelectorAll('[data-project-mode]')) {
-      button.setAttribute('aria-pressed',String(button.dataset.projectMode===mode));
-    }
-    container.querySelector('[data-project-instructions]').textContent=mode==='rotate'
-      ? 'Dra for å rotere. Klyp eller bruk pluss og minus for å zoome.'
-      : 'Dra for å flytte. Klyp eller bruk pluss og minus for å zoome.';
-  }
   function stopTransition() {
     started=null;
     canvas.style.removeProperty('opacity');
+    fireworks?.dispose();
+    fireworks=undefined;
   }
   function overview() {
     stopTransition();
@@ -579,7 +591,6 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   });
 
   if (interactive) {
-    setMode('move');
     const position=event=>[event.clientX,event.clientY];
     const midpoint=([a,b],[c,d])=>[(a+c)/2,(b+d)/2];
     const distance=([a,b],[c,d])=>Math.hypot(a-c,b-d);
@@ -598,9 +609,11 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
         const [oldX,oldY]=midpoint(old,other),[newX,newY]=midpoint(current,other);
         const bounds=canvas.getBoundingClientRect();
         zoom(distance(current,other)/Math.max(1,distance(old,other)),oldX-bounds.left,oldY-bounds.top);
-        camera.x+=newX-oldX;
-        camera.y+=newY-oldY;
-        limitPan();
+        if (scene.world) {
+          camera.x+=newX-oldX;
+          camera.y+=newY-oldY;
+          limitPan();
+        }
       } else {
         drag(current[0]-old[0],current[1]-old[1]);
       }
@@ -630,7 +643,6 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
     });
     listen(container,'click',event=>{
       const control=event.target.closest('button');
-      if (control?.dataset.projectMode) setMode(control.dataset.projectMode);
       if (control?.dataset.projectZoom) { stopTransition(); zoom(Number(control.dataset.projectZoom)); }
       if (control?.hasAttribute('data-project-reset')) overview();
       schedule();
@@ -658,6 +670,7 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
     observer?.disconnect();
     intersection?.disconnect();
     if (frame) cancelAnimationFrame(frame);
+    fireworks?.dispose();
     engine?.dispose();
   };
 }

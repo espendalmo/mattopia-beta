@@ -357,6 +357,35 @@ function brick(p,ghost=false,newPiece=false,outline=false,prefix='') {
   if (outline) return geometry+studs;
   return `<g class="brick-piece ${ghost?'unbuilt-piece':''} ${newPiece?'new-brick':''}">${geometry}<g transform="${faceTransform}">${ghost?'':printOn(p)}</g>${studs}</g>`;
 }
+
+const PUZZLE_BRICK={x:0,y:0,w:64,h:32};
+const PUZZLE_BOX=[-2,-24,project(PUZZLE_BRICK.w,0,DEPTH)[0]+4,90];
+
+export function puzzleBrickLayout(slots) {
+  const [,,width,height]=PUZZLE_BOX;
+  const positions=slots.map(([x,z,level],i)=>{
+    const [left,top]=project(x*PUZZLE_BRICK.w,-level*PUZZLE_BRICK.h,z*DEPTH);
+    return {i,left,top,depth:x-z+level};
+  });
+  const left=Math.min(...positions.map(slot=>slot.left)),top=Math.min(...positions.map(slot=>slot.top));
+  const boardWidth=Math.max(...positions.map(slot=>slot.left))-left+width;
+  const boardHeight=Math.max(...positions.map(slot=>slot.top))-top+height;
+  return {ratio:boardWidth/boardHeight, width:width/boardWidth*100, height:height/boardHeight*100,
+    slots:positions.sort((a,b)=>a.depth-b.depth).map(slot=>({
+      i:slot.i,x:(slot.left-left)/boardWidth*100,y:(slot.top-top)/boardHeight*100,
+    }))};
+}
+
+export function renderPuzzleBrick(color,mark='') {
+  const piece={...PUZZLE_BRICK,color:color??'white'};
+  const finish=`puzzle-art-${++buildArtId}`;
+  const art=color
+    ? brickMaterials(finish,[color])+brick(piece,false,false,false,finish)
+      +`<g text-anchor="middle" fill="#fff8e2" stroke="#1e3037" stroke-width="1.6" paint-order="stroke" font-weight="800"><text transform="matrix(.866 .5 0 1 0 0)" x="32" y="22" font-size="18">${mark}</text><text transform="matrix(.866 .5 .866 -.5 0 0)" x="32" y="18" font-size="12">${mark}</text></g>`
+    : `<g fill="#ebf1e7" stroke="#859a84" stroke-width="1.55" stroke-dasharray="4 2" stroke-linejoin="round">${brick(piece,false,false,true)}</g>`;
+  return `<svg class="puzzle-brick${color?'':' puzzle-shadow'}" viewBox="${PUZZLE_BOX.join(' ')}" aria-hidden="true" focusable="false">${art}</svg>`;
+}
+
 export function renderBuildSvg(build,{animate=false,mini=false,preview=false}={}) {
   const model=modelById(build?.model);if(!model)return '';
   const pieces=Math.max(0,Math.min(model.pieces.length,build.pieces));

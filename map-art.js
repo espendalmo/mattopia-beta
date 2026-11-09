@@ -1,6 +1,6 @@
-import {box,rounded,tube,dome,beam,placeParts,pointOnSite,coasterActor} from './scenery.js';
+import {box,rounded,tube,dome,beam,placeParts,pointOnSite,coasterActor,visitor,swimmer} from './scenery.js';
 import {regionSurface} from './regions.js';
-import {COASTER_TRACK,WHEEL_HUB} from './world-landmarks.js';
+import {AIRPORT_PAD,COASTER_TRACK,ROCKET_PAD,WHEEL_HUB} from './world-landmarks.js';
 import {randomGenerator} from './worlds.js';
 
 const paint='#e3ae55';
@@ -96,7 +96,66 @@ export function rideModels(plot,stages) {
       box(0,.16,.57,.095,.12,'#596f7d',.13),
     ],points,.23+i*.039));
   }
+  const model=stages.flat().filter(part=>part.flight);
+  if (model.length) {
+    const kind=model[0].flight;
+    const local=kind==='rocket'?ROCKET_PAD:AIRPORT_PAD;
+    const [x,y,z]=pointOnSite(local,plot);
+    const parts=placeParts(model,{x:-local[0],y:-local[1],z:-local[2]});
+    const craft={kind,x,y,z,yaw:plot.yaw,delay:(plot.index*11%7)*.28,parts};
+    return kind==='rocket'?[craft,{...craft,kind:'rocket-flame',parts:rocketFlame()}]:[craft];
+  }
   return [];
+}
+
+function rocketFlame() {
+  const exhaust=(radius,length,color)=>Array.from({length:8},(_,i)=>{
+    const ring=index=>[radius*Math.cos(index*Math.PI/4),.03,radius*Math.sin(index*Math.PI/4)];
+    return {shape:'terrain',outline:[ring(i),ring(i+1),[0,-length,0]],color,x:0,z:0,y:-length,h:length};
+  });
+  return [...exhaust(.64,2.26,'#f19354'),...exhaust(.47,1.4,'#f8cd69'),
+    dome(0,0,.72,.74,.31,'#fff1b6',-.16)];
+}
+
+const parkVisitors=[[-1.98,.82,2.18,0,true],[2.88,.4,2.28,-.5],[3.89,.4,-1.54,.2]];
+const gardenVisitors=[[-1.69,.68,2.45,0,true],[2.97,.47,1.61,.45]];
+const cafeVisitors=[[-2.8,.53,3.19,Math.PI,true],[1.96,.41,2.44,.5],[.71,.41,3.39,-.6]];
+const mealVisitors=[[-2.75,.54,3.28,Math.PI,true],[.13,.54,3.65,Math.PI,true],[2.03,.37,2.24,-.44]];
+const campVisitors=[[1.63,.83,-.1,.12,true],[-.01,.42,2.3,-.42]];
+const hotelVisitors=[[-2.27,.35,2.63,.29],[.69,.35,3.91,-.67]];
+const VISITORS={
+  greatPark:parkVisitors,palmGarden:parkVisitors,moonGarden:parkVisitors,
+  garden:gardenVisitors,bandstand:gardenVisitors,camp:campVisitors,beachCamp:campVisitors,
+  restaurant:mealVisitors,bistro:cafeVisitors,tikiBar:cafeVisitors,coralCafe:cafeVisitors,
+  dustCafe:cafeVisitors,moonBurger:cafeVisitors,cosmicIce:cafeVisitors,
+  busStation:[[-2.61,.82,-1.83,0,true],[2.66,.82,-1.84,0,true],[.39,.43,3.44,-.4]],
+  hotel:hotelVisitors,resort:hotelVisitors,sunsetHotel:hotelVisitors,glassHotel:hotelVisitors,
+  auroraHotel:hotelVisitors,megaResort:[[.27,.35,3.33,.46],[-4.32,.35,3.66,-.3]],
+  hoverDealer:[[-.84,.35,2.72,-.75],[.83,.35,2.59,.54]],
+  market:[[-1.42,.35,1.95,-.62],[2.66,.35,1.76,Math.PI]],
+  tropicalMarket:[[-1.28,.35,1.87,-.57],[2.59,.35,1.67,Math.PI]],
+  bookHall:[[-2.49,.82,3.16,0,true],[.81,.35,3.54,-.3]],
+  arcade:[[-1.54,.35,2.62,.51],[1.7,.35,2.74,-.62]],
+  lunarArcade:[[-1.44,.35,2.59,.54],[1.61,.35,2.63,-.52]],
+  islandArcade:[[-1.44,.35,2.59,.54],[1.61,.35,2.63,-.52]],
+  airport:[[-2.92,.35,2.63,-.43],[-1.27,.35,1.98,.42]],
+  airstrip:[[-2.86,.35,2.18,-.26]],
+};
+
+export function landmarkVisitors(theme,plot) {
+  const positions=VISITORS[plot.kind]??[];
+  const outfits=['#ca8677','#6c9cb4','#e0b375','#8a80b0'];
+  const skins=['#deae85','#aa765b','#ebbf91'];
+  const people=positions.flatMap(([x,y,z,yaw,seated],i)=>{
+    const kind=theme==='moon'?(i===1?'alien':'astronaut'):'human';
+    const model=visitor(kind,outfits[(plot.index+i)%outfits.length],skins[(plot.index+i)%skins.length],seated);
+    return placeParts(model,{x,y,z,yaw});
+  });
+  const pools=plot.kind==='megaResort'?[[-1.64,.65,2.52],[2.06,.65,2.83]]
+    :plot.kind==='tropicalPools'?[[1.5,.65,-.93],[-1.72,.65,2.02]]
+    :plot.kind==='beachClub'?[[2.28,.64,2.16]]:[];
+  for (const [x,y,z] of pools) people.push(...placeParts(swimmer('#dda97d','#d99c81'),{x,y,z,yaw:-.32}));
+  return placeParts(people,plot);
 }
 
 export function lunarSky(seed,sky,amount) {

@@ -78,17 +78,20 @@ function streetGraph(layout,spacing,shift) {
   return {nodes,links,edges,origin,available};
 }
 
-function layoutStreets(layout) {
-  if (streets.has(layout)) return streets.get(layout);
+function layoutStreets(layout,requiredLots) {
+  const versions=streets.get(layout)??new Map();
+  if (versions.has(requiredLots)) return versions.get(requiredLots);
   let graph;
   for (const [spacing,shift] of [[15.2,0],[14.3,0],[14.3,1],[13.6,0],[13.6,1],[13.6,2],[13.1,0],[13.1,2],[13.1,3]]) {
-    graph=streetGraph(layout,spacing,shift);
-    if (graph?.available.length>=REGION_PLACES-Object.keys(layout.berths).length) break;
+    const candidate=streetGraph(layout,spacing,shift);
+    if (candidate?.available.length>=requiredLots) { graph=candidate; break; }
   }
-  if (!graph) return null;
-  const reserved=graph.available.slice(0,REGION_PLACES+4);
-  graph.connectorLayout={...layout,grid:layout.grid.map(tile=>({...tile,blocked:reserved.some(site=>gap(site,tile)<5.5)}))};
-  streets.set(layout,graph);
+  if (graph) {
+    const reserved=graph.available.slice(0,REGION_PLACES+4);
+    graph.connectorLayout={...layout,grid:layout.grid.map(tile=>({...tile,blocked:reserved.some(site=>gap(site,tile)<5.5)}))};
+  }
+  versions.set(requiredLots,graph??null);
+  streets.set(layout,versions);
   return graph;
 }
 
@@ -123,9 +126,9 @@ function streetCircuits(nodes,open,links,starter) {
   return result;
 }
 
-export function planStreetRegion(layout,buildings) {
-  const graph=layoutStreets(layout);
-  if (!graph||graph.available.length<REGION_PLACES-Object.keys(layout.berths).length) return null;
+export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Object.keys(layout.berths).length) {
+  const graph=layoutStreets(layout,requiredLots);
+  if (!graph) return null;
   const {nodes,edges,origin,available,links,connectorLayout}=graph;
   const open=new Map(), active=new Set(), connectors=[],connectedNodes=new Set(),plots=[];
   const usedLots=new Set();

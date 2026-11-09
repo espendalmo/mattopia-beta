@@ -416,15 +416,22 @@ function spaceField() {
   ];
 }
 
-function rocketPort() {
+export const ROCKET_PAD=[-.63,.62,-.29];
+
+function rocketPort(orbital=false) {
+  const rocketColor=orbital?'#669bac':rose;
+  const tower=orbital?'#999dc3':'#a1b5ca';
+  const mobile=parts=>parts.map(part=>({...part,flight:'rocket'}));
   return [base(10.3,9.77,'#a5acc6'),
-    [t(-.63,-.29,6.1,6.05,.27,'#7789a7',.36),t(-.63,-.29,2.16,2.15,5.24,'#e5e0dd',.62),
-      t(-.63,-.29,2.25,2.23,.35,rose,2.25),d(-.63,-.29,2.16,2.15,1.46,rose,5.81),
-      ...pair.map(s=>roof(-.63+s*1.05,-.34,1.46,.67,2.02,'#a66682',.7)),
-      ...pair.map(s=>beam([2.34,.41,-.38+s*.73],[2.34,6.79,-.38+s*.73],.23,'#a1b5ca')),
-      ...[1.15,2.36,3.58,4.82,6.42].map(y=>b(2.34,-.39,.66,1.76,.12,brass,y))],
-    [b(.66,-.34,2.52,.63,.11,'#d6be83',4.41),t(-.63,.8,.86,.12,.82,dark,3.59,'z'),
-      t(-.63,.89,.64,.07,.63,ice,3.68,'z'),
+    [t(-.63,-.29,6.1,6.05,.27,'#7789a7',.36),...mobile([
+      t(-.63,-.29,2.16,2.15,5.24,orbital?'#ced5e2':'#e5e0dd',.62),
+      t(-.63,-.29,2.25,2.23,.35,rocketColor,2.25),d(-.63,-.29,2.16,2.15,1.46,rocketColor,5.81),
+      ...pair.map(s=>roof(-.63+s*1.05,-.34,1.46,.67,2.02,orbital?'#7d8daf':'#a66682',.7))]),
+      ...pair.map(s=>beam([2.34,.41,-.38+s*.73],[2.34,6.79,-.38+s*.73],.23,tower)),
+      ...[1.15,2.36,3.58,4.82,6.42].map(y=>b(2.34,-.39,.66,1.76,.12,brass,y)),
+      ...(orbital?[r(-2.72,-2.56,2.57,2.34,1.6,'#909bb6',.34),d(-2.72,-2.56,2.7,2.54,.89,'#71a7b1',1.89)]:[])],
+    [b(.66,-.34,2.52,.63,.11,'#d6be83',4.41),...mobile([
+      t(-.63,.8,.86,.12,.82,dark,3.59,'z'),t(-.63,.89,.64,.07,.63,ice,3.68,'z')]),
       ...[0,1,2,3,4].map(i=>beam([2.33,.7+i*1.19,-1.1],[2.33,1.87+i*1.19,.32],.098,'#b3c8de')),
       ...worldSign('rocket',-3.29,1.15,2.7,'#81638e'),
       ...pair.map(s=>d(s*3.63,3.03,.47,.47,.21,'#efca87',.44))],
@@ -444,13 +451,424 @@ function telescope() {
   ];
 }
 
+const LETTERS={
+  A:['010','101','111','101','101'], B:['110','101','110','101','110'],
+  C:['011','100','100','100','011'], D:['110','101','101','101','110'],
+  E:['111','100','110','100','111'], F:['111','100','110','100','100'], G:['011','100','101','101','011'],
+  H:['101','101','111','101','101'], I:['111','010','010','010','111'],
+  K:['101','101','110','101','101'], L:['100','100','100','100','111'],
+  M:['101','111','111','101','101'], N:['101','111','111','111','101'],
+  O:['010','101','101','101','010'], P:['110','101','110','100','100'],
+  R:['110','101','110','101','101'], S:['011','100','010','001','110'],
+  T:['111','010','010','010','010'], U:['101','101','101','101','111'],
+  V:['101','101','101','101','010'], Y:['101','101','010','010','010'],
+};
+
+function nameplate(text,x,y,z,background,scale=.14,ink=cream) {
+  const width=(text.length*4+1)*scale;
+  const frame=[
+    b(x,z,width,.19,scale,background,y-3.5*scale),
+    b(x,z,width,.19,scale,background,y+2.5*scale),
+    ...pair.map(s=>b(x+s*(width-scale)*.5,z,scale,.19,scale*5,background,y-2.5*scale)),
+  ];
+  const rows=Array.from({length:5},(_,row)=>
+    [...text].map(letter=>LETTERS[letter]?.[row]??'000').join('0'));
+  // The lettering and its background share a surface in both renderers.
+  return [...frame,...rows.flatMap((row,j)=>[...row.matchAll(/0+|1+/g)].map(run=>{
+    const w=run[0].length*scale, half=w/2, h=scale/2;
+    return {shape:'plate',x:x+(run.index+run[0].length*.5-row.length*.5)*scale,y:y+(2-j)*scale,z:z+.095,
+      w,d:.01,h:scale,color:run[0][0]==='1'?ink:background,profile:[[-half,-h],[half,-h],[half,h],[-half,h]]};
+  }))];
+}
+
+function walkway(points,color='#d8c8a3',width=.76) {
+  return points.slice(1).map(([x,z],i)=>{
+    const [a,c]=points[i], dx=x-a,dz=z-c;
+    return {...b((x+a)/2,(z+c)/2,Math.hypot(dx,dz)+.27,width,.059,color,.354),angle:Math.atan2(dz,dx)};
+  });
+}
+
+function bench(x,z) {
+  return [b(x,z,1.54,.46,.116,'#ac7655',.71),b(x,z-.25,1.5,.11,.36,'#bc8f61',.84),
+    ...pair.flatMap(s=>[b(x+s*.54,z,.14,.4,.39,dark,.34),b(x+s*.54,z-.24,.09,.11,.7,dark,.43)])];
+}
+
+function broadTree(x,z,kind) {
+  if (kind==='island') return palm(x,z,2.58);
+  return [t(x,z,.24,.26,1.58,'#876954',.34),
+    d(x-.36,z,1.72,1.45,1.34,'#699759',1.47),
+    d(x+.36,z+.18,1.63,1.44,1.24,'#84aa62',1.75),
+    d(x,z-.26,1.62,1.35,1.13,'#75a260',2.22)];
+}
+
+function greatPark(theme) {
+  const tropical=theme==='island', lunar=theme==='moon';
+  const lawn=lunar?'#8ba792':tropical?'#a6be7b':'#90a66b';
+  const path=lunar?'#c2b5bd':'#d7c6a0';
+  return [
+    base(10.75,10.05,lawn),
+    [b(0,0,10.37,9.64,.089,lawn,.291),
+      ...walkway([[0,4.7],[0,2.56],[2.85,2.27],[4.02,.45],[3.79,-2.42],[1.12,-3.54],[-2.72,-3.52],[-4.32,-1.55],[-3.89,1.58],[-1.91,2.5],[0,2.56]],path),
+      t(-.66,-.45,5.57,4.22,.14,lunar?'#859eae':'#b3b88d',.355),
+      t(-.63,-.46,5.12,3.72,.082,lunar?'#64a5b9':'#69aeb3',.48),
+      t(-1.01,-.81,2.89,1.75,.014,'#82c7c6',.559)],
+    [
+      ...[[-3.84,-2.71],[3.42,-3.64],[-4.18,2.86],[3.92,3.47]].flatMap(([x,z])=>
+        lunar?shrub(x,z,'#6eaa9f',1.21):broadTree(x,z,theme)),
+      ...bench(-1.97,2.04),...bench(1.88,2.11),
+      ...[-1,1].map(s=>t(s*4.25,.82,.21,.21,.81,brass,.42)),
+      ...[-1.69,-1.25,.21,.77].map((x,i)=>d(x,-1.19+i*.39,.39,.33,.068,i%2?'#e6aaae':'#8dbb86',.573)),
+      ...worldSign('leaf',3.26,1.32,3.4,lunar?'#6a7299':teal),
+    ],
+  ];
+}
+
+function factory() {
+  const brick='#ae766d',roofTone='#566d7a';
+  return [base(10.72,9.52,'#aaa79a'),
+    [r(-1.19,-.84,6.95,5.27,2.94,brick,.34),r(3.35,-1.54,2.22,3.49,1.87,'#c4977e',.36),
+      ...[-2.75,.38].map(x=>roof(x,-.84,3.43,5.43,1.4,roofTone,3.25)),
+      ...[.51,2.29].flatMap((x,i)=>[
+        t(x,-3.2,.83,.84,4.9+i*.83,'#ac7869',.31),
+        t(x,-3.2,1.01,1.02,.28,'#cc9c80',4.93+i*.83),
+        t(x,-3.2,.78,.79,.135,dark,5.17+i*.83),
+      ]),r(3.32,-1.55,2.51,3.7,.2,roofTone,2.21)],
+    [...glazing([-3.42,-2.15,-.87,.43],[1.5,2.45],1.86,{w:.67,h:.59,color:'#99bab7'}),
+      ...entrance(1.84,1.7,1.22),...glazing([3.32],[1.04],.25,{w:1.27,h:.76}),
+      ...[.65,2.68].flatMap(z=>[t(3.54,z,1.32,1.32,1.12,'#b7b9aa',.35),d(3.54,z,1.36,1.36,.28,'#bdc8b7',1.46)]),
+      beam([3.54,1.6,.66],[3.54,1.6,2.68],.21,'#dca76b'),
+      ...worldSign('gear',-3.61,1.06,2.08,'#5c7b80')],
+  ];
+}
+
+function sawmill() {
+  const wood='#b48a60',shade='#876851',trim='#e4c99c';
+  return [base(10.7,9.65,'#c0a783'),
+    [r(-1.66,-1.72,5.82,4.8,2.53,wood,.36),roof(-1.66,-1.72,6.14,5.05,1.33,'#688380',2.89),
+      r(2.52,.89,4.24,4.38,.19,trim,.37),
+      ...pair.map(s=>beam([s*1.57+2.58,.59,-.43],[s*1.57+2.58,.59,2.17],.14,'#6f8285'))],
+    [...[-3.98,-3.18,-2.37,-1.55,-.74,.1].map(x=>b(x,.72,.065,.048,2.37,shade,.45)),
+      r(-1.68,.75,2.32,.1,1.84,shade,.39),...glazing([-3.42,.11],[1.34],.8,{w:.72,h:.64}),
+      ...[1.29,2.27,3.25,4.13].flatMap((x,i)=>[t(x,1.12,.76,2.84,.76,i%2?'#98704d':'#ac8159',.54,'z'),
+        t(x,2.59,.7,.065,.71,trim,.575,'z'),t(x,2.63,.4,.041,.4,'#bb9466',.74,'z')]),
+      t(2.45,.99,.75,2.81,.75,'#966f51',1.25,'z'),t(2.45,2.45,.69,.077,.69,trim,1.28,'z'),
+      ...worldSign('log',-3.58,2.74,.98,teal)],
+  ];
+}
+
+function busStation() {
+  const canopy='#4c8f8c',deck='#c8c8b7';
+  return [base(10.55,9.78,deck),
+    [b(0,1.27,10.15,3.75,.089,'#6d8089',.315),
+      ...pair.flatMap(s=>[r(s*2.62,-1.75,4.42,2.51,.27,canopy,2.33),
+        b(s*2.62,-1.63,4.53,.16,.15,'#e3b975',2.48),b(s*2.62,-2.67,3.94,.095,1.66,'#9bc4c4',.55),
+        ...pair.map(q=>b(s*2.62+q*1.85,-2.39,.16,.16,2.03,'#627c86',.34))])],
+    [...pair.flatMap(s=>[...bench(s*2.66,-1.98),...bench(s*2.31,-3.75),
+      ...[0,1,2,3].map(i=>b(s*2.47-1.48+i*.95,2.49,.54,.089,.024,cream,.41)),
+      t(s*3.87,2.99,.13,.13,1.82,dark,.35),...worldSign('bus',s*3.87,2.03,3.03,canopy)]),
+      ...nameplate('BUSS',0,2.91,-.47,'#466575',.22),
+      ...[-.79,.74].map(x=>t(x,3.58,.19,.19,.67,'#dcb36b',.34))],
+  ];
+}
+
+function camping(theme) {
+  const tropical=theme==='island';
+  const ground=tropical?'#cbbb86':'#a7aa73';
+  return [base(10.67,9.9,ground),
+    [...walkway([[0,4.41],[0,2.17],[-.72,1.1],[-.26,-1.76],[1.1,-3.66]],'#d4c097'),
+      ...[[-2.66,-1.83,'#b97570'],[2.95,-1.98,'#64a49c'],[-3.11,1.23,'#e2ae6a']].flatMap(([x,z,color])=>
+        [b(x,z,2.31,2.74,.12,'#cfad7e',.34),roof(x,z,2.26,2.66,1.79,color,.46),
+          roof(x,z+1.34,1.12,.045,1.08,'#785b57',.49)]),
+      r(2.65,1.91,2.53,1.74,1.14,'#e4c8a7',.54),r(2.65,1.92,2.32,1.69,.21,'#6e9b97',1.61)],
+    [...glazing([2.29,3.07],[.97],2.83,{w:.44,h:.35}),
+      ...[[-4.18,-3.42],[4.04,-3.59]].flatMap(([x,z])=>broadTree(x,z,theme)),
+      ...bench(1.64,-.25),t(.97,.93,1.16,1.16,.18,'#8d8175',.38),
+      d(.97,.93,.56,.61,.51,'#e09755',.54),d(.98,.91,.27,.34,.41,'#f4cc7d',.61),
+      ...worldSign('camp',-1.58,1.35,3.67,tropical?'#bd796d':teal)],
+  ];
+}
+
+function arcade(theme,cinema=false) {
+  const main=theme==='moon'?'#7880af':theme==='island'?'#4b949c':cinema?'#506f96':'#95648d';
+  const neon=theme==='moon'?'#a9dded':theme==='island'?'#f9bd8b':cinema?'#f0c780':'#e8a3b4';
+  const walls=cinema?'#879ab5':'#c6a4ac';
+  return [base(10.29,8.91,'#b4b3ae'),
+    [r(0,-.75,7.97,4.86,3.34,walls,.34),r(0,-.85,8.22,5.04,.48,main,3.52),
+      r(0,-.57,6.79,4.2,1.06,main,3.96),r(0,1.71,7.74,.85,1.58,main,2.11),
+      b(0,2.14,7.7,.099,.13,neon,2.15),b(0,2.14,7.7,.1,.11,neon,3.56),
+      ...pair.map(s=>r(s*3.73,1.91,.43,.68,2.99,main,.37))],
+    [...entrance(1.69,1.92,1.58),...glazing([-2.64,2.64],[.8],1.72,{w:1.54,h:1.11,color:neon}),
+      ...nameplate(cinema?'KINO':'ARCADE',0,2.92,2.18,dark,.255,neon),
+      ...(cinema?[t(0,.14,2.47,.39,2.45,'#c1d0d7',4.65,'z'),
+        ...[-.51,.51].flatMap(x=>[.51,1.53].map(y=>t(x,.38,.49,.09,.49,main,4.98+y,'z')))]
+        :[r(0,.09,2.84,1.8,.39,'#465673',4.97),beam([-.66,5.34,.14],[-.71,6.44,.06],.16,cream),
+          d(-.71,.06,.82,.82,.69,'#e68c9e',6.11),...pair.map(s=>t(.55,s*.38+.08,.41,.43,.22,neon,5.33))]),
+      ...[-2.92,-2.37,2.36,2.91].map((x,i)=>b(x,2.2,.28,.031,.27,i%2?neon:cream,2.32))],
+  ];
+}
+
+function radioTower(lunar=false) {
+  const mast=lunar?'#b8c8d2':'#ad8570', bright=lunar?'#d2c8ec':'#e3a072';
+  const corners=[[-1,-1],[-1,1],[1,1],[1,-1]], levels=[.4,2.32,4.37,6.31,8.25,9.98];
+  const node=(index,level)=>{
+    const [x,z]=corners[index%4],y=levels[level],span=1.62-y*.113;
+    return [x*span+.88,y,z*span-.57];
+  };
+  return [base(9.67,9.17,lunar?'#a4a8be':'#aaa98d'),
+    [...corners.flatMap((_,i)=>[beam(node(i,0),node(i,5),.19,mast),
+      ...levels.slice(0,-1).flatMap((_,j)=>[
+        beam(node(i,j+1),node(i+1,j+1),.103,bright),
+        beam(node(i,j),node(i+1,j+1),.113,mast),
+      ])]),
+      r(-2.46,1.55,3.2,2.92,1.72,lunar?'#97a6bd':'#c7aa88',.33),roof(-2.46,1.55,3.49,3.07,.65,'#657e8e',2.02)],
+    [beam([.88,8.49,-.57],[.88,11.9,-.57],.16,bright),
+      t(.88,-.57,.6,.6,.53,'#ecb07f',10.55),d(.88,-.57,.54,.54,.41,'#ef867c',11.51),
+      ...pair.flatMap(s=>[beam([.88,9.29,-.57],[.88+s*1.15,9.74,-.57],.115,cream),
+        t(.88+s*1.13,-.57,.71,.16,.65,'#e1d3c7',9.45,'z')]),
+      ...glazing([-3.32,-1.63],[.97],3.08,{w:.57,h:.54}),
+      ...worldSign('radio',-2.45,2.33,3.11,lunar?'#756ea1':teal)],
+  ];
+}
+
+function glassTower(style) {
+  const deco=style==='deco',hotel=['glassHotel','auroraHotel','lookout'].includes(style);
+  const h=deco?12.67:style==='spire'?13.82:style==='lookout'?8.96:9.66;
+  const walls=deco?'#bd9e80':style==='auroraHotel'?'#8589b1':'#63a5b1';
+  const band=deco?'#957d69':style==='auroraHotel'?'#caabd5':'#a3d0d0';
+  const cap=deco?'#78968a':style==='auroraHotel'?'#5f688f':'#477787';
+  const w=deco?5.8:hotel?6.87:6.25,d0=4.58,z=-.81;
+  const main=[r(0,z,w+1.18,d0+.97,1.53,cap,.34),r(0,z,w,d0,h-3.71,walls,1.86),
+    r(0,z,w*.78,d0*.83,1.14,band,h-1.85),r(0,z,w*.66,d0*.68,.79,cap,h-.76)];
+  const rows=Array.from({length:Math.floor((h-3.42)/1.12)},(_,i)=>2.14+i*1.12);
+  return [base(10.58,9.65,hotel?'#d8c5a6':'#b9b5a6'),main,
+    [...entrance(1.99,2.13,1.39),
+      ...(deco?[
+        ...glazing([-1.92,-.98,0,.98,1.92],rows,1.5,{w:.5,h:.69,color:'#90a9ad'}),
+        ...flankWindows(w/2,[-1.96,-.76,.39],rows,{w:.58,h:.64,color:'#90a9ad'}),
+        ...[-2.75,-1.45,1.45,2.75].map(x=>b(x,1.51,.15,.12,h-3.4,band,1.61)),
+        roof(0,z,w*.56,d0*.58,1.43,cap,h-.12)]
+        :[...rows.flatMap((y,i)=>[b(0,1.5,w-.16,.11,.075,band,y),...pair.map(s=>b(s*(w/2+.045),z,.109,d0-.13,.073,band,y)),
+          b(-w*.3+(i%3)*.39,1.537,.46,.055,.33,i%2?'#c8e5df':'#8ebdc9',y+.16)]),
+          ...[-.38,-.15,.16,.4].map(x=>b(x*w,1.55,.1,.077,h-3.7,band,1.85)),
+          ...[-.38,-.06,.29].flatMap(side=>pair.map(s=>b(s*(w/2+.06),z+d0*side,.1,.078,h-3.72,band,1.83))),
+          ...(hotel?[r(0,z,w*.76,d0*.77,.18,cream,h+.021),
+            ...pair.map(s=>b(s*w*.37,z,.1,d0*.76,.33,band,h+.19))]
+            :[t(0,z,.35,.36,2.22,cap,h),d(0,z,.46,.46,.34,'#f4b681',h+1.98)])]),
+      ...(hotel?[r(2.48,3.03,3.69,1.8,.21,cream,.36),r(2.48,3.03,3.38,1.52,.045,'#65b7c7',.575),
+        ...umbrella(-2.66,3.22,'#d98f90'),...nameplate('HOTEL',0,1.63,2.1,cap,.178)]
+        :[...shrub(-3.72,2.58),...shrub(3.72,2.58,'#7c9f6a')])],
+  ];
+}
+
+function bookHall() {
+  const green='#5e8784';
+  return [base(10.22,8.83,'#c3bb9f'),
+    [r(-1.4,-.64,5.69,4.83,3.52,'#cbb9a3',.36),r(2.48,-.3,2.48,4.64,2.67,'#7eb0b0',.37),
+      roof(-1.43,-.67,5.98,5.17,.9,green,3.84),r(2.49,-.3,2.67,4.78,.23,'#cfae77',3.0)],
+    [...glazing([-3.42,-2.13,-.81],[1.09,2.32],1.8,{w:.71,h:.82}),...entrance(2.03,1.33,1.68),
+      ...[.79,1.43,2.17,2.83,3.44].map(x=>b(x,2.07,.088,.087,2.54,cream,.44)),
+      ...worldSign('book',-1.53,3.19,1.9,green),...bench(-2.5,3.01),...shrub(3.96,2.78)],
+  ];
+}
+
+function market(theme) {
+  const tropical=theme==='island',shade=tropical?'#5f9481':'#658287';
+  const stripe=tropical?'#e5a276':'#b9747e';
+  return [base(10.57,9.33,tropical?'#d3b981':'#b7b09b'),
+    [r(0,-1.91,8.55,3.93,1.2,'#c49a72',.34),roof(0,-1.83,8.96,4.14,1.1,shade,2.89),
+      ...[-3.82,-1.18,1.18,3.82].flatMap(x=>pair.map(s=>t(x,-1.8+s*1.6,.19,.19,2.55,'#a48565',.36))),
+      ...[-2.77,0,2.77].flatMap(x=>[r(x,.33,2.12,1.05,.62,'#a47f60',.36),
+        ...Array.from({length:5},(_,i)=>b(x+(i-2)*.39,.98,.38,1.11,.09,i%2?cream:stripe,2.15))])],
+    [...[-2.77,0,2.77].flatMap((x,i)=>[-.52,0,.52].map((dx,j)=>
+      d(x+dx,.45,.37,.45,.27,['#df8c6d','#99b87b','#f0ca7a'][(i+j)%3],.98))),
+      ...nameplate('MARKED',0,3.22,.32,shade,.16),
+      ...[-3.39,3.36].flatMap(x=>[...umbrella(x,2.59,stripe),...bench(x,3.57)])],
+  ];
+}
+
+function burger(x,y,z) {
+  return [d(x,z,3.06,2.62,.34,'#c79055',y),t(x,z,3.03,2.59,.32,'#845f4b',y+.27),
+    t(x,z,3.14,2.71,.14,'#9ab064',y+.57),b(x,z,2.65,2.09,.09,'#f0be56',y+.716),
+    t(x,z,2.86,2.51,.15,'#d37d67',y+.79),d(x,z,3.23,2.75,1.1,'#e5ae68',y+.94),
+    ...[[-.52,.38],[.43,.41],[0,-.36],[.79,.04],[-.7,-.24]].map(([a,c],i)=>
+      d(x+a,z+c,.24,.14,.059,'#f5db9f',y+1.94-i%3*.08,i*.71))];
+}
+
+function smoothie() {
+  return [t(.2,-.15,1.66,1.46,1.72,'#e49968',3.42),t(.2,-.15,1.81,1.63,.23,cream,5.1),
+    d(.2,-.14,1.54,1.37,.32,'#e6a1a5',5.28),beam([.27,5.28,-.15],[.62,6.16,-.2],.19,'#78c4ae'),
+    d(-.47,-.19,.86,.55,.39,'#95b873',5.16,.42),d(.03,.57,.51,.18,.42,'#f3d286',4.36)];
+}
+
+function snackHouse(style) {
+  const tropical=['tikiBar','coralCafe'].includes(style), tiki=style==='tikiBar', moon=!tropical&&style!=='bistro';
+  const burgerShop=style==='moonBurger', iceShop=style==='cosmicIce';
+  const main=tiki?'#b98462':iceShop?'#9a86b7':burgerShop?'#ba796b':style==='coralCafe'?'#d79b89':moon?'#9299b7':'#c39e81';
+  const trim=tiki?'#608d77':iceShop?'#4c8fa5':burgerShop?'#654e69':style==='coralCafe'?'#428c92':'#647781';
+  const label=burgerShop?'MOON BURGER':iceShop?'COSMIC ICE':tiki?'TIKI':moon?'DUST CAFE':style==='bistro'?'BISTRO':'CAFE';
+  const awning=iceShop?'#dba7cc':burgerShop?'#edb574':tropical?'#efad82':'#9bbcb2';
+  return [base(10.2,9.08,moon?'#adb1c3':'#cfb89a'),
+    [r(0,-1.16,tiki?5.9:7.59,4.36,2.75,main,.36),
+      ...(tiki?[roof(0,-1.08,6.84,4.86,1.14,'#b9a375',2.98),...pair.map(s=>t(s*2.77,1.31,.3,.3,2.42,'#946954',.39))]
+        :[r(0,-1.06,7.83,4.5,.23,trim,3.11),r(0,1.01,7.38,.36,.21,awning,2.96)]),
+      b(0,2.32,8.81,2.48,.07,moon?'#c2b5c8':'#c1a27e',.349)],
+    [...entrance(1.07,1.25,1.57),...glazing([-2.28,2.28],[1.11],1.067,{w:1.51,h:.94,color:'#85c5ca'}),
+      ...Array.from({length:13},(_,i)=>b((i-6)*.49,1.49,.48,.98,.123,i%2?cream:awning,2.16)),
+      ...nameplate(label,0,2.71,1.15,trim,tiki?.24:.171),
+      ...(burgerShop?burger(0,3.35,-1.12):iceShop?worldSign('ice',0,4.61,-.27,trim):tiki?smoothie():worldSign('cup',0,3.79,.5,trim)),
+      ...umbrella(-2.8,2.57,awning),...umbrella(2.73,2.65,trim),
+      ...(tropical?palm(-4.21,-1.81,2.57):shrub(4.19,-1.43,'#8aab98'))],
+  ];
+}
+
+function hoverCar(color) {
+  return [r(0,0,1.17,2.34,.34,color,.18),r(0,.7,.99,.86,.19,color,.46),r(0,-.27,.68,.77,.17,dark,.5),
+    ...pair.map(s=>b(s*.47,-.11,.13,1.56,.098,cream,.49)),
+    b(0,.45,.84,.13,.37,'#8ed0d9',.51),b(0,-.44,.65,.26,.38,dark,.47),
+    ...pair.flatMap(s=>[t(s*.36,-1.02,.38,.57,.38,'#acadc2',.25,'z'),
+      t(s*.36,-1.34,.26,.095,.27,'#85d7d9',.31,'z'),r(s*.34,.91,.2,.1,.12,cream,.42)])];
+}
+
+function hoverDealer() {
+  const slate='#6b7895',blue='#70aeb6';
+  return [base(10.77,9.53,'#aaaec4'),
+    [r(-.95,-2.44,7.71,3.03,2.6,'#9eadd2',.35),r(-.95,-2.46,7.94,3.24,.38,slate,2.85),
+      b(-.95,-.86,7.51,.13,1.68,blue,.69),
+      ...pair.map(s=>t(s*2.25,1.66,3.24,2.92,.205,'#b4b3c4',.35))],
+    [...pair.flatMap((s,i)=>[
+      t(s*2.25,1.66,2.49,2.41,.048,'#80c9ce',.55),
+      ...placeParts(hoverCar(i?'#e29d71':'#c2729b'),{x:s*2.25,y:.73,z:1.62,yaw:s*.38})]),
+      ...[-3.96,-2.39,-.83,.72,2.29].map(x=>b(x,-.75,.087,.078,1.91,cream,.62)),
+      ...pair.map(s=>beam([s*.72+2.08,.34,-.95],[s*.72+2.08,4.08,-.95],.2,slate)),
+      ...nameplate('MOON MOTORS',2.08,4.07,-.94,'#af6e8d',.126),
+      ...worldSign('hover',3.12,2.18,-.74,'#677d9d')],
+  ];
+}
+
+function ringHabitat() {
+  const pods=[[-2.53,-1.25,'#a1b5d1'],[2.54,-1.25,'#94bad0'],[0,2.07,'#c3a5ca']];
+  return [base(10.52,9.49,'#b2b4cc'),
+    [t(0,-.07,3.59,3.45,.83,'#929dbb',.37),d(0,-.07,2.72,2.65,1.19,'#78adbc',1.12),
+      ...pods.flatMap(([x,z,color])=>[t(x,z,3.12,2.98,.97,color,.35),d(x,z,3.09,2.96,1.92,color,1.29),
+        beam([0,.82,-.07],[x,.82,z],.67,'#8fb2c3')])],
+    [...pods.flatMap(([x,z])=>[
+      t(x,z,3.14,2.99,.13,cream,1.27),...glazing([x-.53,x+.53],[.77],z+1.42,{w:.49,h:.4}),
+      d(x,z,1.14,1.06,.27,'#f3cb89',3.02)]),
+      ...worldSign('home',3.24,1.16,3.32,'#6b79a7')],
+  ];
+}
+
+function solarGarden() {
+  return [base(10.6,9.65,'#9da6bd'),
+    [...[-3.1,0,3.1].flatMap(x=>[-1.94,1.35].flatMap(z=>[
+      t(x,z,.34,.36,1.65,'#788caa',.34),
+      beam([x-1.1,1.62,z+.77],[x+1.1,2.03,z-.77],.12,'#c2cfdd'),
+      b(x,z,2.69,2.13,.15,'#4f719e',1.98)]))],
+    [...[-3.1,0,3.1].flatMap(x=>[-1.94,1.35].flatMap(z=>[
+      ...[-.85,-.28,.28,.85].map(dx=>b(x+dx,z,.055,1.99,.027,'#91b6cd',2.13)),
+      ...[-.49,0,.49].map(dz=>b(x,z+dz,2.52,.047,.023,'#92b1c9',2.134))])),
+      ...worldSign('battery',-2.83,1.13,3.55,'#697db0')],
+  ];
+}
+
+function cargoDepot() {
+  return [base(10.53,9.32,'#abb0c3'),
+    [r(-2.33,-1.8,4.52,4.07,2.79,'#869eb8',.35),roof(-2.33,-1.79,4.8,4.3,1.09,'#637994',3.03),
+      ...[[-.6,1.18,0],[1.7,-1.65,1],[3.4,-.87,2],[2.13,1.87,0],[3.23,2.72,1]].map(([x,z,i])=>
+        r(x,z,1.38,2.14,.81+i*.32,['#b6a1c5','#b7869e','#7fb6ba'][i],.35))],
+    [r(-2.37,.28,2.78,.13,2.18,dark,.36),
+      ...[.63,.93,1.22,1.51,1.8,2.1].map(y=>b(-2.38,.364,2.58,.041,.077,'#96b3c4',y)),
+      ...[.98,2.1,3.54].map(x=>b(x,3.27,.88,.091,.028,brass,.359)),
+      ...worldSign('flag',-2.37,2.86,.36,'#7b6d98'),...shrub(-4.15,2.15,'#8dacc2')],
+  ];
+}
+
+function pool(x,z,w,depth) {
+  return [r(x,z,w+.34,depth+.34,.23,cream,.35),r(x,z,w,depth,.045,'#65bec4',.578),
+    b(x-w*.21,z+depth*.32,w*.44,.044,.01,'#a9e4e0',.625)];
+}
+
+function megaResort() {
+  const creamWall='#dec0a1',pink='#c48e84',water='#5e9fa4';
+  const towers=pair.flatMap(s=>[
+    r(s*3.66,-1.92,2.91,4.85,6.35,pink,.36),
+    r(s*3.66,-2.37,2.81,3.5,1.91,creamWall,6.67),
+    roof(s*3.66,-2.36,3.13,3.82,1.04,'#668d8c',8.55),
+  ]);
+  return [base(10.92,10.02,'#d6bd93'),
+    [r(0,-2.15,5.81,4.59,4.82,creamWall,.35),r(0,-2.28,6.11,4.67,.28,pink,5.13),
+      r(0,-2.19,4.36,3.26,1.36,creamWall,5.36),r(0,-2.22,4.55,3.42,.22,water,6.69),
+      ...towers,...pool(-1.77,2.41,3.27,2.58),...pool(2.03,2.68,3.47,2.27)],
+    [...[1.19,2.5,3.77,4.64].flatMap(y=>[
+      ...glazing([-1.95,-.65,.65,1.95],[y],.21,{w:.71,h:.65,color:'#74b5bd'}),
+      b(0,.59,5.87,.59,.13,cream,y-.14),
+    ]),
+      ...pair.flatMap(s=>[...glazing([s*3.66-.62,s*3.66+.61],[1.17,2.38,3.64,4.91,5.78],.56,{w:.63,h:.62}),
+        ...[1.18,2.4,3.66,4.93,5.79].map(y=>b(s*3.67,.86,2.85,.67,.11,cream,y-.1)),
+        ...glazing([s*3.66],[7.27],-.58,{w:1.09,h:.76}),
+        ...palm(s*4.68,2.87,2.87),...umbrella(s*.8,4.03,s<0?'#e3a28c':'#78b6ae')]),
+      ...entrance(.24,1.81,1.19),...nameplate('LAGUNE',0,5.94,-.45,'#68848c',.176)],
+  ];
+}
+
+function tropicalPools() {
+  return [base(10.53,9.75,'#d8bf95'),
+    [r(-2.59,-2.45,4.14,2.82,.27,'#a98d70',.35),roof(-2.59,-2.48,4.42,3.11,1.2,'#6f9e89',2.39),
+      ...pair.flatMap(s=>pair.map(q=>t(-2.59+s*1.91,-2.46+q*1.21,.19,.19,1.8,'#a4866c',.57))),
+      ...pool(1.93,-.93,4.68,5.38),...pool(-1.83,1.95,2.59,2.43)],
+    [...palm(4.44,2.16,2.68),...palm(-4.37,2.62,2.38),
+      ...umbrella(-3.27,2.67,'#dd997d'),...umbrella(2.11,2.83,'#74adac'),
+      ...[.3,1.62,2.96].map(x=>r(x,3.54,.59,1.06,.15,'#e3ac88',.41)),
+      ...worldSign('wave',-2.6,2.74,-.89,'#648e8c')],
+  ];
+}
+
+export const AIRPORT_PAD=[1.78,.46,-3.48];
+
+function plane() {
+  return [r(0,0,.93,3.41,.52,'#eee5d6',.16),d(0,1.51,.87,1.12,.39,'#e7e4dc',.23),
+    r(0,1.03,.81,.64,.31,'#649dae',.49),b(0,-1.31,.09,.61,.67,'#c87c7b',.44),
+    ...pair.flatMap(s=>[
+      {...b(s*1.03,-.11,1.92,.71,.12,'#8cb5bf',.38),angle:s*-.23},
+      b(s*.43,-1.23,.9,.38,.092,'#c87c7b',.5),
+      t(s*.8,-.11,.36,.71,.36,'#b5c3c3',.23,'z'),
+      ...[-.96,-.55,-.15,.24].map(z=>b(s*.464,z,.055,.179,.18,'#77aab5',.37)),
+      t(s*.37,.22,.12,.23,.22,dark,.05,'x'),
+    ]),t(0,1.01,.14,.22,.22,dark,.05,'x')];
+}
+
+function airport(tiny=false) {
+  const terminal=tiny?'#a9b99d':'#93b5b6',roofTone=tiny?'#9d796a':'#597b91';
+  return [base(10.73,10.42,'#c7c5ac'),
+    [b(1.78,0,3.8,10.05,.117,tiny?'#a59e7b':'#677f8b',.326),
+      r(-2.75,-.86,tiny?3.52:3.92,tiny?3.6:4.47,2.17,terminal,.34),
+      roof(-2.75,-.87,tiny?3.76:4.16,tiny?3.79:4.72,.87,roofTone,2.49),
+      ...(tiny?[]:[r(-3.69,-2.65,1.33,1.43,2.62,'#9aaeb7',.36),r(-3.69,-2.65,1.67,1.67,.78,'#72aaba',2.96),
+        r(-3.69,-2.65,1.86,1.85,.16,roofTone,3.71)])],
+    [...[0,1,2,3,4].map(i=>b(1.78,(i-2)*1.51,.09,.7,.022,cream,.444)),
+      ...pair.flatMap(s=>[-4.65,-2.9,-1.34,1.34,2.9,4.65].map(z=>
+        t(1.78+s*1.97,z,.12,.12,.13,'#edc27e',.382))),
+      ...glazing([-3.89,-2.7,-1.58],[1.04],tiny?1:1.44,{w:.7,h:.81}),
+      ...worldSign('plane',-2.74,2.2,tiny?1.12:1.52,roofTone),
+      ...placeParts(plane(),{x:AIRPORT_PAD[0],y:AIRPORT_PAD[1],z:AIRPORT_PAD[2]}).map(part=>({...part,flight:'plane'}))],
+  ];
+}
+
 const art={
   hotel:()=>grandHotel(false),resort:()=>grandHotel(true),hall:()=>civic(false),bank:()=>civic(true),cinema,prison,
   restaurant:theme=>dining(theme==='island'),garden:theme=>gardens(theme==='island'),bandstand:theme=>gardens(theme==='island',true),
   pier:(theme)=>harbor(theme,'pier'),quay:theme=>harbor(theme,'quay'),marina:theme=>harbor(theme,'marina'),
   bridge:(_,site)=>suspension(site?.span),wheel:theme=>ferris(theme==='island'),coaster,fitness,biodome,
   habitat:()=>habitat(),moonHotel:()=>habitat(true),oxygen:()=>utility('oxygen'),generator,
-  refinery:()=>utility('refinery'),spaceField,rocketPort,telescope,craterLab,supplyDepot,beachClub,sunsetHotel,
+  refinery:()=>utility('refinery'),spaceField,rocketPort:()=>rocketPort(),telescope,craterLab,supplyDepot,beachClub,sunsetHotel,
+  greatPark,factory,sawmill,busStation,camp:camping,arcade,radioTower:()=>radioTower(),spire:()=>glassTower('spire'),
+  decoTower:()=>glassTower('deco'),bookHall,market,nightCinema:theme=>arcade(theme,true),bistro:()=>snackHouse('bistro'),
+  hoverDealer,moonBurger:()=>snackHouse('moonBurger'),cosmicIce:()=>snackHouse('cosmicIce'),orbitalPort:()=>rocketPort(true),
+  ringHabitat,lunarArcade:arcade,moonGarden:greatPark,auroraHotel:()=>glassTower('auroraHotel'),
+  solarGarden,lunarRadio:()=>radioTower(true),dustCafe:()=>snackHouse('dustCafe'),cargoDepot,
+  tikiBar:()=>snackHouse('tikiBar'),airport:()=>airport(),islandArcade:arcade,megaResort,glassHotel:()=>glassTower('glassHotel'),
+  beachCamp:camping,tropicalMarket:market,coralCafe:()=>snackHouse('coralCafe'),
+  islandTower:()=>glassTower('lookout'),palmGarden:greatPark,airstrip:()=>airport(true),tropicalPools,
 };
 
 export const NEW_LANDMARKS={
@@ -496,6 +914,52 @@ export const NEW_LANDMARKS={
     21:['Laguneparken','Fargerike planter og en paviljong ved vannet.','bandstand'],
     22:['Ferieklubben','En åpen paviljong med palmer og et lite basseng.','beachClub'],
     23:['Solhotellet','Et hotell med fløyer rundt et basseng.','sunsetHotel'],
+  },
+};
+
+export const EXPANDED_LANDMARKS={
+  city:{
+    2:['Fabrikken','En mursteinsfabrikk med skorsteiner, rør og tak i sikksakk.','factory'],
+    24:['Eikeparken','En stor park med gangstier, benker og en dam.','greatPark','garden'],
+    25:['Elvesagbruket','En trehall med tømmerstokker og plass til sagflis.','sawmill'],
+    26:['Bussterminalen','To holdeplasser og en buss som kjører i gatene.','busStation'],
+    27:['Elvecampen','Telt, en liten campingvogn og et bålsted.','camp'],
+    28:['Pikselpalasset','En arkadehall med lysende fasade og en joystick på taket.','arcade'],
+    29:['Radiotårnet','Et høyt tårn med antenner og en rød signallampe.','radioTower'],
+    30:['Glasspiren','En skyskraper med glassfasade og et lyst spir.','spire','tower'],
+    31:['Kobbertårnet','En skyskraper i art deco-stil med terrasser og kobbertak.','decoTower','tower'],
+    32:['Bokhuset','Et bibliotek med glassatrium og benk ved inngangen.','bookHall'],
+    33:['Markedshallen','Fargerike boder med frukt og grønnsaker.','market'],
+    34:['Kveldskinoen','En kino med lysende skilt og filmrull på taket.','nightCinema','cinema'],
+    35:['Hjørnebistroen','En liten bistro med markiser og bord ute.','bistro','restaurant'],
+  },
+  moon:{
+    24:['Måne-Motor','To flyvende kabrioleter med rakettmotorer og et stort skilt.','hoverDealer'],
+    25:['Moon Burger','En burgerrestaurant med en kjempestor hamburger på taket.','moonBurger'],
+    26:['Cosmic Ice Cream','En iskrembar med sukkertøyfarger og en stor iskremkjegle.','cosmicIce'],
+    27:['Orbitalporten','En turkis rakett med en kontrollkuppel ved siden av.','orbitalPort','rocketPort'],
+    28:['Stjerneboligene','Tre runde boliger samlet rundt en felles kuppel.','ringHabitat','habitat'],
+    29:['Meteorarkaden','En arkadehall med lilla vegger og blå lys.','lunarArcade'],
+    30:['Kuppelhagen','Stier og planter rundt en liten dam på månen.','moonGarden'],
+    31:['Aurora Hotel','Et glasshotell med takterrasse og lys ved inngangen.','auroraHotel','moonHotel'],
+    32:['Speilfeltet','Blå solcellepaneler samlet i et eget energifelt.','solarGarden'],
+    33:['Månestudioet','Et radiotårn som sender musikk hjem til jorda.','lunarRadio'],
+    34:['Støvkafeen','Et sted å ta en kopp kakao under stripete markiser.','dustCafe'],
+    35:['Romlogistikken','En lagerhall og fargerike containere fra hele solsystemet.','cargoDepot','supplyDepot'],
+  },
+  island:{
+    24:['Tiki Smoothie','En tropisk bar med bambusstolper og en smoothie på taket.','tikiBar'],
+    25:['Palmeflyplassen','Terminal, kontrolltårn og et fly som letter og lander.','airport','flight'],
+    26:['Strandarkaden','Spill, lys og en stor joystick på taket.','islandArcade'],
+    27:['Laguneressorten','En stor resort med to tårn, balkonger og to basseng.','megaResort','resort'],
+    28:['Glasshotellet','Et høyt hotell med glassvegger og basseng i hagen.','glassHotel','resort'],
+    29:['Strandcampen','Fargerike telt, en campingvogn og et bål under palmene.','beachCamp'],
+    30:['Bambusmarkedet','Et åpent marked med fruktboder og parasoller.','tropicalMarket'],
+    31:['Korallkafeen','En korallrosa kafé med skyggefulle bord ute.','coralCafe','restaurant'],
+    32:['Havutsikten','Et tårn med glassfasade og utsiktsterrasse.','islandTower'],
+    33:['Den botaniske hagen','Palmer og gangstier rundt en liten lagune.','palmGarden','garden'],
+    34:['Laguneflystripa','En mindre flystripe med avgang fra en tropisk hangar.','airstrip','flight'],
+    35:['Kokosbadet','Et badeland med to basseng og solplasser under palmene.','tropicalPools'],
   },
 };
 

@@ -517,53 +517,28 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 .next-build-card strong { display: block; margin-top: 3px; font-size: 1rem; color: var(--ink); }
 
 .brick-board {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-auto-rows: 54px;
-  gap: 4px;
-  width: min(100%, 270px);
+  position: relative;
+  width: min(100%, 336px, calc(var(--board-ratio) * clamp(164px, 29svh, 216px)));
+  aspect-ratio: var(--board-ratio);
   margin: 15px auto;
 }
-.brick-board > *, .brick-tray button {
-  padding: 7px 3px 3px;
-  border-radius: 10px;
-  background: transparent;
-}
-.brick-board button[data-brick-color], .brick-tray button {
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-}
-.brick-board button.brick-drop-target { background: #e8defa; outline: 2px dashed #855cb0; }
-.puzzle-brick {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  min-height: 34px;
-  border-radius: 7px;
-  border: 1px solid #203c3450;
-  background: linear-gradient(#fff4 0 21%, transparent 21%) var(--brick);
-  box-shadow: inset 0 -6px #15232138, inset 3px 0 #fff2;
-  color: #fff;
-  font-size: 1.15rem;
-  text-shadow: 0 1px 2px #182924, 0 -1px 2px #182924;
-}
-.puzzle-brick::before {
-  content: '';
+.brick-board > * {
   position: absolute;
-  inset: -6px 6px auto;
-  height: 9px;
-  border-radius: 6px 6px 0 0;
-  background: radial-gradient(ellipse 7px 5px at 50% 75%, #fff6 45%, var(--brick) 61%, transparent 75%) center / 20px 9px repeat-x;
+  left: var(--slot-x);
+  top: var(--slot-y);
+  width: var(--slot-width);
+  height: var(--slot-height);
+  padding: 0;
+  background: transparent;
+  pointer-events: none;
 }
-.puzzle-shadow {
-  --brick: #d8e2d4;
-  border: 2px dashed #a6b8a3;
-  box-shadow: none;
-  background: #eaf0e7;
-}
+.brick-board button:focus-visible { z-index: 1; outline-offset: -2px; border-radius: 12px; }
+.brick-board button svg > g { pointer-events: visiblePainted; }
+.brick-board button svg text { pointer-events: none; }
+.brick-board button[data-brick-color], .brick-tray button { cursor: grab; touch-action: none; user-select: none; }
+.brick-board button.brick-drop-target svg { filter: drop-shadow(0 0 4px #9b70d4); }
+.brick-board button.brick-drop-target .puzzle-shadow > g { fill: #e9def8; stroke: #7955a8; }
+.puzzle-brick { display: block; width: 100%; height: 100%; overflow: visible; }
 .brick-tray {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -575,14 +550,14 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
   border-radius: 14px;
   background: #fff;
 }
-.brick-tray button { min-height: 53px; }
+.brick-tray button { min-height: 58px; padding: 3px 4px; border-radius: 10px; background: transparent; }
 .brick-tray button:disabled { opacity: .22; cursor: default; }
 .brick-tray button[aria-pressed="true"] { background: #eeeafa; box-shadow: 0 0 0 2px #855cb0; }
 .brick-drag {
   position: fixed;
   z-index: 20;
-  width: 56px;
-  height: 38px;
+  width: 74px;
+  height: 76px;
   pointer-events: none;
   transform: translate(-50%, -50%);
   filter: drop-shadow(0 5px 4px #203c3460);
@@ -733,7 +708,6 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 .project-controls { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 10px; margin: 9px 0 7px; }
 .project-control-group { display: flex; gap: 5px; }
 .project-control-group > button { min-width: 42px; min-height: 42px; padding: 6px 9px; }
-.project-control-group > button[aria-pressed="true"] { background: var(--mint); border-color: #8eb281; color: var(--green); }
 .project-zoom { font-size: 1.2rem; }
 .project-atmosphere { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 11px; margin: 9px 0; }
 .project-atmosphere button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 6px 10px; }
@@ -977,3 +951,26 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 @media (max-width: 370px) {
   .map-landmarks { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
+
+.project-viewer { position: relative; }
+.project-viewer[data-drag-mode="rotate"] canvas { cursor: grab; }
+.project-viewer[data-drag-mode="rotate"] canvas:active { cursor: grabbing; }
+.project-viewer canvas.project-fireworks, .project-peek canvas.project-fireworks {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  background: transparent;
+  border: 0;
+  margin: 0;
+}
+.project-peek > span { z-index: 2; }
+.completion-project .project-peek--world canvas:not(.project-fireworks) { height: clamp(190px, 33dvh, 234px); }
+.pause-dialog .project-peek--world canvas:not(.project-fireworks) { height: clamp(142px, 32dvh, 198px); }
+.pause-dialog--map p { margin-bottom: 16px; }
+.hero-gallery { margin: 12px 0 18px; }
+.hero-gallery-tile { grid-template-rows: 94px auto auto; }
+.hero-gallery-tile small { padding: 0 2px 4px; font-size: .72rem; color: var(--green); }
+.complete .project-finished-note { margin: 8px auto 13px; }
+.complete .result-gallery.primary { margin: 12px auto 0; }
+.complete .secondary-cta[data-action="home"] { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.complete .secondary-cta[data-action="home"] svg { width: 17px; height: 17px; flex: none; }

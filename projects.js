@@ -1,7 +1,7 @@
 import {box,tube,roof,rounded,dome,at,worldSign,vehicle,worldActors,districtActors} from './scenery.js';
-import {isWorld,isRegion,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,randomGenerator} from './worlds.js';
+import {isWorld,isRegion,hasExpandedCatalog,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,randomGenerator} from './worlds.js';
 import {expandedWorldScene} from './region-scenery.js';
-import {NEW_LANDMARKS,landmarkStages} from './world-landmarks.js';
+import {NEW_LANDMARKS,EXPANDED_LANDMARKS,landmarkStages} from './world-landmarks.js';
 
 const stage = (label, ...parts) => ({label,parts:parts.flat()});
 
@@ -9,7 +9,7 @@ export const PROJECTS = {
   armor:{name:'Rustningshelten', icon:'⚡', description:'En rød og gyllen helt med lys i brystet.', total:24},
   spider:{name:'Edderkopphelten', icon:'🕷️', description:'En rød og blå helt med store maskeøyne.', total:24},
   shield:{name:'Skjoldhelten', icon:'🛡️', description:'En blå helt med stjerne og klosseskjold.', total:24},
-  city:{name:'Elvebyen', icon:'🏙️', description:'En by med elv, broer, skole, mølle og fotballbane.', total:120},
+  city:{name:'Elvebyen', icon:'🏙️', description:'En by med elv, broer, parker, fabrikk og høye hus.', total:120},
   moon:{name:'Månebasen', icon:'🌙', description:'En base med raketter, kupler, rovere og solcellefelt.', total:120},
   island:{name:'Palmeøya', icon:'🌴', description:'Et feriested med strand, hotell, iskrembar og dansegulv.', total:120},
 };
@@ -421,11 +421,16 @@ const DETAILS = {
     'Et høyt tårn å se øya fra.','En grønn hage under palmene.','En liten bod med fruktskilt.','Et torg der øya kan møtes.'],
 };
 
+function catalogBuilding(id,index,map) {
+  if (!isRegion(map)) return null;
+  return (hasExpandedCatalog(map)?EXPANDED_LANDMARKS[id]?.[index]:null)??NEW_LANDMARKS[id]?.[index];
+}
+
 export function worldBuilding(id,index,map=null) {
-  const custom=isRegion(map)?NEW_LANDMARKS[id]?.[index]:null;
+  const custom=catalogBuilding(id,index,map);
   if (custom) {
-    const [name,description,kind]=custom;
-    return {name,description,kind};
+    const [name,description,kind,family=kind]=custom;
+    return {name,description,kind,family};
   }
   const definition=PLACES[id]?.[index];
   if (!definition) return null;
@@ -440,35 +445,43 @@ export function worldBuildingOptions(id,map) {
   const types=new Set();
   const varied=[];
   for (const index of available) {
-    const {kind:type}=worldBuilding(id,index,map);
-    if (types.has(type)) continue;
-    types.add(type);
+    const {kind,family=kind}=worldBuilding(id,index,map);
+    if (types.has(family)) continue;
+    types.add(family);
     varied.push(index);
     if (varied.length===3) return varied;
   }
   return [...varied,...available.filter(index=>!varied.includes(index))].slice(0,3);
 }
 
-function regionLandmarkParts(id,index,site) {
-  const custom=NEW_LANDMARKS[id]?.[index];
-  if (custom) return landmarkStages(id,custom[2],site);
-  const legacy=landmark(id,index,PLACES[id][index],[0,0]);
-  const ground=id==='island'?.45:.04;
-  const steps=legacy.map(step=>at(step.parts,0,-ground,0));
-  const [{w,d}]=steps[0];
-  return [
-    [{...box(0,0,w-.18,d-.18,1.24,THEMES[id].foundation,-1.22),support:true},...steps[0],...steps[1]],
-    [...steps[2],...steps[3]], [...steps[4],...steps[5]],
-  ];
+function regionLandmarkParts(id,index,site,map) {
+  const custom=catalogBuilding(id,index,map);
+  let stages;
+  if (custom) stages=landmarkStages(id,custom[2],site);
+  else {
+    const ground=id==='island'?.45:.04;
+    const steps=landmark(id,index,PLACES[id][index],[0,0]).map(step=>at(step.parts,0,-ground,0));
+    const [{w,d}]=steps[0];
+    stages=[
+      [{...box(0,0,w-.18,d-.18,1.24,THEMES[id].foundation,-1.22),support:true},...steps[0],...steps[1]],
+      [...steps[2],...steps[3]], [...steps[4],...steps[5]],
+    ];
+  }
+  if (site?.waterfront) return stages;
+  // Broad, thin surfaces stay in elevation order in the Canvas painter.
+  return stages.map(parts=>parts.map(part=>{
+    const top=part.y+part.h;
+    return part.support||top<.65&&part.w>1.4&&part.d>1.4 ? {...part,layer:7+top} : part;
+  }));
 }
 
 export function worldBuildingPreview(id,index,map=null) {
   const info=worldBuilding(id,index,map);
   if (!info) return null;
-  const parts=isRegion(map)?regionLandmarkParts(id,index).flat():landmark(id,index,PLACES[id][index],[0,0]).flatMap(step=>step.parts);
+  const parts=isRegion(map)?regionLandmarkParts(id,index,null,map).flat():landmark(id,index,PLACES[id][index],[0,0]).flatMap(step=>step.parts);
   const height=Math.max(...parts.map(part=>part.y+part.h));
-  const span=Math.max(...parts.map(part=>2*Math.abs(part.x)+(part.w??0)));
-  return {parts,background:THEMES[id].sky,yaw:-.52,pitch:.47,center:height*.39,size:Math.max(9.7,height*1.47,span*.91),latest:[]};
+  const span=Math.max(...parts.map(part=>Math.hypot(2*Math.abs(part.x)+(part.w??0),2*Math.abs(part.z)+(part.d??0))));
+  return {parts,background:THEMES[id].sky,yaw:-.52,pitch:.47,center:height*.44,size:Math.max(9.7,height*1.55,span*.95),latest:[]};
 }
 
 function landShape(x,z,w,d,y,color,layout) {
@@ -649,9 +662,9 @@ export function projectScene(id, completed=0) {
   const project=projectById(id);
   if(!project) return null;
   if (isWorld(id)&&isRegion(completed)) {
-    const key=`${id}:${completed.layout}:${completed.seed}:${completed.progress}:${completed.order.join(',')}`;
+    const key=`${id}:${completed.layout}:${completed.catalog??1}:${completed.seed}:${completed.progress}:${completed.order.join(',')}`;
     if (regionScenes.has(key)) return regionScenes.get(key);
-    const scene=expandedWorldScene(id,completed,THEMES[id],index=>worldBuilding(id,index,completed),(index,site)=>regionLandmarkParts(id,index,site));
+    const scene=expandedWorldScene(id,completed,THEMES[id],index=>worldBuilding(id,index,completed),(index,site)=>regionLandmarkParts(id,index,site,completed));
     regionScenes.set(key,scene);
     if (regionScenes.size>5) regionScenes.delete(regionScenes.keys().next().value);
     return scene;
@@ -668,7 +681,7 @@ export function projectScene(id, completed=0) {
     center:world ? 1 : Math.max(0,height*.43),
     size:world ? 99 : Math.max(14,height*1.38),
     closeSize:world ? 79 : undefined,
-    finished:steps[built-1]?.finished || null,
+    finished:!world&&built===steps.length?project.name:steps[built-1]?.finished || null,
     last:steps[built-1]?.label, next:steps[built]?.label,
   };
 }

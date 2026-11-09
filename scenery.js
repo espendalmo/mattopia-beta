@@ -1,4 +1,4 @@
-import {regionSurface,roadElevation,riverAt} from './regions.js';
+import {regionSurface,regionVisibility,roadElevation,riverAt} from './regions.js';
 import {STREET_TURN_RADIUS} from './street-grid.js';
 
 export const box = (x,z,w,d,h,color,y=0,studs=0) => ({shape:'box',x,y,z,w,d,h,color,studs});
@@ -37,6 +37,14 @@ const marks = {
   bread:[['oval',0,0,1.02,.66,apricot],['line',-.23,0,.1,.35,cream],['line',.04,.015,.1,.35,cream],['line',.31,-.01,.09,.28,cream]],
   book:[['line',-.27,0,.48,.66,cream],['line',.27,0,.48,.66,blue],['line',0,0,.07,.65,ink]],
   wind:[['line',0,0,1.05,.17,cream],['line',0,0,.17,1.05,cream],['oval',0,0,.29,.29,apricot]],
+  bus:[['line',0,.04,.98,.69,cream],['line',0,.16,.73,.27,blue],['oval',-.29,-.32,.22,.22,ink],['oval',.29,-.32,.22,.22,ink]],
+  arcade:[['line',0,-.14,1.02,.64,cream],['line',-.28,-.12,.26,.09,ink],['line',-.28,-.12,.09,.26,ink],
+    ['oval',.24,-.19,.16,.16,rose],['oval',.37,-.03,.16,.16,apricot]],
+  plane:[['poly',[[0,.55],[.11,.26],[.13,.07],[.5,-.14],[.49,-.26],[.12,-.16],[.08,-.36],[.23,-.47],[-.23,-.47],[-.08,-.36],[-.12,-.16],[-.49,-.26],[-.5,-.14],[-.13,.07],[-.11,.26]],cream]],
+  camp:[['poly',[[-.55,-.35],[0,.53],[.55,-.35]],apricot],['poly',[[-.2,-.35],[0,.23],[.2,-.35]],ink]],
+  log:[['oval',-.12,0,.76,.76,apricot],['oval',-.12,0,.48,.47,cream],['oval',-.12,0,.22,.22,apricot],['line',.38,0,.18,.52,apricot]],
+  hover:[['poly',[[-.5,-.09],[-.24,.28],[.31,.27],[.52,-.07],[.38,-.29],[-.42,-.28]],cream],
+    ['line',0,.14,.42,.14,blue],['line',-.33,-.38,.36,.07,rose],['line',.31,-.38,.29,.07,apricot]],
   ball:[['oval',0,0,.89,.89,cream],['oval',0,0,.3,.31,ink],['oval',.29,.21,.14,.14,ink],['oval',-.31,-.18,.14,.14,ink]],
   bed:[['line',0,-.19,1.05,.31,cream],['line',-.45,-.07,.15,.66,cream],['oval',-.23,.14,.32,.25,blue]],
   cross:[['line',0,0,.21,1.03,cream],['line',0,.18,.76,.21,cream]],
@@ -98,6 +106,16 @@ const wheel = (x,z,diameter,y) => [
 ];
 
 export function vehicle(kind,color) {
+  if (kind==='bus') {
+    return [...[-.57,.57].flatMap(x=>[-1.03,1.03].flatMap(z=>wheel(x,z,.48,0))),
+      rounded(0,0,1.29,3.28,1.04,color,.31),rounded(0,-.01,1.2,3.17,.18,'#f0ce8d',1.25),
+      ...[-1,1].flatMap(s=>[box(s*.642,-.06,.065,2.95,.18,'#e8d8a9',.56),
+        ...[-1.03,-.49,.05,.59,1.13].map(z=>rounded(s*.645,z,.051,.45,.36,'#87bcc5',.86)),
+        rounded(s*.41,1.64,.24,.1,.16,'#fff0bb',.48)]),
+      rounded(0,1.644,.98,.092,.43,'#517a8a',.82),
+      box(0,1.676,.54,.061,.11,'#edbf75',1.229),
+      box(0,-1.655,.93,.081,.12,'#b65e70',.48)];
+  }
   if (kind==='rover') {
     return [
       ...[-.67,.67].flatMap(x=>[-.86,0,.86].flatMap(z=>wheel(x,z,.71,0))),
@@ -143,6 +161,16 @@ function walker(kind,coat,skin='#edb88c') {
     dome(0,-.035,.67,.65,.27,'#80535a',1.67),
     ...[-.11,.11].map(x=>rounded(x,.31,.061,.039,.071,'#354756',1.46)),
     rounded(-.05,-.24,.47,.24,.53,'#d9a658',.69)];
+}
+
+export function visitor(kind,coat,skin,seated=false) {
+  const standing=walker(kind,coat,skin);
+  const model=seated
+    ? [...standing.slice(2).map(part=>({...part,y:part.y-.53})),
+      ...[-.17,.17].flatMap(x=>[rounded(x,.22,.25,.51,.2,'#5b687a',-.015),
+        rounded(x,.43,.2,.23,.36,'#5b687a',-.3),rounded(x,.48,.22,.38,.14,'#425568',-.39)])]
+    : standing;
+  return model.map(part=>({...part,x:part.x*.83,y:part.y*.83,z:part.z*.83,w:part.w*.83,d:part.d*.83,h:part.h*.83}));
 }
 
 function route(points, corner) {
@@ -225,6 +253,7 @@ export function actorPose(actor, seconds) {
     const roll=seconds*.39;
     return {x,y,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll)};
   }
+  if (actor.kind==='rocket'||actor.kind==='rocket-flame'||actor.kind==='plane') return flightPose(actor,seconds);
   const {segments,length}=actor.route;
   const traveled=seconds*actor.speed;
   const distance=(traveled+length*actor.phase)%length;
@@ -236,8 +265,29 @@ export function actorPose(actor, seconds) {
   const nearestRoad=Math.min(...actor.roads.map(row=>Math.abs(row-z)));
   const y=actor.kind==='coaster'?segment.y+segment.dy*t:
     actor.elevation?.(x,z)??(actor.ground+actor.roadRise*Math.max(0,1-Math.max(0,nearestRoad-.85)/.61));
-  const bob=actor.kind==='bird' ? Math.sin(traveled*.44)*.35 : actor.kind==='boat' ? Math.sin(traveled*2.1)*.045 : walking ? Math.abs(Math.sin(traveled*6))*.035 : 0;
+  const bob=actor.kind==='bird' ? Math.sin(traveled*.44)*.35
+    : ['boat','swimmer','jetski'].includes(actor.kind) ? Math.sin(traveled*2.1)*.045
+    : walking ? Math.abs(Math.sin(traveled*6))*.035 : 0;
   return {x,y:y+bob,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking?Math.sin(traveled*6)*.17:0,rollCos:1,rollSin:0};
+}
+
+function flightPose({x,y,z,yaw,kind,delay},seconds) {
+  const t=(seconds+26-delay)%26;
+  const plane=kind==='plane';
+  const ascend=t>=2.65&&t<7.5,descend=t>=11.05&&t<17.1;
+  const away=t>=7.5&&t<11.05;
+  const travel=ascend?(t-2.65)/4.85:descend?(17.1-t)/6.05:0;
+  const altitude=plane?107*travel**2.7:260*travel**2.35;
+  const ahead=plane?(ascend?1:-1)*(185*travel**2.75+5*travel):0;
+  const flame=kind==='rocket-flame';
+  const invisible=away||flame&&!(ascend||descend);
+  const cos=Math.cos(yaw),sin=Math.sin(yaw);
+  const roll=plane&&altitude?Math.sin(t*2.4)*Math.min(.12,altitude*.012):0;
+  return {
+    x:x+ahead*sin+(flame?Math.sin(t*37)*.09:0),z:z+ahead*cos,
+    y:invisible?-540:y+altitude+(flame?Math.sin(t*41)*.115:0),
+    cos,sin,stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),
+  };
 }
 
 export function coasterActor(parts,points,phase) {
@@ -296,12 +346,67 @@ function boatRoute(theme,layout,plot) {
   return [[-5,6],[-6,13],[5,14],[8,10],[4,6]].map(([x,z])=>[plot.x+x*c+z*s,plot.z+z*c-x*s]);
 }
 
+export function swimmer(skin='#dfa881',cap='#d78684') {
+  return [dome(0,-.29,.48,.75,.16,'#75aead',.016),rounded(0,.14,.38,.35,.28,skin,.052),
+    dome(0,.124,.41,.36,.17,cap,.225),
+    beam([-.15,.082,-.08],[-.42,.111,.23],.105,skin),beam([.15,.075,-.04],[.38,.097,.28],.1,skin),
+    box(-.36,-.38,.046,.42,.016,'#a3d9d6',.022),box(.37,-.47,.046,.43,.016,'#b2ddd6',.024)];
+}
+
+function jetski(color) {
+  return [rounded(0,-.02,.82,1.63,.24,color,.055),dome(0,.55,.77,.8,.29,'#edb375',.17),
+    rounded(0,-.15,.49,.64,.14,'#506b75',.28),rounded(0,-.13,.41,.42,.54,'#e5c38e',.39),
+    dome(0,-.08,.49,.46,.37,'#64899c',.85),
+    ...[-1,1].flatMap(s=>[beam([s*.16,.78,-.05],[s*.26,.57,.38],.112,'#e4ae84'),
+      box(s*.33,-.93,.068,.67,.025,'#cae8e1',.026)]),
+    beam([-.32,.56,.4],[.32,.56,.4],.09,'#445e6a')];
+}
+
+function islandWaterLife(layout,plan,completed) {
+  const water=(x,z)=>{ const tile=regionSurface(layout,x,z); return tile.water&&tile.basin>=0; };
+  const safe=actor=>actor.route.segments.every(({x,z,dx,dz})=>water(x,z)&&water(x+dx*.5,z+dz*.5));
+  let beach=[];
+  for (const plot of completed.slice().reverse()) {
+    const yaw=plot.waterfront?plot.yaw:Math.atan2(plot.x,plot.z);
+    const site={...plot,y:0,yaw};
+    for (const across of (plot.waterfront?[-5.4,5.4,-8.4,8.4]:[0,-5,5])) {
+      for (const out of [4.6,7.8,11.1,14.3]) {
+        const at=(dx,dz)=>{ const [x,,z]=pointOnSite([across+dx,0,out+dz],site); return [x,z]; };
+        const lagoon=[[-1.32,-.82],[1.32,-.82],[1.32,.82],[-1.32,.82]].map(([x,z])=>at(x,z));
+        if (!lagoon.every(([x,z])=>water(x,z)&&regionVisibility(plan,x,z)>.57)) continue;
+        const swimmers=[actor(swimmer(),lagoon,{kind:'swimmer',ground:.034,speed:.68,phase:.17,corner:.6}),
+          actor(swimmer('#a67457','#e9c67e'),lagoon,{kind:'swimmer',ground:.034,speed:.57,phase:.67,corner:.55})];
+        if (!swimmers.every(safe)) continue;
+        if (!beach.length) beach=swimmers;
+        const route=[[-4.3,2.4],[-4.9,5.2],[4.2,5.8],[4.4,3]].map(([x,z])=>at(x,z));
+        if (route.every(([x,z])=>water(x,z)&&regionVisibility(plan,x,z)>.45)) {
+          const scooters=['#d37d6d','#4d9cac'].map((color,i)=>actor(jetski(color),route,
+            {kind:'jetski',ground:.045,speed:4.6,phase:.23+i*.52,corner:1.67}));
+          if (safe(scooters[0])) return [...swimmers,...scooters];
+        }
+      }
+    }
+  }
+  return beach;
+}
+
 export function regionActors(theme,layout,plan,completed) {
   if (!completed.length&&!plan.circuits?.length) return [];
   const actors=[], moon=theme==='moon';
   const paths=plan.paths.filter(path=>path.length>=4);
   const colors=['#deaa73','#8eb1c6','#d27d84','#e0bb83'];
   const walkers=moon?['astronaut','alien']:['human'];
+  if (theme==='island') actors.push(...islandWaterLife(layout,plan,completed));
+  const station=completed.find(plot=>plot.kind==='busStation');
+  if (station&&paths.length) {
+    const entry=station.entries[0]??station;
+    const distance=path=>Math.min(...path.map(point=>Math.hypot(point.x-entry.x,point.z-entry.z)));
+    const routes=plan.circuits?.length?plan.circuits:paths;
+    const closest=routes.reduce((near,route)=>distance(route)<distance(near)?route:near);
+    const points=plan.circuits?.length?closest.map(({x,z})=>[x,z]):laneLoop(closest,.28);
+    actors.push(actor(vehicle('bus','#4c9694'),points,{kind:'bus',speed:2.25,phase:.33,
+      elevation:(x,z)=>roadElevation(layout,x,z),corner:STREET_TURN_RADIUS}));
+  }
   for (const plot of completed.filter(plot=>['pier','quay','marina'].includes(plot.kind))) {
     const cargo=plot.kind==='quay';
     actors.push(actor(sailboat(cargo),boatRoute(theme,layout,plot),{kind:'boat',ground:.06,speed:cargo?1.45:1.85,phase:.35,corner:2}));

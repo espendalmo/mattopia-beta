@@ -1,9 +1,9 @@
 import {box,dome,tube,beam,placeParts,regionActors,MAX_ACTORS} from './scenery.js';
 import {regionLayout,planRegion,regionVisibility,regionSurface} from './regions.js';
-import {WORLD_BUILD_STEPS,randomGenerator,worldStatus} from './worlds.js';
+import {REGION_PLACES,WORLD_BUILD_STEPS,hasExpandedCatalog,randomGenerator,worldStatus} from './worlds.js';
 import {planStreetRegion} from './street-grid.js';
 import {regionRoads} from './region-roads.js';
-import {constructionYard,lunarSky,rideModels} from './map-art.js';
+import {constructionYard,landmarkVisitors,lunarSky,rideModels} from './map-art.js';
 
 const SHADES={
   city:{ground:'#93ae77',shade:'#628c68',high:'#b2bd81',bank:'#c6c295',deep:'#5a93a8',shallow:'#85c5bf'},
@@ -171,7 +171,31 @@ function roughRocks(theme,x,y,z,rng) {
   });
 }
 
-function landscapeDetails(layout,plan,full) {
+function smallCrater(layout,tile,visibility,sky,rng) {
+  const {x,z}=tile,radius=1.42+rng()*1.13,oval=.74+rng()*.26;
+  const count=10,phase=rng()*Math.PI*2,background=rgb(sky);
+  const vertex=(dx,dz,height,tint,shade)=>{
+    const a=x+dx,b=z+dz,ground=regionSurface(layout,a,b);
+    const color=blend(surfaceColor(ground,layout),rgb(tint),shade);
+    return {point:[a,ground.y+height,b],color:blend(background,color,visibility)};
+  };
+  const rings=[[1,.038,'#a4a7bf',.19],[.76,.34,'#c9c5d5',.67],[.49,.09,'#656d8e',.57]].map(([size,height,tint,shade])=>
+    Array.from({length:count},(_,i)=>{
+      const angle=phase-i*Math.PI*2/count;
+      const r=radius*size*(1+.076*Math.sin(i*5.27+phase));
+      const dx=Math.cos(angle),dz=Math.sin(angle);
+      return vertex(dx*r,dz*r*oval,height*(1+.24*Math.sin(i*1.73+phase)),tint,shade*(.86-.14*dx+.06*dz));
+    }));
+  const center=vertex(0,0,.075,'#777e9c',.68);
+  const triangle=(...vertices)=>face(vertices.map(v=>v.point),sky,1.4,vertices.map(v=>v.color));
+  return rings.flatMap((ring,j)=>ring.flatMap((point,i)=>{
+    const next=(i+1)%count,inner=rings[j+1];
+    return inner?[triangle(point,ring[next],inner[i]),triangle(ring[next],inner[next],inner[i])]
+      :[triangle(center,point,ring[next])];
+  }));
+}
+
+function landscapeDetails(layout,plan,full,sky) {
   const {theme,seed}=layout;
   const rng=randomGenerator((seed^0x36a9bf)>>>0);
   const spread=Array.from({length:320},()=>({x:(rng()-.5)*144,z:(rng()-.5)*135,seed:Math.floor(rng()*2**32)}));
@@ -199,6 +223,12 @@ function landscapeDetails(layout,plan,full) {
     if ([plan.origin,...plan.plots].some(site=>Math.hypot(x-site.x,z-site.z)<6.55) ||
       Object.values(layout.berths).some(site=>Math.hypot(x-site.x,z-site.z)<(site.span??8.5)) ||
       routes.some(point=>Math.hypot(x-point.x,z-point.z)<2.18)) continue;
+    if (theme==='moon'&&spotSeed%4===0&&tile.basin>.7&&
+      plan.plots.every(site=>Math.hypot(x-site.x,z-site.z)>7.55)&&
+      routes.every(point=>Math.hypot(x-point.x,z-point.z)>4.35)) {
+      marks.push(...smallCrater(layout,{...tile,x,z},visibility,sky,random));
+      continue;
+    }
     const rocky=theme==='moon'||tile.relief>1.26&&random()<.56;
     const group=rocky?roughRocks(theme,x,tile.y,z,random):naturePlant(theme,x,tile.y,z,random);
     marks.push(...group.map(part=>({...part,fog:1-visibility})));
@@ -236,13 +266,14 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts) {
   const status=worldStatus(map), layout=regionLayout(id,map.seed);
   const opened=map.order.slice(0,Math.ceil(map.progress/WORLD_BUILD_STEPS));
   const buildings=opened.map(index=>({index,kind:buildingInfo(index).kind}));
-  const plan=(map.layout===3?planStreetRegion(layout,buildings):null)??planRegion(layout,buildings);
+  const plan=(map.layout===3?planStreetRegion(layout,buildings,hasExpandedCatalog(map)?REGION_PLACES:undefined):null)
+    ??planRegion(layout,buildings);
   const horizon=clamp((status.built-18)/6);
   const parts=[
     ...(id==='moon'&&horizon?lunarSky(map.seed,palette.sky,horizon):[]),
     ...regionGround(layout,plan,palette.sky,status.full,horizon),
     ...regionRoads(layout,plan),
-    ...landscapeDetails(layout,plan,status.full),
+    ...landscapeDetails(layout,plan,status.full,palette.sky),
   ];
   let latest=[],last,finished=null,latestTarget=null;
   const landmarks={}, rides=[];
@@ -255,7 +286,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts) {
     latestTarget={...plot,height};
     if (!plot.waterfront) parts.push(...groundShadow(layout,plot.x+1.92,plot.z-1.47,7.35,6.18,amount===1?.15:.27,12));
     for (let j=0;j<amount;j++) {
-      latest=placeParts(steps[j].filter(part=>!(done&&part.wheel)),plot).map(part=>fitFoundation(layout,part));
+      latest=placeParts(steps[j].filter(part=>!(done&&(part.wheel||part.flight))),plot).map(part=>fitFoundation(layout,part));
       parts.push(...latest);
     }
     last=`${name} · ${PHASES[amount-1]}`;
@@ -263,6 +294,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts) {
     if (done) {
       landmarks[plot.index]=latestTarget;
       rides.push(...rideModels(plot,steps));
+      parts.push(...landmarkVisitors(id,plot));
     } else parts.push(...constructionYard(layout,plot,amount,height));
   });
   const completedPlots=plan.plots.slice(0,status.built);
