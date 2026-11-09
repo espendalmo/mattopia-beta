@@ -1,7 +1,7 @@
 import {box,tube,roof,rounded,dome,at,worldSign,vehicle,worldActors,districtActors} from './scenery.js';
-import {isWorld,isRegion,hasExpandedCatalog,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,randomGenerator} from './worlds.js';
+import {isWorld,isRegion,hasExpandedCatalog,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,RAIL_PLACE,randomGenerator} from './worlds.js';
 import {expandedWorldScene} from './region-scenery.js';
-import {NEW_LANDMARKS,EXPANDED_LANDMARKS,landmarkStages} from './world-landmarks.js';
+import {NEW_LANDMARKS,EXPANDED_LANDMARKS,RAIL_LANDMARKS,landmarkStages} from './world-landmarks.js';
 import {shapeLandmarkGround} from './landmark-ground.js';
 import {landmarkStory} from './landmark-stories.js';
 import {seasonForDate} from './seasons.js';
@@ -426,6 +426,7 @@ const DETAILS = {
 
 function catalogBuilding(id,index,map) {
   if (!isRegion(map)) return null;
+  if (index===RAIL_PLACE) return RAIL_LANDMARKS[id];
   return (hasExpandedCatalog(map)?EXPANDED_LANDMARKS[id]?.[index]:null)??NEW_LANDMARKS[id]?.[index];
 }
 
@@ -442,10 +443,15 @@ export function worldBuilding(id,index,map=null) {
 }
 
 export function worldBuildingOptions(id,map) {
-  const available=worldChoices(map).filter(index=>{
+  const available=worldChoices(map,id).filter(index=>{
     const {kind}=worldBuilding(id,index,map);
     return !isRegion(map)||map.progress>=2*WORLD_BUILD_STEPS||!['pier','marina','quay','bridge'].includes(kind);
   });
+  // Make the station easy to discover at several points in a growing map.
+  if (available.includes(RAIL_PLACE) && worldStatus(map).built%4===2) {
+    available.splice(available.indexOf(RAIL_PLACE),1);
+    available.unshift(RAIL_PLACE);
+  }
   const types=new Set();
   const varied=[];
   for (const index of available) {

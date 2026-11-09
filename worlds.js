@@ -3,12 +3,14 @@ export const WORLD_BUILD_STEPS=3;
 export const WORLD_PLACES=16;
 export const REGION_PLACES=24;
 export const REGION_CATALOG_PLACES=36;
+export const RAIL_PLACE=REGION_CATALOG_PLACES;
 export const LEGACY_WORLD_STEPS=120;
 export const isWorld=id=>WORLD_IDS.includes(id);
 export const isRegion=map=>map?.layout===2||map?.layout===3;
 export const worldCapacity=map=>!map||isRegion(map)?REGION_PLACES:WORLD_PLACES;
 export const hasExpandedCatalog=map=>map?.layout===3&&map.catalog===2;
 export const worldPoolSize=map=>hasExpandedCatalog(map)?REGION_CATALOG_PLACES:worldCapacity(map);
+const hasRail=(theme,map)=>isRegion(map)&&(theme==='city'||theme==='moon');
 
 export function randomGenerator(seed){
   let n=seed>>>0;
@@ -61,12 +63,14 @@ export function currentWorld(state,id) {
   return state.projects?.[id]>0 ? legacyMap(state.projects[id]) : null;
 }
 
-export function worldChoices(map) {
+export function worldChoices(map,theme) {
   const status=worldStatus(map);
   if (!map||status.full||status.building!==null) return [];
   const {finished,partial}=legacyPlacement(map.legacy);
   const used=new Set([...finished,partial?.id,...map.order]);
-  const options=Array.from({length:worldPoolSize(map)},(_,i)=>i).filter(id=>!used.has(id));
+  const pool=Array.from({length:worldPoolSize(map)},(_,i)=>i);
+  if (hasRail(theme,map) && status.built>=2) pool.push(RAIL_PLACE);
+  const options=pool.filter(id=>!used.has(id));
   const rng=randomGenerator((map.seed??0x4fd37d89)+map.order.length*0x47c82f31+(map.legacy||0)*17);
   for (let i=options.length-1;i>0;i--) {
     const swap=Math.floor(rng()*(i+1));
@@ -75,15 +79,15 @@ export function worldChoices(map) {
   return options;
 }
 
-export function worldSelect(map,id) {
-  return worldChoices(map).includes(id) ? {...map,order:[...map.order,id]} : map;
+export function worldSelect(map,id,theme) {
+  return worldChoices(map,theme).includes(id) ? {...map,order:[...map.order,id]} : map;
 }
 
-export function worldAdvance(map) {
+export function worldAdvance(map,theme) {
   if (!map || worldStatus(map).full) return map;
   // A round begun in an older release can still award a build on completion.
-  const options=worldChoices(map);
-  const selected=options.length ? worldSelect(map,options[0]) : map;
+  const options=worldChoices(map,theme);
+  const selected=options.length ? {...map,order:[...map.order,options[0]]} : map;
   return {...selected,progress:selected.progress+1};
 }
 
@@ -92,7 +96,7 @@ export function freshWorld(rng=Math.random,previous=null) {
   return {layout:3,catalog:2,seed:seed===previous?.seed?(seed+1)>>>0:seed,legacy:0,order:[],progress:0};
 }
 
-function restoreWorld(raw,budget,first) {
+function restoreWorld(raw,budget,first,theme) {
   if (!raw || typeof raw!=='object') return null;
   const integer=value=>Number.isSafeInteger(value)&&value>=0;
   const legacy=first&&integer(raw.legacy)?Math.min(raw.legacy,budget,LEGACY_WORLD_STEPS):0;
@@ -104,7 +108,8 @@ function restoreWorld(raw,budget,first) {
   const pool=worldPoolSize({layout,...catalog});
   const remaining=capacity-finished.length-Number(Boolean(partial));
   const used=new Set([...finished,partial?.id]);
-  const ids=Array.isArray(raw.order)?[...new Set(raw.order)].filter(id=>integer(id)&&id<pool&&!used.has(id)).slice(0,remaining):[];
+  const ids=Array.isArray(raw.order)?[...new Set(raw.order)].filter(id=>
+    integer(id)&&(id<pool||id===RAIL_PLACE&&hasRail(theme,{layout}))&&!used.has(id)).slice(0,remaining):[];
   const catchUp=Number(Boolean(partial));
   const progress=integer(raw.progress)?Math.min(raw.progress,budget-legacy,ids.length*WORLD_BUILD_STEPS+catchUp):0;
   // There can be at most one selected building beyond completed and in-progress buildings.
@@ -118,7 +123,7 @@ export function restoreWorlds(raw, projects, total) {
     let budget=total;
     if (Array.isArray(raw?.[id])) {
       for (const saved of raw[id]) {
-        const map=restoreWorld(saved,budget,maps.length===0);
+        const map=restoreWorld(saved,budget,maps.length===0,id);
         if (!map) break;
         maps.push(map);
         const status=worldStatus(map);

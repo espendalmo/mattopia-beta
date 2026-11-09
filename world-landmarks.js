@@ -1,4 +1,5 @@
 import {box as b,rounded as r,dome as d,tube as t,roof,beam,worldSign,pointOnSite,placeParts,vehicle} from './scenery.js';
+import {transitStation,helipadParts} from './transport.js';
 
 const cream='#f3e5c8', stone='#c9bda6', dark='#344451', glass='#68a4ba', ice='#a1dae2';
 const brass='#e5bc68', teal='#347e81', rose='#c86173';
@@ -880,7 +881,7 @@ function airport(tiny=false) {
       roof(x,z,w+.24,d0+.21,.91,roofTone,2.49),
       ...(tiny?[]:[r(3.48,-3.06,1.48,1.55,3.08,'#a1b6bb',.36),r(3.48,-3.06,1.92,1.88,.89,'#72aaba',3.42),
         r(3.48,-3.06,2.09,2.07,.19,roofTone,4.28),r(-3.08,4.54,3.43,.79,.24,'#d7c59f',.35)])],
-    [...placeParts(markings,site),...glazing([x-1.08,x,x+1.08],[1.04],z+d0/2+.013,{w:.67,h:.81}),
+    [...placeParts(markings,site),...(tiny?[]:helipadParts()),...glazing([x-1.08,x,x+1.08],[1.04],z+d0/2+.013,{w:.67,h:.81}),
       ...worldSign('plane',x,2.17,z+d0/2+.09,roofTone),
       ...placeParts(planeModel(),{x:px,y:py,z:pz,yaw:runway.yaw}).map(part=>({...part,flight:'plane'}))],
   ];
@@ -902,6 +903,12 @@ const art={
   tikiBar:()=>snackHouse('tikiBar'),airport:()=>airport(),islandArcade:arcade,megaResort,glassHotel:()=>glassTower('glassHotel'),
   beachCamp:camping,tropicalMarket:market,coralCafe:()=>snackHouse('coralCafe'),
   islandTower:()=>glassTower('lookout'),palmGarden:greatPark,airstrip:()=>airport(true),tropicalPools,
+  railwayStation:()=>transitStation(false),monorailStation:()=>transitStation(true),
+};
+
+export const RAIL_LANDMARKS={
+  city:['Elveby stasjon','Perrong, stasjonsbygg og tog som kjører mellom to tunneler.','railwayStation'],
+  moon:['Månesporet','En stasjon med en svevende bane gjennom basen og inn i månetunnelene.','monorailStation'],
 };
 
 export const NEW_LANDMARKS={
@@ -985,7 +992,7 @@ export const EXPANDED_LANDMARKS={
   },
   island:{
     24:['Tiki Smoothie','En tropisk bar med bambusstolper og en smoothie på taket.','tikiBar'],
-    25:['Palmeflyplassen','Terminal, kontrolltårn og et fly som letter og lander.','airport','flight'],
+    25:['Palmeflyplassen','Fly som letter og lander, og en egen landingsplass for helikopter.','airport','flight'],
     26:['Strandarkaden','Spill, lys og en stor joystick på taket.','islandArcade'],
     27:['Laguneressorten','En stor resort med to tårn, balkonger og to basseng.','megaResort','resort'],
     28:['Glasshotellet','Et høyt hotell med glassvegger og basseng i hagen.','glassHotel','resort'],

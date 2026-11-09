@@ -1023,3 +1023,57 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
   .map-info-card { padding: 8px 7px 9px 10px; }
   .map-info-card p { font-size: .78rem; }
 }
+
+.eplo-note {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 14px 11px 10px;
+  border: 1px solid #d7e3cf;
+  border-radius: 16px;
+  background: #eef5e7;
+  color: var(--ink);
+  text-align: left;
+}
+.eplo-avatar { position: relative; flex: 0 0 57px; height: 53px; }
+.eplo-avatar .buddy { position: absolute; inset: 0 auto auto 0; margin: 0; scale: .4; transform-origin: top left; }
+.eplo-note strong, .eplo-hint-name { color: var(--green); font-weight: 800; }
+.eplo-note p, .complete .eplo-note p { margin: 3px 0 0; color: var(--ink); font-size: .91rem; line-height: 1.46; }
+.eplo-finale { margin: 13px auto; border-color: #e6d6a5; background: linear-gradient(115deg,#edf5e5,#fff5d8); }
+.eplo-hint-name { display: block; margin-bottom: 2px; font-size: .78rem; }
+.demo-shortcuts { display: flex; justify-content: flex-end; margin: 0 0 8px; }
+.demo-shortcuts .secondary { min-height: 44px; border-color: #e4d4a2; background: #fff8df; }
+[data-demo-finale][hidden] { display: none; }
+
+.project-inspect-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: 15px;
+}
+.project-inspect-glow > span {
+  position: absolute;
+  translate: -50% -50%;
+  border: 2px solid #ffecab;
+  border-radius: 50%;
+  box-shadow: 0 0 14px #f2c364aa, inset 0 0 9px #f6d98778;
+  opacity: .65;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .project-inspect-glow > span { animation: inspect-pulse 850ms ease-in-out 2; }
+  .eplo-finale { animation: eplo-arrive 420ms 520ms cubic-bezier(.2,.66,.3,1) both; }
+  .map-info-card:not([hidden]) { animation: eplo-arrive 190ms ease-out both; }
+  .player-row, .world-option, .map-landmark, .project-peek, .icon-button, .help-button {
+    transition: background-color 140ms ease, border-color 140ms ease, scale 130ms ease;
+  }
+  :is(.player-row,.world-option,.map-landmark,.project-peek,.icon-button,.help-button):active:not(:disabled) { scale: .98; }
+  .feedback-icon { animation: feedback-tick 220ms cubic-bezier(.2,.75,.35,1.3) both; }
+  @keyframes eplo-arrive { from { translate: 0 6px; opacity: 0; } to { translate: 0 0; opacity: 1; } }
+  @keyframes inspect-pulse {
+    0%,100% { scale: 1; opacity: .65; }
+    50% { scale: 1.075; opacity: 1; box-shadow: 0 0 22px #f2c364e0, inset 0 0 14px #f6d987a0; }
+  }
+  @keyframes feedback-tick { from { scale: .83; opacity: .58; } to { scale: 1; opacity: 1; } }
+}

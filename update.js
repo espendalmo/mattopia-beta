@@ -4,8 +4,10 @@ function newerThan(a,b){
   for(let i=0;i<3;i++){if(x[i]!==y[i])return x[i]>y[i];}return false;
 }
 
+export const PRODUCTION_PATH='/mattopia/';
+
 export async function readPublishedVersion(origin, {signal, request=globalThis.fetch}={}) {
-  const url = new URL('/tallvenn/core.js', origin);
+  const url = new URL(PRODUCTION_PATH+'core.js', origin);
   // A unique URL also avoids cached responses from older Tallvenn workers.
   url.searchParams.set('__tallvenn_published', String(Date.now()));
   const response = await request(url, {cache:'no-store', credentials:'omit', redirect:'error', signal});

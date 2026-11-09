@@ -5,6 +5,7 @@ import {planStreetRegion} from './street-grid.js';
 import {regionRoads} from './region-roads.js';
 import {constructionYard,landmarkVisitors,lunarSky,rideModels} from './map-art.js';
 import {plotAccess,terrainFoundation} from './landmark-ground.js';
+import {districtRail,helicopterModels} from './transport.js';
 
 const SHADES={
   city:{ground:'#93ae77',shade:'#628c68',high:'#b2bd81',bank:'#c6c295',deep:'#5a93a8',shallow:'#85c5bf'},
@@ -276,7 +277,7 @@ function seasonalDetails(layout,plot,season) {
 }
 
 function viewBounds(plan,horizon) {
-  const points=[plan.origin,...plan.plots,...plan.paths.flat()];
+  const points=[plan.origin,...plan.plots,...plan.paths.flat(),...(plan.transit??[])];
   const xs=points.map(p=>p.x),zs=points.map(p=>p.z);
   const left=Math.min(...xs),right=Math.max(...xs),back=Math.min(...zs),front=Math.max(...zs);
   return {anchorX:(left+right)*.5*(1-horizon),anchorZ:(back+front)*.5*(1-horizon),
@@ -293,6 +294,13 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
     ??planRegion(layout,buildings);
   const isNewPlot=map.progress%WORLD_BUILD_STEPS===1;
   const developments=plan.plots.map(plot=>({plot,steps:buildingParts(plot.index,plot)}));
+  const completedPlots=plan.plots.slice(0,status.built);
+  const station=completedPlots.find(plot=>plot.kind==='railwayStation'||plot.kind==='monorailStation');
+  const rail=station&&districtRail(layout,station,plan.paths);
+  if (rail) plan.transit=rail.points;
+  const airport=completedPlots.find(plot=>plot.kind==='airport');
+  const helicopter=id==='city'&&status.built>=2?helicopterModels(false,plan.origin):
+    airport?helicopterModels(true,airport):[];
   plan.approaches=developments.flatMap(({plot,steps},i)=>{
     const approach=plotAccess(layout,plot,steps[0].find(part=>part.support));
     return approach?[{...approach,latest:i===developments.length-1}]:[];
@@ -318,7 +326,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
     const shadow=plot.waterfront?[]:groundShadow(layout,plot.x+1.92,plot.z-1.47,7.35,6.18,amount===1?.15:.27,12,season);
     parts.push(...shadow);
     for (let j=0;j<amount;j++) {
-      latest=placeParts(steps[j].filter(part=>!(done&&(part.wheel||part.flight))),plot)
+      latest=placeParts(steps[j].filter(part=>!(done&&(part.wheel||part.flight||part.transitPreview))),plot)
         .flatMap(part=>terrainFoundation(layout,part,map.seed^Math.imul(plot.index+1,0x6c8e9cf5)))
         .map(part=>({...part,landmark:plot.index}));
       parts.push(...latest);
@@ -328,6 +336,10 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
     if (done) {
       landmarks[plot.index]=latestTarget;
       rides.push(...rideModels(plot,steps));
+      if (plot===station) {
+        parts.push(...rail.parts);
+        latest=[...latest,...rail.parts];
+      }
       parts.push(...landmarkVisitors(id,plot),...seasonalDetails(layout,plot,season));
     } else {
       const yard=constructionYard(layout,plot,amount,height);
@@ -335,11 +347,11 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
       if (amount===1) latest=[...shadow,...latest,...yard];
     }
   });
-  const completedPlots=plan.plots.slice(0,status.built);
   return {
     id,parts,latest,last,finished,landmarks,sites,roadBuild,latestTarget,world:true,illustrated:true,background:palette.sky,yaw:-Math.PI/4,pitch:.6155,center:1.1,closeSize:76,
     ...viewBounds(plan,horizon),
-    ambient:[...rides,...regionActors(id,layout,plan,completedPlots)].slice(0,MAX_ACTORS),
+    soundscape:{buildings:completedPlots.length,fun:completedPlots.filter(plot=>['wheel','coaster','arcade','lunarArcade','islandArcade','tropicalPools'].includes(plot.kind)).length},
+    ambient:[...(rail?.actors??[]),...helicopter,...rides,...regionActors(id,layout,plan,completedPlots)].slice(0,MAX_ACTORS),
     next:status.building!==null?`${buildingInfo(status.building).name} · ${PHASES[status.phase]}`:null,
   };
 }

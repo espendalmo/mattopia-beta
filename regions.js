@@ -253,6 +253,11 @@ export function regionVisibility(plan,x,z,full=false) {
   for (const path of plan.paths) {
     for (let i=1;i<path.length;i+=4) reach=Math.max(reach,1-(distanceTo(path[i])-3.8)/11);
   }
+  if (plan.transit) {
+    for (let i=0;i<plan.transit.length;i+=5) {
+      reach=Math.max(reach,1-(distanceTo(plan.transit[i])-3.1)/9);
+    }
+  }
   reach=clamp(reach,0,1);
   return reach*reach*(3-2*reach);
 }

@@ -240,7 +240,7 @@ export function awardPractice(state,roundId,rng=Math.random) {
   if (isWorld(mode)) {
     const prepared=ensureWorld(state,mode,rng);
     const before=currentWorld(prepared,mode);
-    const map=worldAdvance(before);
+    const map=worldAdvance(before,mode);
     return {state:{...replaceCurrentWorld(prepared,mode,map),lastRewardRoundId:roundId},
       reward:{mode,map,completed:worldStatus(map).completed,added:map!==before}};
   }

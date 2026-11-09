@@ -255,6 +255,7 @@ export function districtActors(theme,lots) {
 }
 
 export function actorPose(actor, seconds) {
+  if (actor.pose) return actor.pose(seconds);
   if (actor.kind==='wheel') {
     const {x,y,z,yaw}=actor;
     const roll=seconds*.39;
@@ -293,6 +294,7 @@ function rocketPose({x,y,z,yaw,kind,delay},seconds) {
     x:x+(flame?Math.sin(t*37)*.09:0),z,
     y:invisible?-540:y+altitude+(flame?Math.sin(t*41)*.115:0),
     cos,sin,stride:0,rollCos:1,rollSin:0,
+    sound:Number(!flame&&(ascend&&t<5.5||descend&&t>14.6)),
   };
 }
 
@@ -319,7 +321,8 @@ function planePose({x,y,z,yaw,delay,runway},seconds) {
   const direction=reverse?-1:1,heading=yaw+(reverse?Math.PI:0)+turn;
   const roll=altitude>0?Math.sin(t*2.4)*Math.min(.12,altitude*.012):0;
   return {x:x+Math.sin(yaw)*along*direction,y:y+altitude,z:z+Math.cos(yaw)*along*direction,
-    cos:Math.cos(heading),sin:Math.sin(heading),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll)};
+    cos:Math.cos(heading),sin:Math.sin(heading),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),
+    sound:Number(clock>0&&(t>=3.4&&t<7.15||t>=16&&t<19.8))};
 }
 
 export function coasterActor(parts,points,phase) {

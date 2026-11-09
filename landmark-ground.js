@@ -14,7 +14,8 @@ const oval=Array.from({length:16},(_,i)=>{
 const curved=new Set(['park','garden','greatPark','bandstand','palmGarden','moonGarden','biodome','habitat','ringHabitat',
   'moonHotel','spaceField','rocketPort','orbitalPort','telescope','tropicalPools','beachClub','coaster']);
 const square=new Set(['school','sawmill','factory','airstrip','solar','solarGarden','prison','field']);
-const paved=new Set(['busStation','airport','airstrip','factory','sawmill','hoverDealer','roverGarage','moonWorkshop','moonCargo','cargoDepot']);
+const paved=new Set(['busStation','airport','airstrip','factory','sawmill','hoverDealer','roverGarage','moonWorkshop','moonCargo','cargoDepot',
+  'railwayStation','monorailStation']);
 
 export function shapeLandmarkGround(stages,kind) {
   const foundation=stages[0].find(part=>part.support);

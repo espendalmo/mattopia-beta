@@ -1,5 +1,5 @@
 import {actorPose,MAX_ACTORS} from './scenery.js';
-import {createFireworks,FIREWORKS_END} from './project-fireworks.js';
+import {createFireworks,FIREWORKS_START,FIREWORKS_END,FINALE_FIREWORKS_END} from './project-fireworks.js';
 import {landmarkAt} from './project-picking.js';
 
 const clamp = (value,min,max) => Math.max(min,Math.min(value,max));
@@ -468,7 +468,23 @@ export function finishTransition(elapsed) {
   return {travel: t*t*(3-2*t),opacity:1-.31*Math.sin(Math.PI*t)};
 }
 
-export function mountProjectView(container, scene, interactive=false, {closeUp=false, reveal=false, demo=false,target=null,still=false,focusLatest=false,onInspect}={}) {
+function projectPanorama(scene,initial,maxZoom) {
+  const sites=Object.values(scene.sites??{});
+  if (!sites.length) return initial;
+  const bounds=axis=>{
+    const values=sites.map(site=>site[axis]);
+    return [Math.min(...values),Math.max(...values)];
+  };
+  const [left,right]=bounds('x'),[back,front]=bounds('z');
+  return {
+    ...initial,anchorX:(left+right)*.5,anchorZ:(back+front)*.5,
+    zoom:clamp(scene.size/(Math.hypot(right-left,front-back)+28),1,maxZoom),
+  };
+}
+
+export function mountProjectView(container, scene, interactive=false, {
+  closeUp=false,reveal=false,demo=false,target=null,still=false,focusLatest=false,finale=false,onInspect,onActivity,
+}={}) {
   let canvas=container.querySelector('canvas');
   const faces=projectFaces(scene);
   let engine;
@@ -490,13 +506,16 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   const camera={...initial};
   const pointers=new Map();
   const selectable=onInspect?faces.filter(face=>Number.isInteger(face.landmark)):[];
-  let frame=0,width=0,height=0,fireworks,projectedView,tap;
+  let frame=0,width=0,height=0,fireworks,projectedView,tap,selectedSite,glow;
+  let lastActivity=-Infinity,audibleActors=new Set();
   const events=new AbortController();
   const listen=(node,name,handler,options={})=>node.addEventListener(name,handler,{...options,signal:events.signal});
   const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
   let marked=reveal&&latest.length>0, started=null, from={...camera}, visible=true, lastFrame=-Infinity;
   const completedBuild=scene.world&&Boolean(scene.finished)&&!target;
   const canCelebrate=Boolean(scene.finished)&&!target;
+  const fireworksEnd=finale?FINALE_FIREWORKS_END:FIREWORKS_END;
+  const panorama=finale&&completedBuild?projectPanorama(scene,initial,maxZoom):null;
   const fireworkTarget=scene.latestTarget??(scene.world
     ? {x:detail.anchorX,y:high,z:detail.anchorZ}
     : {x:0,y:Math.max(...scene.parts.map(part=>part.y+part.h)),z:0});
@@ -532,8 +551,13 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
         const target=key==='yaw'?turnToward(from.yaw,detail.yaw):detail[key];
         camera[key]=from[key]+(target-from[key])*ease;
       }
+      if (panorama&&elapsed>2550) {
+        const pullBack=clamp((elapsed-2550)/1930,0,1);
+        const easeOut=pullBack*pullBack*(3-2*pullBack);
+        for (const key of Object.keys(panorama)) camera[key]+=(panorama[key]-camera[key])*easeOut;
+      }
       if (finish) canvas.style.opacity=finish.opacity.toFixed(3);
-      if (stageTime>=(canCelebrate?FIREWORKS_END:1950)) stopTransition();
+      if (stageTime>=(canCelebrate?fireworksEnd:1950)) stopTransition();
     }
     const effects=buildMotion(scene.world,elapsed,low,high,marked,scene.roadBuild);
     const age=still||motion.matches?0:Math.max(0,now-mounted)/1000;
@@ -546,13 +570,36 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
     };
     paint(width,height,position,scale,camera.center,effects);
     if (onInspect) projectedView={camera:position,scale,width,height,effects};
-    if (canCelebrate&&playing&&elapsed>=910&&elapsed<FIREWORKS_END) {
-      fireworks??=createFireworks(canvas);
-      const cos=Math.cos(camera.yaw),sin=Math.sin(camera.yaw);
-      const x=width*.5+position.x+(fireworkTarget.x*cos-fireworkTarget.z*sin)*scale;
-      const depth=fireworkTarget.x*sin+fireworkTarget.z*cos;
-      const y=height*.5+position.y-((fireworkY-camera.center)*Math.cos(camera.pitch)-depth*Math.sin(camera.pitch))*scale;
+    const projectPoint=(x,y,z)=>{
+      const cos=Math.cos(camera.yaw),sin=Math.sin(camera.yaw),depth=x*sin+z*cos;
+      return [width*.5+position.x+(x*cos-z*sin)*scale,
+        height*.5+position.y-((y-camera.center)*Math.cos(camera.pitch)-depth*Math.sin(camera.pitch))*scale];
+    };
+    if (selectedSite&&glow) {
+      const [x,y]=projectPoint(selectedSite.x,selectedSite.y+.27,selectedSite.z);
+      const diameter=scale*(selectedSite.waterfront?14.2:13.2);
+      const ring=glow.firstElementChild;
+      ring.style.left=`${x+canvas.offsetLeft}px`;
+      ring.style.top=`${y+canvas.offsetTop}px`;
+      ring.style.width=`${diameter}px`;
+      ring.style.height=`${diameter*Math.sin(camera.pitch)}px`;
+    }
+    if (canCelebrate&&playing&&elapsed>=FIREWORKS_START&&elapsed<fireworksEnd) {
+      fireworks??=createFireworks(canvas,finale);
+      const [x,y]=projectPoint(fireworkTarget.x,fireworkY,fireworkTarget.z);
       fireworks?.draw(x,y,width,height,pixelRatio,elapsed);
+    }
+    if (alive&&onActivity&&now-lastActivity>=240) {
+      lastActivity=now;
+      const heard=new Set();
+      effects.actors.forEach((pose,i)=>{
+        if (!pose.sound||pose.y< -150) return;
+        const [x,y]=projectPoint(pose.x,pose.y,pose.z);
+        const edge=Math.max(Math.abs(2*x/width-1),Math.abs(2*y/height-1));
+        if (edge>1.13) return;
+        if (audibleActors.has(i)||onActivity(scene.ambient[i].kind,1-edge*.41)) heard.add(i);
+      });
+      audibleActors=heard;
     }
     if (started!==null || alive) schedule();
   }
@@ -691,12 +738,27 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   }) : null;
   intersection?.observe(canvas);
   draw();
-  return ()=>{
+  const dispose=()=>{
     events.abort();
     observer?.disconnect();
     intersection?.disconnect();
     if (frame) cancelAnimationFrame(frame);
     fireworks?.dispose();
+    glow?.remove();
     engine?.dispose();
   };
+  dispose.inspect=index=>{
+    selectedSite=index===null?null:scene.sites?.[index];
+    glow?.remove();
+    glow=null;
+    if (selectedSite) {
+      glow=canvas.ownerDocument.createElement('div');
+      glow.className='project-inspect-glow';
+      glow.setAttribute('aria-hidden','true');
+      glow.append(canvas.ownerDocument.createElement('span'));
+      canvas.after(glow);
+    }
+    schedule();
+  };
+  return dispose;
 }

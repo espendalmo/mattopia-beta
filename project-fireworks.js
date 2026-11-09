@@ -1,12 +1,22 @@
-export const FIREWORKS_END=2460;
+export const FIREWORKS_START=910;
+export const FIREWORKS_END=3910;
+export const FINALE_FIREWORKS_END=5230;
 
 const bursts=[
-  {at:910,dx:-.17,dy:0,colors:['#eeb13f','#ffdf79','#fff3bf']},
-  {at:1140,dx:.15,dy:-.08,colors:['#e5748e','#eea6a6','#ffe8bd']},
-  {at:1390,dx:-.01,dy:-.12,colors:['#8a72cf','#a0bbec','#f0dcff']},
+  {at:FIREWORKS_START,dx:-.17,dy:0,colors:['#eeb13f','#ffdf79','#fff3bf']},
+  {at:1230,dx:.15,dy:-.08,colors:['#e5748e','#eea6a6','#ffe8bd']},
+  {at:1660,dx:-.01,dy:-.12,colors:['#8a72cf','#a0bbec','#f0dcff']},
+  {at:2210,dx:-.21,dy:-.05,colors:['#6ab9a9','#a5d6bd','#e8efd0']},
+  {at:2690,dx:.21,dy:-.1,colors:['#ecaa65','#f8c781','#fff0b7']},
+];
+const finaleBursts=[
+  ...bursts,
+  {at:3220,dx:-.26,dy:-.07,colors:['#b08dd8','#e5aada','#fae5f6']},
+  {at:3610,dx:.23,dy:-.09,colors:['#79b8df','#9fe0d8','#edf8f7']},
+  {at:4000,dx:0,dy:-.12,colors:['#f6b43e','#ffe295','#fff8d6']},
 ];
 
-export function createFireworks(view) {
+export function createFireworks(view,finale=false) {
   const overlay=view.ownerDocument.createElement('canvas');
   overlay.className='project-fireworks';
   overlay.setAttribute('aria-hidden','true');
@@ -26,8 +36,8 @@ export function createFireworks(view) {
       paint.setTransform(ratio,0,0,ratio,0,0);
       paint.clearRect(0,0,width,height);
       const radius=Math.min(57,width*.19,height*.24);
-      for (const {at,dx,dy,colors} of bursts) {
-        const t=(elapsed-at)/980;
+      for (const {at,dx,dy,colors} of finale?finaleBursts:bursts) {
+        const t=(elapsed-at)/1190;
         if (t<0||t>1) continue;
         const cx=Math.max(radius,Math.min(width-radius,x+dx*width));
         const cy=Math.max(radius*.84,Math.min(height*.64,y+dy*height));

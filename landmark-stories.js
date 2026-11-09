@@ -53,7 +53,7 @@ const stories={
     'Følg vognene gjennom den bratte svingen på banen.', 'Bordene lengst ut har utsikt mot sjøen.',
     'Ta stien innom paviljongen før du går videre rundt vannet.', 'Her kan gjestene velge mellom basseng og skygge.',
     'Fløyene ligger rundt bassenget så gjestene kan gå rett ut.', 'Smoothien på taket viser hvor du kan bestille.',
-    'Flyet ruller nedover banen før det letter. Etter landing bremser det helt ned til enden.',
+    'Ser du den store H-en? Der kan helikopteret lande mens flyet bruker rullebanen.',
     'Se etter joysticken når du kommer fra stranden.', 'To basseng gir plass til både svømmere og gjester som bare vil plaske.',
     'Fasaden speiler fargene på havet.', 'Teltene ligger et lite stykke unna bålet.',
     'Parasollene gjør at frukten holder seg kjølig.', 'Kafeen har bord ute når været er fint.',
@@ -63,6 +63,8 @@ const stories={
 };
 
 export function landmarkStory(theme,index,kind) {
+  if (kind==='railwayStation') return 'Toget stopper på perrongen. Følg sporet for å se det forsvinne i en tunnel.';
+  if (kind==='monorailStation') return 'Månetoget trenger bare én skinne. Se det gli over gatene før det forsvinner inn i tunnelen.';
   if (kind==='mill') return 'Vingene tar tak i vinden og driver kvernsteinen som maler korn til mel.';
   if (kind==='dock') return 'Ved moloen kan småbåter ligge i le for bølgene.';
   return stories[theme]?.[index]??'';

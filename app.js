@@ -1,7 +1,7 @@
 import { VERSION, CHANNEL, ROUND_LENGTH, ROUND_LENGTHS, PROGRESSION_ROUNDS, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, advanceRound, noteHelp, roundSummary, freshState, restoreState, progressionPreview, advancePractice } from './core.js';
 import { hintFor } from './learning.js';
 import { createSoundPlayer } from './sound.js';
-import { createUpdater, readPublishedVersion } from './update.js';
+import { createUpdater, readPublishedVersion, PRODUCTION_PATH } from './update.js';
 import { modelById, selectRewardMode, prepareReward, awardPractice, upcomingBuild, renderBuildSvg, puzzleBrickLayout, renderPuzzleBrick } from './rewards.js';
 import { plantById, renderPlant } from './plants.js';
 import { BREAK_ATTEMPTS, BREAK_INTERVAL, BREAK_TITLES, BRICK_COLORS, breakKind, createBreakGame, placeBreakBrick, retryBreak, scoreBreak } from './breaks.js';
@@ -86,6 +86,18 @@ function icon(name, css = '') {
 function buddy(happy = false, surprised = false) {
   return `<div class="buddy ${happy ? 'happy' : surprised ? 'surprised' : ''}" aria-hidden="true"><div class="buddy-shadow"></div><div class="buddy-leaf"></div><div class="buddy-body"><i class="buddy-eye left"></i><i class="buddy-eye right"></i><i class="buddy-smile"></i><i class="buddy-cheek left"></i><i class="buddy-cheek right"></i></div><span class="buddy-spark">✦</span><span class="buddy-spark right">✦</span></div>`;
 }
+function eploNote(message,celebration=false) {
+  return `<div class="eplo-note${celebration?' eplo-finale':''}"><div class="eplo-avatar">${buddy(celebration)}</div>
+    <div><strong>Eplo</strong><p>${message}</p></div></div>`;
+}
+function projectCongratulations(id) {
+  const messages={
+    city:'Gratulerer! Rundene dine ble til en hel by. Nå kan du ta en siste titt på alt du fikk til.',
+    moon:'Hele månebasen er ferdig! Se hvor mye du fikk til, ett byggesteg om gangen.',
+    island:'Gratulerer! Se for ei flott ferieøy du har bygd. Jeg har lyst til å dra på ferie dit.',
+  };
+  return eploNote(messages[id]??'Du fullførte superhelten! Se alle delene du fikk på plass, én runde om gangen.',true);
+}
 function brand() { return `<div class="brand"><span class="brand-mark">${icon('brand-friend', 'brand-friend')}<span class="brand-season">${seasonMark(seasonForDate())}</span></span><span>Mattopia</span></div>`; }
 function betaMark() { return CHANNEL === 'preview' ? '<span class="beta-mark"><strong>BETA</strong><span class="sr-only"> Testversjon</span></span>' : ''; }
 function soundButton() { return `<button class="icon-button sound-toggle" data-action="sound" aria-label="${state.sound ? 'Lyd på. Slå av lyd' : 'Lyd av. Slå på lyd'}" aria-pressed="${state.sound}">${icon(state.sound ? 'sound' : 'muted')}</button>`; }
@@ -154,6 +166,7 @@ function setupForm(draft) {
   ];
   return `<form class="profile-form setup-form" data-setup-form>
     <div class="setup-progress"><span>Steg ${step+1} av ${SETUP_TITLES.length}</span><div aria-hidden="true">${SETUP_TITLES.map((_,i)=>`<i ${i<=step?'class="done"':''}></i>`).join('')}</div></div>
+    ${step===0?eploNote('Hei, jeg heter Eplo! Trykk «Vis meg» hvis du vil ha et hint når du øver.'):''}
     ${fields[step]()}
     <div class="setup-actions">${step ? '<button type="button" class="secondary" data-action="setup-back">Tilbake</button>' : ''}
       <button type="submit" class="primary">${step < SETUP_TITLES.length-1 ? 'Neste' : 'Kom i gang'} ${icon('arrow')}</button></div>
@@ -315,8 +328,16 @@ function mountProjectPreview(container) {
   const map=view==='complete' && completedReward?.mode===id ? completedReward.map : currentWorld(state,id);
   const scene = projectScene(id, map || Number(canvas.dataset.completed));
   const reveal=canvas.hasAttribute('data-reveal');
-  if (scene) return mountProjectView(canvas.closest('.complete') || canvas.parentElement, scene, false, {
+  const result=container===root&&view==='complete';
+  if (!scene) return;
+  const finale=result&&rewardDetails(completedReward).full;
+  if (result) container.querySelector('[data-project-latest]')?.addEventListener('click',()=>{
+    sounds.playBuild(scene,state.sound,{finale});
+  });
+  return mountProjectView(canvas.closest('.complete') || canvas.parentElement, scene, false, {
     closeUp:true, reveal, focusLatest:view==='complete'||Boolean(state.active), still:!reveal&&scene.parts.length>2200,
+    finale,
+    onActivity:result&&scene.world?sounds.activity:undefined,
   });
 }
 
@@ -329,9 +350,9 @@ function projectProgress(info) {
   return isWorld(info.mode) ? `${info.built??0} av ${info.capacity??REGION_PLACES} bygg ferdige` : `${info.completed} av ${info.total} byggesteg`;
 }
 
-function projectAmbience(dialog, id) {
+function projectAmbience(dialog, currentScene) {
   const button = dialog.querySelector('[data-project-ambience]');
-  if (!button) return;
+  if (!button) return ()=>{};
   const events = new AbortController();
   let enabled = state.sound;
   let revision = 0;
@@ -339,21 +360,22 @@ function projectAmbience(dialog, id) {
     const turn = ++revision;
     const playing = enabled && dialog.open && !document.hidden;
     if (!playing) sounds.stopAmbience();
-    const audible = playing && await sounds.startAmbience(id);
+    const audible = playing && await sounds.startAmbience(currentScene());
     if (turn !== revision || !dialog.open) return;
     button.setAttribute('aria-pressed', String(audible));
     button.innerHTML = `${icon(audible ? 'sound' : 'muted')} Omgivelseslyd`;
     if (playing && !audible) enabled = false;
   }
-  button.addEventListener('click', () => { enabled = !enabled; sync(); });
+  button.addEventListener('click', () => { enabled = !enabled; sounds.play('tap', state.sound); sync(); });
   document.addEventListener('visibilitychange', sync, {signal:events.signal});
   window.addEventListener('pageshow', sync, {signal:events.signal});
   dialog.addEventListener('close', () => {
     revision++;
     events.abort();
-    sounds.stopAmbience();
+    if (!document.querySelector('.project-dialog[open]')) sounds.stopAmbience();
   }, {once:true});
   sync();
+  return sync;
 }
 
 function showProject(id, demo = false, archivedMap = null, {galleryMap=null,place=null,fromCollection=galleryMap!==null} = {}) {
@@ -380,6 +402,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         <p data-demo-status aria-live="polite">${latest()}</p>
         <button class="secondary" data-demo-step="1" aria-label="Neste byggesteg">Neste ${icon('arrow')}</button>
       </div>` : ''}
+      ${demo ? `<div class="demo-shortcuts"><button class="secondary" data-demo-finish>Vis finalen</button></div>` : ''}
       <div class="project-map-stage">
         <canvas tabindex="0" role="img" aria-label="${scene.world ? 'Kart: '+title : title+' i 3D'}" aria-describedby="project-instructions project-milestone"></canvas>
         ${scene.world?`<section class="map-info-card" data-map-info hidden aria-live="polite">
@@ -387,6 +410,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
           <button class="icon-button" type="button" data-map-info-close aria-label="Lukk bygginformasjonen">${icon('close')}</button>
         </section>`:''}
       </div>
+      ${demo ? `<div data-demo-finale hidden>${projectCongratulations(id)}</div>` : ''}
       <div class="project-controls">
         ${scene.world?`<label class="map-inspect-label" hidden><span>Bygg på kartet</span><select data-map-inspect aria-label="Velg bygg på kartet"></select></label>`:''}
         <div class="project-control-group" role="group" aria-label="Zoom og tilbakestill">
@@ -396,7 +420,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         </div>
       </div>
       <p id="project-instructions">${scene.world?'Dra kartet for å flytte. Trykk på et bygg for å se hva som skjer der.':'Dra for å rotere.'} Klyp eller bruk pluss og minus for å zoome.</p>
-      ${scene.world ? `<div class="project-atmosphere"><button class="secondary" data-project-ambience aria-pressed="false" ${state.sound ? '' : 'disabled'}>${icon('muted')} Omgivelseslyd</button>${state.sound ? '' : '<small>Applyden er slått av.</small>'}</div>` : ''}
+      ${scene.world ? `<div class="project-atmosphere"><button class="secondary" data-project-ambience aria-pressed="false" ${state.sound ? '' : 'disabled'}>${icon('muted')} Omgivelseslyd</button>${state.sound ? '' : '<small>Lyden i appen er slått av.</small>'}</div>` : ''}
       ${!demo && !target && progress().completed ? `<div class="project-latest"><div><small>Siste byggesteg · ${progress().completed} av ${progress().total}</small>${latest()}</div><button class="secondary" data-project-latest>Vis siste steg</button></div>` : ''}
     </div>
     <p id="project-milestone" class="project-milestone">${milestone()}</p>
@@ -404,17 +428,20 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
     const viewer = dialog.querySelector('.project-viewer');
     const selector=viewer.querySelector('[data-map-inspect]');
     const card=viewer.querySelector('[data-map-info]');
+    let dispose,selection=null;
     const inspect=index=>{
       if (!card) return;
       const site=index===null?null:scene.sites?.[index];
       const building=site&&worldBuilding(id,index,map);
+      selection=building?index:null;
       card.hidden=!building;
       selector.value=building?String(index):'';
+      dispose?.inspect?.(selection);
       if (!building) return;
       card.querySelector('h3').textContent=building.name;
       card.querySelector('[data-map-info-status]').textContent=site.built?'På kartet':'Under bygging';
       card.querySelector('[data-map-info-description]').textContent=building.description;
-      card.querySelector('[data-map-info-story]').textContent=building.story;
+      card.querySelector('[data-map-info-story]').textContent=building.story?`Eplo · ${building.story}`:'';
     };
     const updateBuildingList=()=>{
       if (!selector) return;
@@ -428,7 +455,10 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       inspect(current===''?null:Number(current));
     };
     if (selector) {
-      selector.addEventListener('change',()=>inspect(selector.value===''?null:Number(selector.value)));
+      selector.addEventListener('change',()=>{
+        sounds.play('select',state.sound);
+        inspect(selector.value===''?null:Number(selector.value));
+      });
       card.querySelector('[data-map-info-close]').addEventListener('click',()=>{
         inspect(null);
         selector.focus({preventScroll:true});
@@ -436,16 +466,28 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       updateBuildingList();
       if (place!==null) inspect(place);
     }
-    const mount = reveal => mountProjectView(viewer, scene, true, {
-      closeUp:!fromCollection && Boolean(progress().completed), reveal, demo, target,
-      focusLatest:!demo&&!archivedMap&&!fromCollection&&(view==='complete'||Boolean(state.active)),
-      onInspect:selector?inspect:undefined,
+    const mount = reveal => {
+      dispose=mountProjectView(viewer, scene, true, {
+        closeUp:!fromCollection && Boolean(progress().completed), reveal, demo, target, finale:progress().full,
+        focusLatest:!demo&&!archivedMap&&!fromCollection&&(view==='complete'||Boolean(state.active)),
+        onActivity:scene.world?sounds.activity:undefined,
+        onInspect:selector?index=>{
+          if (index!==null) sounds.play('select',state.sound);
+          inspect(index);
+        }:undefined,
+      });
+      if (selection!==null) dispose.inspect?.(selection);
+    };
+    mount(false);
+    const syncAmbience=projectAmbience(dialog,()=>scene);
+    viewer.querySelector('[data-project-latest]')?.addEventListener('click',()=>{
+      sounds.playBuild(scene,state.sound,{finale:progress().full,tail:false});
     });
-    let dispose = mount(false);
-    projectAmbience(dialog, id);
     if (demo) {
       const previous = viewer.querySelector('[data-demo-step="-1"]');
       const next = viewer.querySelector('[data-demo-step="1"]');
+      const finish = viewer.querySelector('[data-demo-finish]');
+      const finale = viewer.querySelector('[data-demo-finale]');
       const refresh = amount => {
         const info = progress();
         scene = projectScene(id, map || completed);
@@ -457,31 +499,39 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         dialog.querySelector('[data-demo-progress]').textContent = `Byggedemo · ${projectProgress(info)}`;
         viewer.querySelector('[data-demo-status]').innerHTML = `<small>Steg ${info.completed} av ${info.total}</small>${scene.finished ? `<strong>${escapeHtml(scene.finished)} er på plass!</strong>` : latest()}`;
         dialog.querySelector('#project-milestone').textContent = milestone();
+        finale.hidden=!info.full;
+        finish.textContent=info.full?'Spill finalen igjen':'Vis finalen';
         dispose();
         const canvas=viewer.querySelector('canvas');
         canvas.replaceWith(canvas.cloneNode());
-        dispose = mount(amount > 0);
+        mount(amount > 0);
+        syncAmbience();
         dialog.querySelector('.confetti')?.remove();
         if (amount > 0 && scene.finished) {
           dialog.insertAdjacentHTML('beforeend', confetti(true));
-          sounds.play('landmark', state.sound);
+          sounds.playBuild(scene,state.sound,{finale:info.full,tail:false});
         } else if (amount) sounds.play('build', state.sound);
       };
-      const step = amount => {
-        const target = completed + amount;
-        if (target < 0 || (amount > 0 && progress().full)) return;
+      const goTo = (target,amount) => {
         if (trail) {
-          if (!trail[target]) {
-            const [choice]=worldBuildingOptions(id,map);
-            trail.push(worldAdvance(worldSelect(map,choice)));
+          while (!trail[target]) {
+            const latest=trail.at(-1);
+            const [choice]=worldBuildingOptions(id,latest);
+            trail.push(worldAdvance(worldSelect(latest,choice,id),id));
           }
           map = trail[target];
         }
         completed = target;
         refresh(amount);
       };
+      const step = amount => {
+        const target=completed+amount;
+        if (target<0||target>progress().total) return;
+        goTo(target,amount);
+      };
       previous.addEventListener('click', () => step(-1));
       next.addEventListener('click', () => step(1));
+      finish.addEventListener('click',()=>goTo(progress().total,1));
       dialog.querySelector('[data-demo-new]')?.addEventListener('click', () => {
         map = freshWorld(Math.random, map);
         trail = [map];
@@ -742,11 +792,12 @@ function startRound() {
     });
     save();
   }
-  if (state.sound) sounds.unlock();
+  sounds.play('open',state.sound);
   view = 'round'; ui = makeUI(); announcer.textContent = ''; render(); goTop(); focusHeading();
 }
 
 function openFocusBreak() {
+  sounds.play('open',state.sound);
   focusGame ||= createBreakGame(breakKind(state.roundsCompleted));
   view = 'focus-break';
   render(); goTop(); focusHeading();
@@ -928,7 +979,10 @@ function renderBreakChoice(selector) {
 }
 
 function placeBrick(color, slot) {
-  if (placeBreakBrick(focusGame, color, slot)) renderBreakChoice(`[data-slot="${slot}"]`);
+  if (placeBreakBrick(focusGame, color, slot)) {
+    sounds.play('build',state.sound);
+    renderBreakChoice(`[data-slot="${slot}"]`);
+  }
 }
 
 function selectBuildSlot(slot) {
@@ -1176,7 +1230,7 @@ function renderRound() {
     <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-buddy">${buddy(r.solved, ui.retry)}</div><p>${r.solved ? 'Se hva du fikk til!' : r.attempts[r.index] ? 'Vi prøver igjen sammen.' : 'Vi finner det ut.'}</p></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
     ${equation(t, r.solved)}${renderVisual(t, r.solved)}
     ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 ? 'disabled' : ''}>${icon('help')}${stage === 3 ? 'Vi ser sammen' : stage ? 'Et hint til' : 'Vis meg'}</button>` : ''}
-    ${stage && !r.solved ? `<div class="hint" id="hint-panel">${escapeHtml(hintText(t))}</div>` : ''}
+    ${stage && !r.solved ? `<div class="hint" id="hint-panel"><span class="eplo-hint-name">Eplo</span>${escapeHtml(hintText(t))}</div>` : ''}
     ${t.mode === 'input' ? r.solved ? `<div class="entered-correct" aria-label="Svaret ${t.answer} er riktig">${t.answer} ${icon('check')}</div>` : keypad() : renderAnswers(t, r.solved)}
     <div class="feedback-area">${feedback}</div></main></div></div>`;
 }
@@ -1214,7 +1268,7 @@ function renderComplete() {
   const newMap = g.map && g.full && g.mode === state.rewardMode && !state.focusBreakPending;
   const again = newMap ? 'Start et nytt kart' : state.focusBreakPending ? breakButtonLabel() : 'En runde til';
   const headline=finishedProject?`${g.label} er ferdig!`:'Du klarte runden!';
-  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">${headline}</h1>${finishedProject?`<p class="project-finished-note">Du fullførte hele ${g.map?'kartet':'superheltbygget'}! Du kan utforske det i samlingen din.</p>`:''}${latest}${gallery}${(!projectStep || g.full&&!finishedProject) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="${finishedProject?'secondary secondary-cta':'primary'}" data-action="home">Ferdig for nå${icon('check')}</button><button class="secondary secondary-cta" data-action="${newMap ? 'world-new' : 'again'}">${again}</button></main></div>${party}`;
+  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">${headline}</h1>${finishedProject?projectCongratulations(g.mode):''}${latest}${gallery}${(!projectStep || g.full&&!finishedProject) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="${finishedProject?'secondary secondary-cta':'primary'}" data-action="home">Ferdig for nå${icon('check')}</button><button class="secondary secondary-cta" data-action="${newMap ? 'world-new' : 'again'}">${again}</button></main></div>${party}`;
   celebrateOnRender = false;
 }
 
@@ -1222,6 +1276,7 @@ let renderedScreen;
 function render() {
   const taskScroll = root.querySelector('.task-scroll')?.scrollTop ?? 0;
   document.documentElement?.setAttribute('data-season', seasonForDate());
+  if (renderedScreen==='complete'&&view!=='complete') sounds.stopAmbience();
   disposeProjectPreview?.();
   if (view === 'round') renderRound();
   else if (view === 'complete') renderComplete();
@@ -1270,6 +1325,7 @@ function updateEntry() {
 }
 
 function showDialog(content, css = '', afterOpen) {
+  sounds.stopAmbience();
   document.querySelector('dialog')?.close(); document.querySelector('dialog')?.remove();
   const lastFocus = document.activeElement;
   const d = document.createElement('dialog');
@@ -1436,7 +1492,7 @@ function adultView() {
     <div>${Object.entries(TEST_BREAK_LINKS).map(([kind, href]) => `<a class="secondary" href="${href}">${BREAK_TITLES[kind]}</a>`).join('')}</div></nav>` : '';
   const release = CHANNEL === 'preview' ? `<section class="beta-release" aria-label="Versjonsoversikt">
     <div><strong>Beta</strong><span>${VERSION}</span></div>
-    <div><strong>Publisert på /tallvenn/</strong><span data-published-version role="status">Sjekker …</span></div>
+    <div><strong>Publisert på ${PRODUCTION_PATH}</strong><span data-published-version role="status">Sjekker …</span></div>
     <button class="secondary" data-published-check>Sjekk på nytt</button>
   </section>` : '';
   const demos = CHANNEL === 'preview' ? `<details class="beta-test-links project-demos">
@@ -1464,7 +1520,7 @@ function adultView() {
     <fieldset class="adult-group" id="practice-options">${practiceOptions()}</fieldset>
     <fieldset class="adult-group reward-options"><legend>Hva vil barnet bygge videre på?</legend><label class="level-option"><input type="radio" name="reward-mode" value="plant" ${state.rewardMode === 'plant' ? 'checked' : ''}><span class="reward-choice-icon" aria-hidden="true">${icon('sprout')}</span><span><strong>Plante</strong><small>En spire som vokser og blomstrer.</small></span></label><label class="level-option"><input type="radio" name="reward-mode" value="bricks" ${state.rewardMode === 'bricks' ? 'checked' : ''}><span class="reward-choice-icon brick-choice" aria-hidden="true">${icon('brick')}</span><span><strong>Klossebygging</strong><small>Fem store klosser blir en tilfeldig figur.</small></span></label>
       ${projectOptions()}<p class="adult-note">Du kan bytte mellom belønningene og fortsette på hvert prosjekt senere.</p></fieldset>
-    <label class="sound-setting"><input type="checkbox" id="sound-setting" ${state.sound ? 'checked' : ''}>Lyder ved svar og fullføring</label>
+    <label class="sound-setting"><input type="checkbox" id="sound-setting" ${state.sound ? 'checked' : ''}>Lyd i appen</label>
     ${typeof navigator.vibrate === 'function' ? `<label class="sound-setting"><input type="checkbox" id="haptics-setting" ${state.haptics ? 'checked' : ''}>Vibrasjon ved svar og fullføring</label>` : ''}
     <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="visual-setting" aria-describedby="visual-setting-note" ${state.alwaysShowVisuals ? 'checked' : ''}>Vis alltid brikker og figurer</label>
     <p class="adult-note" id="visual-setting-note">Holder tellebrikker og andre figurer synlige i matteoppgavene. Med valget av kan støtten bli valgfri etter flere trygge runder. Barnet kan da hente den fram med «Vis meg».</p></div>
@@ -1593,6 +1649,12 @@ function retryAnswer() {
   (first || root.querySelector('h1'))?.focus({ preventScroll: true });
 }
 
+const ownClickSound=new Set([
+  'start','again','welcome-start','next','help','sound','erase','submit-number','pause',
+  'focus-hide','focus-answer','focus-check','focus-continue','break-slot',
+  'world-choose','project-open','project-demo','gallery-map','gallery-hero','select-profile',
+]);
+
 document.addEventListener('click', e => {
   if (e.detail && ignoredBrickClick?.contains(e.target)) { ignoredBrickClick = null; return; }
   const answer = e.target.closest('[data-answer]');
@@ -1601,6 +1663,7 @@ document.addEventListener('click', e => {
   if (digit && view === 'round' && !state.active.solved) { enterDigit(digit.dataset.digit); return; }
   const unit = e.target.closest('[data-unit]');
   if (unit && view === 'round' && !ui.retry && !state.active.solved) {
+    sounds.play('tap',state.sound);
     const n = Number(unit.dataset.unit);
     ui.removed.has(n) ? ui.removed.delete(n) : ui.removed.add(n);
     unit.classList.toggle('removed', ui.removed.has(n)); unit.setAttribute('aria-pressed', String(ui.removed.has(n))); unit.setAttribute('aria-label', `${ui.removed.has(n) ? 'Legg tilbake' : 'Ta bort'} brikke ${n + 1}`);
@@ -1609,6 +1672,7 @@ document.addEventListener('click', e => {
   }
   const cell = e.target.closest('[data-cell]');
   if (cell && view === 'round' && !ui.retry && !state.active.solved) {
+    sounds.play('tap',state.sound);
     const n = Number(cell.dataset.cell);
     ui.added.has(n) ? ui.added.delete(n) : ui.added.add(n);
     cell.classList.toggle('added', ui.added.has(n)); cell.setAttribute('aria-pressed', String(ui.added.has(n))); cell.setAttribute('aria-label', `Rute ${n + 1}: ${ui.added.has(n) ? 'ta bort den nye brikken' : 'legg til en brikke'}`); cell.innerHTML = ui.added.has(n) ? '<span class="unit"></span>' : '';
@@ -1623,6 +1687,11 @@ document.addEventListener('click', e => {
   }
   const actionButton = e.target.closest('[data-action]');
   const action = actionButton?.dataset.action;
+  const control=e.target.closest('button:not(:disabled), summary, a.secondary');
+  if (control&&!ownClickSound.has(action)&&!control.matches('[data-project-latest], [data-demo-step], [data-demo-finish], [data-project-ambience]')) {
+    const back=['close-dialog','setup-back','pause-home','home','retry'].includes(action);
+    sounds.play(back?'back':'tap',state.sound);
+  }
   if (action === 'start' || action === 'again') startRound();
   if (action === 'welcome-start') {
     closeDialog();
@@ -1665,7 +1734,10 @@ document.addEventListener('click', e => {
     else { focusGame = null; startRound(); }
   }
   if (action === 'test-break-exit' && testBreakReturn) exitTestBreak();
-  if (action === 'help' && state.active && !ui.retry) { state.active = noteHelp(state.active); save(); render(); say(hintText(state.active.tasks[state.active.index])); }
+  if (action === 'help' && state.active && !ui.retry) {
+    sounds.play('hint',state.sound);
+    state.active = noteHelp(state.active); save(); render(); say(hintText(state.active.tasks[state.active.index]));
+  }
   if (action === 'sound') { state.sound = !state.sound; save(); state.sound ? playSuccess() : sounds.stop(); render(); document.querySelector('[data-action="sound"]')?.focus({ preventScroll: true }); }
   if (action === 'erase') eraseDigit();
   if (action === 'submit-number' && ui.entry) submitAnswer(Number(ui.entry));
@@ -1674,6 +1746,7 @@ document.addEventListener('click', e => {
   if (action === 'next' && state.active?.solved) {
     state.active = advanceRound(state.active);
     if (state.active.index === state.active.tasks.length) {
+      completedReward = null;
       const summary = roundSummary(state.active);
       if (summary && !state.history.some(r => r.id === summary.id)) {
         state.history.push(summary); state.history = state.history.slice(-40); state.roundsCompleted++;
@@ -1681,8 +1754,12 @@ document.addEventListener('click', e => {
         state = advancePractice(awarded.state, profile?.grade, summary.level); completedReward = awarded.reward;
         state.focusBreakPending = state.focusBreaks && state.roundsCompleted % BREAK_INTERVAL === 0;
       }
-      const landmark = completedReward?.added && projectScene(completedReward.mode, completedReward.map || completedReward.completed).finished;
-      state.active = null; view = 'complete'; celebrateOnRender = true; feedback(landmark ? 'landmark' : 'finish', [18,55,25]);
+      const stage = completedReward?.added ? projectScene(completedReward.mode, completedReward.map || completedReward.completed) : null;
+      state.active = null; view = 'complete'; celebrateOnRender = true;
+      if (stage) {
+        if (state.haptics) navigator.vibrate?.([18,55,25]);
+        sounds.playBuild(stage,state.sound,{finale:rewardDetails(completedReward).full});
+      } else feedback('finish',[18,55,25]);
     } else sounds.play('next', state.sound);
     ui = makeUI(); save(); render(); goTop(); focusHeading();
   }
@@ -1715,10 +1792,10 @@ document.addEventListener('click', e => {
     if (project !== state.rewardMode || !isWorld(project)) return;
     const map = currentWorld(state,project);
     if (!worldBuildingOptions(project,map).includes(Number(building))) return;
-    const chosen = worldSelect(map,Number(building));
+    const chosen = worldSelect(map,Number(building),project);
     if (chosen === map) return;
     state = replaceCurrentWorld(state,project,chosen);
-    closeDialog(); sounds.play('select', state.sound); startRound();
+    closeDialog(); startRound();
   }
   if (action === 'world-new' && !state.active && isWorld(state.rewardMode)) {
     const next = startNewWorld(state,state.rewardMode);
@@ -1765,7 +1842,9 @@ document.addEventListener('submit', event => {
 });
 
 document.addEventListener('change', event => {
-  if (event.target.matches('.avatar-option input')) sounds.play('select', state.sound);
+  if (event.target.matches('.avatar-option input, .level-option input, .setup-reward input, .profile-field select, #round-length')) {
+    sounds.play('select',state.sound);
+  }
 });
 
 document.addEventListener('keydown', e => {

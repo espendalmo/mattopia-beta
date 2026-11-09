@@ -188,7 +188,8 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     add(edge);
     lot.perimeter.forEach(add);
     const entry=yaw===0?{x:lot.x,z:nodes[lot.ring[2]].z}:{x:nodes[lot.ring[3]].x,z:lot.z};
-    plots.push({x:lot.x,y:lot.y,z:lot.z,yaw,index,kind,entries:[entry]});
+    plots.push({x:lot.x,y:lot.y,z:lot.z,yaw,index,kind,entries:[entry],
+      streetSpan:gap(nodes[lot.ring[0]],nodes[lot.ring[1]])});
   }
   const openLinks=nodes.map(()=>[]);
   for (const {a,b} of open.values()) {
