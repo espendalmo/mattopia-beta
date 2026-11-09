@@ -296,7 +296,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const developments=plan.plots.map(plot=>({plot,steps:buildingParts(plot.index,plot)}));
   const completedPlots=plan.plots.slice(0,status.built);
   const station=completedPlots.find(plot=>plot.kind==='railwayStation'||plot.kind==='monorailStation');
-  const rail=station&&districtRail(layout,station,plan.paths);
+  const rail=station&&districtRail(layout,station,plan);
   if (rail) plan.transit=rail.points;
   const airport=completedPlots.find(plot=>plot.kind==='airport');
   const helicopter=id==='city'&&status.built>=2?helicopterModels(false,plan.origin):
@@ -347,11 +347,17 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
       if (amount===1) latest=[...shadow,...latest,...yard];
     }
   });
+  const locals=regionActors(id,layout,plan,completedPlots);
+  const craft=rides.filter(actor=>['plane','rocket','rocket-flame'].includes(actor.kind));
+  const street=locals.find(actor=>actor.kind==='road');
+  const speakers=locals.filter(actor=>actor.voice).slice(0,id==='moon'?2:1);
+  const ambient=[...new Set([...(rail?.actors??[]),...helicopter,...craft,...speakers,
+    ...(street?[street]:[]),...rides,...locals])].slice(0,MAX_ACTORS);
   return {
     id,parts,latest,last,finished,landmarks,sites,roadBuild,latestTarget,world:true,illustrated:true,background:palette.sky,yaw:-Math.PI/4,pitch:.6155,center:1.1,closeSize:76,
     ...viewBounds(plan,horizon),
     soundscape:{buildings:completedPlots.length,fun:completedPlots.filter(plot=>['wheel','coaster','arcade','lunarArcade','islandArcade','tropicalPools'].includes(plot.kind)).length},
-    ambient:[...(rail?.actors??[]),...helicopter,...rides,...regionActors(id,layout,plan,completedPlots)].slice(0,MAX_ACTORS),
+    ambient,
     next:status.building!==null?`${buildingInfo(status.building).name} · ${PHASES[status.phase]}`:null,
   };
 }

@@ -205,8 +205,8 @@ function route(points, corner) {
   return {segments,length};
 }
 
-export function actor(parts,points,{kind,ground,speed,phase=0,corner=.85,roads=[],roadRise=0,elevation}) {
-  return {parts,kind,ground,speed,phase,roads,roadRise,elevation,route:route(points,corner)};
+export function actor(parts,points,{kind,ground,speed,phase=0,corner=.85,roads=[],roadRise=0,elevation,voice}) {
+  return {parts,kind,ground,speed,phase,roads,roadRise,elevation,voice,route:route(points,corner)};
 }
 
 export function worldActors(theme) {
@@ -254,12 +254,15 @@ export function districtActors(theme,lots) {
   ];
 }
 
+const engineKinds=new Set(['road','bus','hover','offroad-rover','jetski']);
+
 export function actorPose(actor, seconds) {
   if (actor.pose) return actor.pose(seconds);
   if (actor.kind==='wheel') {
     const {x,y,z,yaw}=actor;
     const roll=seconds*.39;
-    return {x,y,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll)};
+    return {x,y,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),
+      sound:Number(seconds%21>10&&seconds%21<12)*.63};
   }
   if (actor.kind==='plane') return planePose(actor,seconds);
   if (actor.kind==='rocket'||actor.kind==='rocket-flame') return rocketPose(actor,seconds);
@@ -278,7 +281,11 @@ export function actorPose(actor, seconds) {
     : ['boat','swimmer','jetski'].includes(actor.kind) ? Math.sin(traveled*2.1)*.045
     : actor.kind==='hover' ? Math.sin(traveled*2.7)*.079
     : walking ? Math.abs(Math.sin(traveled*6))*.035 : 0;
-  return {x,y:y+bob,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking?Math.sin(traveled*6)*.17:0,rollCos:1,rollSin:0};
+  const cycle=seconds+actor.phase*11;
+  const sound=engineKinds.has(actor.kind)?Number(cycle%9.5<3.35)
+    :actor.kind==='coaster'?Number(segment.dy<-.1&&cycle%7.4<4.3)
+    :actor.voice?Number(cycle%14.5<2.4)*.8:0;
+  return {x,y:y+bob,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking?Math.sin(traveled*6)*.17:0,rollCos:1,rollSin:0,sound};
 }
 
 function rocketPose({x,y,z,yaw,kind,delay},seconds) {
@@ -322,7 +329,7 @@ function planePose({x,y,z,yaw,delay,runway},seconds) {
   const roll=altitude>0?Math.sin(t*2.4)*Math.min(.12,altitude*.012):0;
   return {x:x+Math.sin(yaw)*along*direction,y:y+altitude,z:z+Math.cos(yaw)*along*direction,
     cos:Math.cos(heading),sin:Math.sin(heading),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),
-    sound:Number(clock>0&&(t>=3.4&&t<7.15||t>=16&&t<19.8))};
+    sound:Number(clock>0&&(t>=2.42&&t<8.16||t>=15.4&&t<21.2))};
 }
 
 export function coasterActor(parts,points,phase) {
@@ -502,8 +509,10 @@ export function regionActors(theme,layout,plan,completed) {
   for (let i=0;completed.length&&i<Math.min(paths.length,4,1+Math.floor(completed.length/4));i++) {
     const path=paths[(i*3+1)%paths.length];
     const points=laneLoop(path.slice(0,Math.min(path.length,24)),theme==='island'?1:1.29);
-    actors.push(actor(walker(walkers[i%walkers.length],colors[(i+1)%4],i%2?'#a97963':'#edb88c'),points,{
+    const person=walkers[i%walkers.length];
+    actors.push(actor(walker(person,colors[(i+1)%4],i%2?'#a97963':'#edb88c'),points,{
       kind:'walk',elevation:(x,z)=>roadElevation(layout,x,z)+.012,speed:.87+i*.092,phase:.13+i*.17,corner:.52,
+      voice:moon?person:'people',
     }));
   }
   if (completed.length>=2) {

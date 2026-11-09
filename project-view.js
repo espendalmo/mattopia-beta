@@ -453,7 +453,9 @@ export function projectCameras(scene,target=null,focusLatest=false) {
   const average=key=>latest.reduce((sum,part)=>sum+part[key],0)/latest.length;
   const point=target??scene.latestTarget??{x:average('x'),y:Math.max(0,average('y')-.6),z:average('z'),height:4.2};
   const height=point.height??6;
-  const close={...initial,zoom:Math.min(maxZoom,scene.size/(height*1.13+3.2)),anchorX:point.x,anchorZ:point.z,
+  const station=point.kind==='railwayStation'||point.kind==='monorailStation';
+  const framing=station?23:height*1.13+3.2;
+  const close={...initial,zoom:Math.min(maxZoom,scene.size/framing),anchorX:point.x,anchorZ:point.z,
     center:point.y+height*(height>10?.46:.37)};
   const neighbor=Object.values(scene.landmarks??{}).filter(other=>Math.hypot(other.x-point.x,other.z-point.z)>.7)
     .reduce((nearest,other)=>!nearest||Math.hypot(other.x-point.x,other.z-point.z)<Math.hypot(nearest.x-point.x,nearest.z-point.z)?other:nearest,null);
@@ -467,6 +469,10 @@ export function finishTransition(elapsed) {
   const t=clamp((elapsed-190)/910,0,1);
   return {travel: t*t*(3-2*t),opacity:1-.31*Math.sin(Math.PI*t)};
 }
+
+const nearbySounds={road:'traffic',bus:'traffic',jetski:'traffic',hover:'rover','offroad-rover':'rover',
+  wheel:'ride-cheer',coaster:'ride-cheer'};
+const aircraft=new Set(['plane','helicopter','rocket']);
 
 function projectPanorama(scene,initial,maxZoom) {
   const sites=Object.values(scene.sites??{});
@@ -589,15 +595,18 @@ export function mountProjectView(container, scene, interactive=false, {
       const [x,y]=projectPoint(fireworkTarget.x,fireworkY,fireworkTarget.z);
       fireworks?.draw(x,y,width,height,pixelRatio,elapsed);
     }
-    if (alive&&onActivity&&now-lastActivity>=240) {
+    if (alive&&onActivity&&now-lastActivity>=200) {
       lastActivity=now;
       const heard=new Set();
       effects.actors.forEach((pose,i)=>{
         if (!pose.sound||pose.y< -150) return;
+        const actor=scene.ambient[i];
+        const kind=actor.voice??(scene.id==='moon'&&actor.kind==='road'?'rover':nearbySounds[actor.kind]??actor.kind);
         const [x,y]=projectPoint(pose.x,pose.y,pose.z);
         const edge=Math.max(Math.abs(2*x/width-1),Math.abs(2*y/height-1));
-        if (edge>1.13) return;
-        if (audibleActors.has(i)||onActivity(scene.ambient[i].kind,1-edge*.41)) heard.add(i);
+        const reach=aircraft.has(kind)?2.1:1.3;
+        if (edge>reach) return;
+        if (audibleActors.has(i)||onActivity(kind,pose.sound*(1-edge/reach*.5))) heard.add(i);
       });
       audibleActors=heard;
     }

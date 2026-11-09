@@ -127,59 +127,136 @@ function roadClearance(paths,x,z) {
   return true;
 }
 
-export function districtRail(layout,plot,paths) {
-  const moon=plot.kind==='monorailStation', level=deckHeight(moon);
-  const halfStreet=plot.streetSpan?plot.streetSpan*.5:5.9;
-  const end=plot.streetSpan?halfStreet*2+3.45:12.3;
-  const heightOffset=x=>smooth((Math.abs(x)-5)/4);
-  const sample=along=>{
-    const turn=heightOffset(along);
-    const localZ=railZ+(-halfStreet+.48-railZ)*turn;
-    const [x,y,z]=pointOnSite([along,level,localZ],plot);
-    const ground=regionSurface(layout,x,z);
-    return [x,y+Math.max(0,ground.y-plot.y+.37)*turn,z];
+function roundedRailPath(waypoints) {
+  const softened=waypoints.flatMap((point,i)=>{
+    if (i===0||i===waypoints.length-1) return [point];
+    const radius=i===1?.85:3.1;
+    const inset=([x,z])=>{
+      const dx=x-point[0],dz=z-point[1],distance=Math.hypot(dx,dz);
+      const ratio=Math.min(.42,radius/distance);
+      return [point[0]+dx*ratio,point[1]+dz*ratio];
+    };
+    const before=inset(waypoints[i-1]),after=inset(waypoints[i+1]);
+    return Array.from({length:7},(_,j)=>{
+      const t=j/6,u=1-t;
+      return point.map((v,axis)=>u*u*before[axis]+2*u*t*v+t*t*after[axis]);
+    });
+  });
+  const path=[softened[0]];
+  for (let i=1;i<softened.length;i++) {
+    const from=softened[i-1],to=softened[i];
+    const count=Math.ceil(Math.hypot(to[0]-from[0],to[1]-from[1])/.83);
+    for (let step=1;step<=count;step++) {
+      path.push(from.map((value,axis)=>value+(to[axis]-value)*step/count));
+    }
+  }
+  return path;
+}
+
+function railLeg(layout,plot,side,otherSites) {
+  const span=plot.streetSpan??13.4,half=span*.5;
+  const rear=-half+.46;
+  const candidates=[];
+  for (const turn of sides) {
+    const nextStreet=rear+turn*span;
+    const long=[
+      [0,railZ],[side*4.74,railZ],[side*(half+2.05),rear],
+      [side*span*1.5,rear],[side*span*1.5,nextStreet],[side*(half+.97),nextStreet],
+    ];
+    const short=[
+      [0,railZ],[side*4.74,railZ],[side*(half+.16),railZ],
+      [side*(half+.16),nextStreet],[side*(half+span*.69),nextStreet],
+    ];
+    candidates.push({path:roundedRailPath(long),penalty:0},{path:roundedRailPath(short),penalty:4.6});
+  }
+  const score=({path,penalty})=>{
+    for (let i=1;i<path.length;i+=3) {
+      const [x,,z]=pointOnSite([path[i][0],0,path[i][1]],plot);
+      const ground=regionSurface(layout,x,z);
+      const outside=Math.max(0,Math.abs(x)-73,Math.abs(z)-73);
+      penalty+=outside*.38+(ground.water?.13:0)+(ground.basin<-1.4?.13:0);
+      penalty+=Math.hypot(x-layout.origin.x,z-layout.origin.z)*.0025;
+      if (otherSites.some(site=>Math.hypot(site.x-x,site.z-z)<5.4)) penalty+=.75;
+    }
+    const [ex,ez]=path.at(-1);
+    const [x,,z]=pointOnSite([ex,0,ez],plot);
+    if (regionSurface(layout,x,z).water) penalty+=3.35;
+    return penalty;
   };
-  const count=Math.ceil(end*2/.69);
-  const points=Array.from({length:count+1},(_,i)=>sample((i/count*2-1)*end));
+  const [chosen]=candidates.map(candidate=>({...candidate,score:score(candidate)})).sort((a,b)=>a.score-b.score);
+  return chosen.path;
+}
+
+export function districtRail(layout,plot,plan) {
+  const moon=plot.kind==='monorailStation', level=deckHeight(moon);
+  const obstacles=[...Object.values(layout.berths),...(plot.streetSpan?[]:plan.plots.filter(site=>site!==plot))];
+  const [left,right]=sides.map(side=>railLeg(layout,plot,side,obstacles));
+  const middle=left.length-1;
+  const path=left.slice(1).reverse().concat(right);
+  const points=path.map(([along,across])=>{
+    const [x,y,z]=pointOnSite([along,level,across],plot);
+    const terrain=regionSurface(layout,x,z);
+    const outside=smooth((Math.hypot(along,across-railZ)-5.1)/6.5);
+    return [x,y+Math.max(0,terrain.y-plot.y+.31)*outside,z];
+  });
+  const distances=[0];
+  for (let i=1;i<points.length;i++) {
+    const [x,y,z]=points[i],[a,b,c]=points[i-1];
+    distances.push(distances[i-1]+Math.hypot(x-a,y-b,z-c));
+  }
+  const length=distances.at(-1),station=distances[middle];
+  const sample=distance=>{
+    const position=Math.max(0,Math.min(length,distance));
+    const next=distances.findIndex((value,index)=>index>0&&value>=position);
+    const progress=(position-distances[next-1])/(distances[next]-distances[next-1]);
+    return points[next-1].map((value,axis)=>value+(points[next][axis]-value)*progress);
+  };
+
   const parts=railTrack(points,moon);
-  for (let i=3;i<points.length-1;i+=6) {
-    const [x,y,z]=points[i];
+  for (let distance=3.4;distance<length-1;distance+=4.65) {
+    const [x,y,z]=sample(distance);
     if (Math.hypot(x-plot.x,z-plot.z)<5.6) continue;
-    const [nx,,nz]=points[i+1],run=Math.hypot(nx-x,nz-z);
-    const bases=roadClearance(paths,x,z)?[[x,z]]:sides
+    const [nx,,nz]=sample(distance+.49),run=Math.hypot(nx-x,nz-z);
+    const bases=roadClearance(plan.paths,x,z)?[[x,z]]:sides
       .map(side=>[x-side*(nz-z)/run*2.69,z+side*(nx-x)/run*2.69])
-      .filter(([a,b])=>roadClearance(paths,a,b));
-    const column=moon?'#a4aec6':'#b4a48f', cap=moon?'#8394a8':'#a89481';
+      .filter(([a,b])=>roadClearance(plan.paths,a,b));
+    const column=moon?'#a4aec6':'#b4a48f',cap=moon?'#8394a8':'#a89481';
     for (const [a,b] of bases) {
       const ground=regionSurface(layout,a,b);
       parts.push(rounded(a,b,.58,.61,Math.max(.08,y-ground.y-.39),column,ground.y),
         a===x&&b===z?box(x,z,1.09,.88,.27,cap,y-.54):beam([a,y-.4,b],[x,y-.4,z],.27,cap));
     }
   }
-  for (const side of sides) {
-    const [x,y,z]=sample(side*(end-1.22));
-    const yaw=plot.yaw-side*Math.PI/2;
+  for (const [distance,direction] of [[1.22,1],[length-1.22,-1]]) {
+    const [x,y,z]=sample(distance),[nx,,nz]=sample(distance+direction*.55);
+    const yaw=Math.atan2(nx-x,nz-z);
     parts.push(...placeParts(portal(moon),{x,y,z,yaw}));
-    if (roadClearance(paths,x,z)) {
+    if (roadClearance(plan.paths,x,z)) {
       const {y:ground}=regionSurface(layout,x,z);
       parts.push(rounded(x,z,2.24,2.12,Math.max(.16,y-ground-.44),moon?'#9296ad':'#a39b88',ground));
     }
   }
 
-  const travel=(end+4.5)/(moon?4.3:3.8), dwell=2.25, leg=travel*2+dwell+2.6;
+  const approach=[station+4.5,length-station+4.5];
+  const travel=approach.map(distance=>distance/(moon?5.75:5.05));
+  const dwell=2.45,leg=travel[0]+travel[1]+dwell+2.55;
   const actors=[false,true].map(carriage=>({
     kind:carriage?'train-car':moon?'monorail':'train',
     parts:trainModel(moon,carriage),
     pose(seconds) {
-      const time=seconds+travel;
-      const direction=Math.floor(time/leg)%2===0?1:-1;
+      const time=seconds+travel[0],arrival=Math.floor(time/leg)%2,departure=1-arrival;
+      const direction=arrival?-1:1;
       const t=time%leg;
-      const progress=t<travel?-((1-t/travel)**2):t<travel+dwell?0:clamp((t-travel-dwell)/travel)**2;
-      const along=direction*((end+4.5)*progress-(carriage?3.03:0));
-      const [x,y,z]=sample(along);
-      const [nx,,nz]=sample(along+.1*direction);
-      const audible=!carriage&&Math.abs(along)<end-2&&(t<travel-1.2||t>travel+dwell-.26);
-      return pose(x,Math.abs(along)>end-.25?-540:y,z,Math.atan2(nx-x,nz-z),audible);
+      const from=travel[arrival],to=travel[departure];
+      let offset=0;
+      if (t<from) offset=-approach[arrival]*(1-t/from)**1.47;
+      if (t>from+dwell) offset=approach[departure]*clamp((t-from-dwell)/to)**1.47;
+      const distance=station+direction*(offset-(carriage?3.03:0));
+      const [x,y,z]=sample(distance);
+      const [a,,b]=sample(distance-.34*direction),[c,,d]=sample(distance+.34*direction);
+      const visible=distance>.26&&distance<length-.26;
+      const audible=!carriage&&visible&&(t<from-1.2||t>from+dwell-.24);
+      return pose(x,visible?y:-540,z,Math.atan2(c-a,d-b),audible);
     },
   }));
   return {parts,points:points.map(([x,y,z])=>({x,y,z})),actors};
@@ -234,7 +311,7 @@ export function helicopterModels(island,plot) {
         distance=143*outgoing**2.25;
         altitude=53*outgoing**1.44;
       } else heading+=Math.sin((t-13)*.32)*.035;
-      return pose(cx+Math.sin(yaw)*distance,cy+altitude,cz+Math.cos(yaw)*distance,heading,t<14||t>23);
+      return pose(cx+Math.sin(yaw)*distance,cy+altitude,cz+Math.cos(yaw)*distance,heading,t<16||t>21.8);
     }
     if (t<5||t>=41) return pose(cx,-540,cz,yaw);
     const travel=(t-5)/36, angle=travel*Math.PI*4;

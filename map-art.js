@@ -101,7 +101,8 @@ export function rideModels(plot,stages) {
         return [a,b];
       });
       return actor(visitor(space?'astronaut':'human',i?'#6b9bbc':'#d48078',i?'#b48466':'#edb78a',false,.61),
-        path,{kind:'walk',ground:plot.y+(space?.52:.35),speed:1.24+i*.18,phase:.12+i*.48,corner:.54});
+        path,{kind:'walk',ground:plot.y+(space?.52:.35),speed:1.24+i*.18,phase:.12+i*.48,corner:.54,
+          voice:space?'astronaut':'people'});
     });
   }
   const model=stages.flat().filter(part=>part.flight);

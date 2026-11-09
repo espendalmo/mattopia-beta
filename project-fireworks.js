@@ -1,6 +1,6 @@
 export const FIREWORKS_START=910;
-export const FIREWORKS_END=3910;
-export const FINALE_FIREWORKS_END=5230;
+export const FIREWORKS_END=4910;
+export const FINALE_FIREWORKS_END=6230;
 
 const bursts=[
   {at:FIREWORKS_START,dx:-.17,dy:0,colors:['#eeb13f','#ffdf79','#fff3bf']},
@@ -14,7 +14,14 @@ const finaleBursts=[
   {at:3220,dx:-.26,dy:-.07,colors:['#b08dd8','#e5aada','#fae5f6']},
   {at:3610,dx:.23,dy:-.09,colors:['#79b8df','#9fe0d8','#edf8f7']},
   {at:4000,dx:0,dy:-.12,colors:['#f6b43e','#ffe295','#fff8d6']},
+  {at:5010,dx:.07,dy:-.15,colors:['#f2ae57','#fff1b2','#d3b0e9']},
 ];
+const buildingBursts=[
+  ...bursts,
+  {at:3690,dx:.04,dy:-.16,colors:['#efb255','#ffe78d','#f6eac6']},
+];
+
+export const fireworkBursts=finale=>finale?finaleBursts:buildingBursts;
 
 export function createFireworks(view,finale=false) {
   const overlay=view.ownerDocument.createElement('canvas');
@@ -36,7 +43,7 @@ export function createFireworks(view,finale=false) {
       paint.setTransform(ratio,0,0,ratio,0,0);
       paint.clearRect(0,0,width,height);
       const radius=Math.min(57,width*.19,height*.24);
-      for (const {at,dx,dy,colors} of finale?finaleBursts:bursts) {
+      for (const {at,dx,dy,colors} of fireworkBursts(finale)) {
         const t=(elapsed-at)/1190;
         if (t<0||t>1) continue;
         const cx=Math.max(radius,Math.min(width-radius,x+dx*width));

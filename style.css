@@ -1039,6 +1039,9 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 .eplo-avatar .buddy { position: absolute; inset: 0 auto auto 0; margin: 0; scale: .4; transform-origin: top left; }
 .eplo-note strong, .eplo-hint-name { color: var(--green); font-weight: 800; }
 .eplo-note p, .complete .eplo-note p { margin: 3px 0 0; color: var(--ink); font-size: .91rem; line-height: 1.46; }
+.pause-dialog .eplo-note { margin: 14px 0; }
+.pause-dialog .eplo-note p { margin: 3px 0 0; }
+.pause-dialog .pause-context { margin: 14px 0; }
 .eplo-finale { margin: 13px auto; border-color: #e6d6a5; background: linear-gradient(115deg,#edf5e5,#fff5d8); }
 .eplo-hint-name { display: block; margin-bottom: 2px; font-size: .78rem; }
 .demo-shortcuts { display: flex; justify-content: flex-end; margin: 0 0 8px; }
@@ -1076,4 +1079,18 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
     50% { scale: 1.075; opacity: 1; box-shadow: 0 0 22px #f2c364e0, inset 0 0 14px #f6d987a0; }
   }
   @keyframes feedback-tick { from { scale: .83; opacity: .58; } to { scale: 1; opacity: 1; } }
+}
+
+.status-bar-fill { display: none; }
+/* The fixed, opaque strip lets iOS use a solid fill for its top scroll edge. */
+@media (display-mode: standalone) {
+  .status-bar-fill {
+    display: block;
+    position: fixed;
+    inset: 0 0 auto;
+    height: max(8px, env(safe-area-inset-top, 0px));
+    background: var(--paper);
+    pointer-events: none;
+    z-index: 2;
+  }
 }

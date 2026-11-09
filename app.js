@@ -88,7 +88,7 @@ function buddy(happy = false, surprised = false) {
 }
 function eploNote(message,celebration=false) {
   return `<div class="eplo-note${celebration?' eplo-finale':''}"><div class="eplo-avatar">${buddy(celebration)}</div>
-    <div><strong>Eplo</strong><p>${message}</p></div></div>`;
+    <div><strong>Eplo</strong><p>${escapeHtml(message)}</p></div></div>`;
 }
 function projectCongratulations(id) {
   const messages={
@@ -242,6 +242,7 @@ function openProfile(person, practice, edit = false) {
   if (state.rewardMode === 'bricks' || isWorld(state.rewardMode)) state = selectRewardMode(state, state.rewardMode);
   save({ select:true, edit });
   sounds.stop();
+  if (state.sound) sounds.resume();
   completedReward = null;
   focusGame = null;
   setup = null;
@@ -507,10 +508,13 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         mount(amount > 0);
         syncAmbience();
         dialog.querySelector('.confetti')?.remove();
-        if (amount > 0 && scene.finished) {
-          dialog.insertAdjacentHTML('beforeend', confetti(true));
+        if (amount>0&&(scene.world||scene.finished)) {
+          if (scene.finished) dialog.insertAdjacentHTML('beforeend', confetti(true));
           sounds.playBuild(scene,state.sound,{finale:info.full,tail:false});
-        } else if (amount) sounds.play('build', state.sound);
+        } else {
+          sounds.stopBuild();
+          if (amount) sounds.play('build', state.sound);
+        }
       };
       const goTo = (target,amount) => {
         if (trail) {
@@ -544,7 +548,10 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         step(event.key === 'ArrowLeft' ? -1 : 1);
       });
     }
-    dialog.addEventListener('close', () => dispose(), {once:true});
+    dialog.addEventListener('close', () => {
+      dispose();
+      sounds.stopBuild();
+    }, {once:true});
   });
 }
 
@@ -1276,7 +1283,10 @@ let renderedScreen;
 function render() {
   const taskScroll = root.querySelector('.task-scroll')?.scrollTop ?? 0;
   document.documentElement?.setAttribute('data-season', seasonForDate());
-  if (renderedScreen==='complete'&&view!=='complete') sounds.stopAmbience();
+  if (renderedScreen==='complete'&&view!=='complete') {
+    sounds.stopBuild();
+    sounds.stopAmbience();
+  }
   disposeProjectPreview?.();
   if (view === 'round') renderRound();
   else if (view === 'complete') renderComplete();
@@ -1325,6 +1335,7 @@ function updateEntry() {
 }
 
 function showDialog(content, css = '', afterOpen) {
+  sounds.stopBuild();
   sounds.stopAmbience();
   document.querySelector('dialog')?.close(); document.querySelector('dialog')?.remove();
   const lastFocus = document.activeElement;
@@ -1344,11 +1355,47 @@ function showDialog(content, css = '', afterOpen) {
   afterOpen?.(d);
 }
 function closeDialog() { document.querySelector('dialog')?.close(); }
+
+const pauseEncouragements=[
+  'Godt jobbet! For hver gang du øver, blir du litt tryggere i matte.',
+  'Så fint at du prøver. Litt øving om gangen gjør deg flinkere i matte.',
+  'Du har gjort en god innsats! Vi fortsetter når du er klar.',
+  'Du lærer mye av å prøve deg fram. Det er sånn du blir flink i matte!',
+];
+let pauseVisits=0;
+
+function pauseProgress(info) {
+  if (info.project) {
+    if (info.full) return `${info.label} er ferdig! Du finner prosjektet i samlingen din.`;
+    if (info.map) {
+      const building=worldBuilding(info.mode,info.building,info.map);
+      const count=info.built ? `Du har gjort ferdig ${info.built} av ${info.capacity} bygg.` : '';
+      if (building) return [count,`Neste steg er på ${building.name}.`].filter(Boolean).join(' ');
+      return count||`Vi kan bygge videre på ${info.label}.`;
+    }
+    return `Du har gjort ${info.completed} av ${info.total} byggesteg på ${info.label}.`;
+  }
+  if (info.mode==='bricks') {
+    const count=info.build.completed;
+    return count ? `Du har bygd ${count===1?'én klossefigur':`${count} klossefigurer`}!` :
+      `${info.build.pieces} av ${info.model.pieces.length} klosser er på plass.`;
+  }
+  const count=Math.max(info.garden.collection.length,Math.floor(state.plantRounds/5));
+  return count ? `Du har dyrket ${count===1?'én plante':`${count} planter`}!` :
+    `Planten din er på vekststeg ${info.garden.stage} av 5.`;
+}
+
 function showPause() {
   sounds.play('open', state.sound);
-  const map = currentWorld(state, state.rewardMode);
-  const preview = map && worldStatus(map).completed ? rewardArt() : '';
-  showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>En liten pause?</h2><p>Oppgavene venter på deg.<br>Du kan fortsette senere.</p>${preview}<button class="primary" data-action="close-dialog">Fortsett runden</button><button class="secondary secondary-cta" data-action="pause-home">Ta en pause</button>${CHANNEL === 'preview' ? '<button class="text-button beta-danger" data-action="beta-abort-round">Avbryt runden</button>' : ''}`, preview ? 'pause-dialog pause-dialog--map' : 'pause-dialog', preview ? mountDialogProjectPreview : undefined);
+  const info=rewardDetails();
+  const preview=info.project&&info.completed>0?rewardArt():'';
+  const name=profile?.name;
+  const hello=name&&!/^Spiller(?: \d+)?$/u.test(name)?`Hei, ${name}!`:'Hei!';
+  const encouragement=pauseEncouragements[pauseVisits++%pauseEncouragements.length];
+  showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>En liten pause?</h2>
+    ${eploNote(`${hello} ${pauseProgress(info)} ${encouragement}`)}
+    ${preview}<p class="pause-context">Oppgavene venter på deg. Du kan fortsette senere.</p>
+    <button class="primary" data-action="close-dialog">Fortsett runden</button><button class="secondary secondary-cta" data-action="pause-home">Ta en pause</button>${CHANNEL === 'preview' ? '<button class="text-button beta-danger" data-action="beta-abort-round">Avbryt runden</button>' : ''}`, preview ? 'pause-dialog pause-dialog--map' : 'pause-dialog', preview ? mountDialogProjectPreview : undefined);
 }
 
 function confirmBetaAbort() {
@@ -1858,10 +1905,17 @@ document.addEventListener('keydown', e => {
   }
 });
 window.addEventListener('pagehide', () => { markAway(); sounds.stop(); });
-window.addEventListener('pageshow', welcomeBack);
+window.addEventListener('pageshow', () => {
+  if (!document.hidden&&state.sound) sounds.resume();
+  welcomeBack();
+});
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { markAway(); sounds.stop(); }
-  else { welcomeBack(); if (view !== 'round') updates.check(); }
+  else {
+    if (state.sound) sounds.resume();
+    welcomeBack();
+    if (view !== 'round') updates.check();
+  }
 });
 render();
 if (CHANNEL === 'preview') {

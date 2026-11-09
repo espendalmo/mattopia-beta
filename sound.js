@@ -1,4 +1,5 @@
 import {ambienceBuffer,ACTIVITY_SOUNDS,soundClip} from './sound-art.js';
+import {fireworkBursts} from './project-fireworks.js';
 
 // Original, local melodies: [MIDI pitch, start, duration, gain].
 export const SOUND_PATTERNS={success:[[76,0,.23,.065],[79,.10,.25,.065],[84,.22,.42,.07],[72,.22,.40,.025]],finish:[[60,0,.18,.045],[64,.12,.20,.045],[67,.24,.22,.05],[72,.38,.27,.06],[76,.56,.25,.05],[79,.70,.28,.055],[84,.9,.72,.055],[79,.9,.72,.035],[76,.9,.72,.035],[72,.9,.72,.03],[60,.9,.72,.025]]};
@@ -30,15 +31,34 @@ function playbackSession() {
 }
 
 export function createSoundPlayer(getContext=()=>new(window.AudioContext||window.webkitAudioContext)(), getSession=playbackSession) {
-  let context,voices=[],generation=0,ambience,ambienceGeneration=0,session;
+  let context,voices=[],generation=0,buildGeneration=0,ambience,ambienceGeneration=0,session,carrier;
   const beds=new Map(),clips=new Map();
 
+  function releaseVoice({source,gain}) {
+    try { source.stop(); } catch {}
+    source.disconnect();
+    gain.disconnect();
+  }
   function stopVoices() {
     generation++;
-    for (const {source,gain} of voices) {
-      try { source.stop(); source.disconnect(); gain.disconnect(); } catch {}
-    }
+    voices.forEach(releaseVoice);
     voices=[];
+  }
+  function stopBuild() {
+    buildGeneration++;
+    voices.filter(voice=>voice.build).forEach(releaseVoice);
+    voices=voices.filter(voice=>!voice.build);
+  }
+  function holdSession() {
+    if (!session||carrier) return;
+    // Keep the active iOS audio session running with a practically silent signal.
+    const source=context.createOscillator(),gain=context.createGain(),now=context.currentTime;
+    source.frequency.setValueAtTime(23,now);
+    gain.gain.setValueAtTime(.000012,now);
+    source.connect(gain);
+    gain.connect(context.destination);
+    source.start();
+    carrier={source,gain};
   }
   function unlock() {
     try {
@@ -47,8 +67,13 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
         try { next.type='playback'; session=next; } catch {}
       }
       context||=getContext();
-      return context.resume();
+      const ready=context.resume();
+      try { holdSession(); } catch {}
+      return ready;
     } catch { return Promise.resolve(); }
+  }
+  function resume() {
+    if (context) unlock().catch(()=>{});
   }
   function stopAmbience() {
     ambienceGeneration++;
@@ -96,7 +121,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
       }
       source.connect(gain);
       gain.connect(context.destination);
-      const mix={key,source,gain,start,end,limited,heard:new Map()};
+      const mix={key,source,gain,start,end,limited,heard:new Map(),lastCue:-Infinity};
       source.onended=()=>{
         if (ambience===mix) ambience=null;
         source.disconnect();
@@ -109,15 +134,16 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     } catch { return false; }
   }
 
-  function sample(kind,time,volume,destination=context.destination,voice=true,length) {
+  function sample(kind,time,volume,{destination=context.destination,voice=true,build=false,length,rate=1}={}) {
     if (!context.createBufferSource) return;
     if (!clips.has(kind)) clips.set(kind,soundClip(context,kind));
     const source=context.createBufferSource(),gain=context.createGain();
     source.buffer=clips.get(kind);
+    if (rate!==1) source.playbackRate.setValueAtTime(rate,time);
     gain.gain.setValueAtTime(volume,time);
     source.connect(gain);
     gain.connect(destination);
-    const record={source,gain};
+    const record={source,gain,build};
     if (voice) voices.push(record);
     source.onended=()=>{
       if (voice) voices=voices.filter(item=>item!==record);
@@ -136,15 +162,17 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     if (!clip||!ambience||!context) return false;
     const now=context.currentTime;
     if (now<ambience.start||now>ambience.end-.8) return false;
-    if (now-(ambience.heard.get(kind)??-Infinity)<clip[0]+1.6) return true;
+    const [length,volume,rest]=clip;
+    if (now-(ambience.heard.get(kind)??-Infinity)<length+rest||now-ambience.lastCue<.31) return false;
     try {
-      sample(kind,now,clip[1]*Math.max(0,Math.min(1,intensity))/.07,ambience.gain,false);
+      sample(kind,now,volume*Math.max(0,Math.min(1,intensity))/.07,{destination:ambience.gain,voice:false});
       ambience.heard.set(kind,now);
+      ambience.lastCue=now;
       return true;
     } catch { return false; }
   }
 
-  function melody(kind,now) {
+  function melody(kind,now,build=false) {
     for (const [midi,offset,duration,volume,endMidi] of SOUND_PATTERNS[kind]) {
       const source=context.createOscillator(),gain=context.createGain(),start=now+offset;
       source.type=kind==='finish'||kind==='finale'||kind==='key'?'triangle':'sine';
@@ -154,7 +182,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
       gain.gain.exponentialRampToValueAtTime(volume,start+(kind==='key'?.003:.014));
       gain.gain.exponentialRampToValueAtTime(floor,start+duration);
       source.connect(gain); gain.connect(context.destination);
-      const voice={source,gain};
+      const voice={source,gain,build};
       voices.push(voice);
       source.onended=()=>{
         voices=voices.filter(item=>item!==voice);
@@ -167,6 +195,8 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
   function stop() {
     stopVoices();
     stopAmbience();
+    if (carrier) { releaseVoice(carrier); carrier=null; }
+    if (context?.state==='running') context.suspend?.().catch(()=>{});
     if (session) {
       try { session.type='auto'; } catch {}
       session=null;
@@ -180,24 +210,32 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
       if (!context||token!==generation) return;
       const now=context.currentTime+(kind==='key'?0:.015);
       melody(kind,now);
-      if (kind==='landmark'||kind==='finale') sample('applause',now+1.2,kind==='finale'?.13:.092);
     }).catch(()=>{});
   }
 
   function playBuild(scene,enabled=true,{finale=false,tail=true}={}) {
     if (!enabled) return;
-    if (tail) stopAmbience();
+    stopVoices();
     const finished=Boolean(scene?.finished);
-    play(finale?'finale':finished?'landmark':'finish');
-    if (!scene?.world) return;
-    const token=generation;
+    const kind=finale?'finale':finished?'landmark':'finish';
+    const token=generation,build=++buildGeneration;
+    const workStart=finished ? .06 : scene?.roadBuild ? .76 : .36;
     unlock().then(()=>{
-      if (!context||token!==generation) return;
-      const start=context.currentTime+(finished?.06:scene.roadBuild?1.05:.66);
-      sample(scene.id==='moon'?'build-moon':'build-earth',start,finished?.07:.13,context.destination,true,finished?.63:undefined);
+      if (!context||token!==generation||build!==buildGeneration) return;
+      const now=context.currentTime+.015;
+      melody(kind,now,true);
+      if (scene?.world) {
+        sample(scene.id==='moon'?'build-moon':'build-earth',now+workStart,finished?.115:.23,
+          {build:true,length:finished?.61:undefined});
+      }
+      if (finished||finale) {
+        fireworkBursts(finale).forEach(({at},i)=>{
+          sample('firework',now+at/1000,.105+i%3*.021,{build:true,rate:.91+i%4*.078});
+        });
+      }
     }).catch(()=>{});
-    if (tail) startAmbience(scene,{delay:finished?2.4:2.25,duration:4.65});
+    if (tail&&scene?.world) startAmbience(scene,{delay:finished?2.08:workStart+3.38,duration:5.4});
   }
 
-  return {play,stop,unlock,startAmbience,stopAmbience,activity,playBuild};
+  return {play,stop,resume,startAmbience,stopAmbience,activity,playBuild,stopBuild};
 }
