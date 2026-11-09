@@ -106,6 +106,13 @@ const wheel = (x,z,diameter,y) => [
 ];
 
 export function vehicle(kind,color) {
+  if (kind==='hover') {
+    return [rounded(0,0,1.17,2.34,.34,color,.18),rounded(0,.7,.99,.86,.19,color,.46),rounded(0,-.27,.68,.77,.17,ink,.5),
+      ...[-1,1].map(s=>box(s*.47,-.11,.13,1.56,.098,cream,.49)),
+      box(0,.45,.84,.13,.37,'#8ed0d9',.51),box(0,-.44,.65,.26,.38,ink,.47),
+      ...[-1,1].flatMap(s=>[tube(s*.36,-1.02,.38,.57,.38,'#acadc2',.25,'z'),
+        tube(s*.36,-1.34,.26,.095,.27,'#85d7d9',.31,'z'),rounded(s*.34,.91,.2,.1,.12,cream,.42)])];
+  }
   if (kind==='bus') {
     return [...[-.57,.57].flatMap(x=>[-1.03,1.03].flatMap(z=>wheel(x,z,.48,0))),
       rounded(0,0,1.29,3.28,1.04,color,.31),rounded(0,-.01,1.2,3.17,.18,'#f0ce8d',1.25),
@@ -163,14 +170,14 @@ function walker(kind,coat,skin='#edb88c') {
     rounded(-.05,-.24,.47,.24,.53,'#d9a658',.69)];
 }
 
-export function visitor(kind,coat,skin,seated=false) {
+export function visitor(kind,coat,skin,seated=false,scale=.83) {
   const standing=walker(kind,coat,skin);
   const model=seated
     ? [...standing.slice(2).map(part=>({...part,y:part.y-.53})),
       ...[-.17,.17].flatMap(x=>[rounded(x,.22,.25,.51,.2,'#5b687a',-.015),
         rounded(x,.43,.2,.23,.36,'#5b687a',-.3),rounded(x,.48,.22,.38,.14,'#425568',-.39)])]
     : standing;
-  return model.map(part=>({...part,x:part.x*.83,y:part.y*.83,z:part.z*.83,w:part.w*.83,d:part.d*.83,h:part.h*.83}));
+  return model.map(part=>({...part,x:part.x*scale,y:part.y*scale,z:part.z*scale,w:part.w*scale,d:part.d*scale,h:part.h*scale}));
 }
 
 function route(points, corner) {
@@ -198,7 +205,7 @@ function route(points, corner) {
   return {segments,length};
 }
 
-function actor(parts,points,{kind,ground,speed,phase=0,corner=.85,roads=[],roadRise=0,elevation}) {
+export function actor(parts,points,{kind,ground,speed,phase=0,corner=.85,roads=[],roadRise=0,elevation}) {
   return {parts,kind,ground,speed,phase,roads,roadRise,elevation,route:route(points,corner)};
 }
 
@@ -253,7 +260,8 @@ export function actorPose(actor, seconds) {
     const roll=seconds*.39;
     return {x,y,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll)};
   }
-  if (actor.kind==='rocket'||actor.kind==='rocket-flame'||actor.kind==='plane') return flightPose(actor,seconds);
+  if (actor.kind==='plane') return planePose(actor,seconds);
+  if (actor.kind==='rocket'||actor.kind==='rocket-flame') return rocketPose(actor,seconds);
   const {segments,length}=actor.route;
   const traveled=seconds*actor.speed;
   const distance=(traveled+length*actor.phase)%length;
@@ -267,27 +275,51 @@ export function actorPose(actor, seconds) {
     actor.elevation?.(x,z)??(actor.ground+actor.roadRise*Math.max(0,1-Math.max(0,nearestRoad-.85)/.61));
   const bob=actor.kind==='bird' ? Math.sin(traveled*.44)*.35
     : ['boat','swimmer','jetski'].includes(actor.kind) ? Math.sin(traveled*2.1)*.045
+    : actor.kind==='hover' ? Math.sin(traveled*2.7)*.079
     : walking ? Math.abs(Math.sin(traveled*6))*.035 : 0;
   return {x,y:y+bob,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking?Math.sin(traveled*6)*.17:0,rollCos:1,rollSin:0};
 }
 
-function flightPose({x,y,z,yaw,kind,delay},seconds) {
+function rocketPose({x,y,z,yaw,kind,delay},seconds) {
   const t=(seconds+26-delay)%26;
-  const plane=kind==='plane';
   const ascend=t>=2.65&&t<7.5,descend=t>=11.05&&t<17.1;
   const away=t>=7.5&&t<11.05;
   const travel=ascend?(t-2.65)/4.85:descend?(17.1-t)/6.05:0;
-  const altitude=plane?107*travel**2.7:260*travel**2.35;
-  const ahead=plane?(ascend?1:-1)*(185*travel**2.75+5*travel):0;
+  const altitude=260*travel**2.35;
   const flame=kind==='rocket-flame';
   const invisible=away||flame&&!(ascend||descend);
   const cos=Math.cos(yaw),sin=Math.sin(yaw);
-  const roll=plane&&altitude?Math.sin(t*2.4)*Math.min(.12,altitude*.012):0;
   return {
-    x:x+ahead*sin+(flame?Math.sin(t*37)*.09:0),z:z+ahead*cos,
+    x:x+(flame?Math.sin(t*37)*.09:0),z,
     y:invisible?-540:y+altitude+(flame?Math.sin(t*41)*.115:0),
-    cos,sin,stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),
+    cos,sin,stride:0,rollCos:1,rollSin:0,
   };
+}
+
+function planePose({x,y,z,yaw,delay,runway},seconds) {
+  const clock=Math.max(0,seconds-delay),t=clock%30;
+  const reverse=Math.floor(clock/30)%2===1;
+  const end=runway*.5-1.08;
+  let along=-end,altitude=0,turn=0;
+  if (t>=2.4&&t<5.3) along=-end+2*end*((t-2.4)/2.9)**1.8;
+  else if (t>=5.3&&t<8.8) {
+    const flight=(t-5.3)/3.5;
+    along=end+189*flight**1.7;
+    altitude=115*flight**1.44;
+  } else if (t>=8.8&&t<13) altitude=-540;
+  else if (t>=13&&t<17.4) {
+    const approach=(17.4-t)/4.4;
+    along=-end-189*approach**1.91;
+    altitude=103*approach**1.94;
+  } else if (t>=17.4&&t<20.5) along=-end+2*end*(1-((20.5-t)/3.1)**2);
+  else if (t>=20.5) {
+    along=end;
+    turn=Math.PI*Math.max(0,Math.min(1,(t-22)/1.75));
+  }
+  const direction=reverse?-1:1,heading=yaw+(reverse?Math.PI:0)+turn;
+  const roll=altitude>0?Math.sin(t*2.4)*Math.min(.12,altitude*.012):0;
+  return {x:x+Math.sin(yaw)*along*direction,y:y+altitude,z:z+Math.cos(yaw)*along*direction,
+    cos:Math.cos(heading),sin:Math.sin(heading),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll)};
 }
 
 export function coasterActor(parts,points,phase) {
@@ -310,7 +342,7 @@ function laneLoop(path,offset) {
   return [...lane(offset),...lane(-offset).reverse()];
 }
 
-function sailboat(cargo) {
+export function sailboat(cargo) {
   const hull=cargo?'#567a8f':'#af695c';
   const keel=[rounded(0,-.11,1.62,3.04,.48,hull,.01),dome(0,.94,1.55,1.83,.38,hull,.06),
     rounded(0,-.09,1.42,2.8,.14,'#e1ceb0',.48)];
@@ -353,7 +385,7 @@ export function swimmer(skin='#dfa881',cap='#d78684') {
     box(-.36,-.38,.046,.42,.016,'#a3d9d6',.022),box(.37,-.47,.046,.43,.016,'#b2ddd6',.024)];
 }
 
-function jetski(color) {
+export function jetski(color) {
   return [rounded(0,-.02,.82,1.63,.24,color,.055),dome(0,.55,.77,.8,.29,'#edb375',.17),
     rounded(0,-.15,.49,.64,.14,'#506b75',.28),rounded(0,-.13,.41,.42,.54,'#e5c38e',.39),
     dome(0,-.08,.49,.46,.37,'#64899c',.85),
@@ -390,6 +422,31 @@ function islandWaterLife(layout,plan,completed) {
   return beach;
 }
 
+function offroadRover(layout,plan,plots) {
+  const routes=plan.paths.flat();
+  const safe=(x,z)=>{
+    const ground=regionSurface(layout,x,z);
+    return ground.basin>-.86&&regionVisibility(plan,x,z)>.59
+      &&plan.plots.every(plot=>Math.hypot(plot.x-x,plot.z-z)>7.1)
+      &&routes.every(point=>Math.hypot(point.x-x,point.z-z)>2.15);
+  };
+  for (const plot of plots.slice().reverse()) {
+    for (let direction=0;direction<8;direction++) {
+      const angle=direction*Math.PI/4, reach=15.3+(direction%2)*1.5;
+      const x=plot.x+Math.cos(angle)*reach,z=plot.z+Math.sin(angle)*reach;
+      const loop=Array.from({length:7},(_,i)=>{
+        const t=i*Math.PI*2/7;
+        return [x+Math.cos(t)*3.85,z+Math.sin(t)*2.95];
+      });
+      if (!loop.every(([a,b])=>safe(a,b))) continue;
+      const rover=actor(vehicle('rover','#caa18f'),loop,{kind:'offroad-rover',speed:1.45,phase:.22,corner:1.5,
+        elevation:(x,z)=>regionSurface(layout,x,z).y+.043});
+      if (rover.route.segments.every(part=>safe(part.x,part.z))) return rover;
+    }
+  }
+  return null;
+}
+
 export function regionActors(theme,layout,plan,completed) {
   if (!completed.length&&!plan.circuits?.length) return [];
   const actors=[], moon=theme==='moon';
@@ -397,6 +454,16 @@ export function regionActors(theme,layout,plan,completed) {
   const colors=['#deaa73','#8eb1c6','#d27d84','#e0bb83'];
   const walkers=moon?['astronaut','alien']:['human'];
   if (theme==='island') actors.push(...islandWaterLife(layout,plan,completed));
+  if (moon&&completed.length) {
+    const rover=offroadRover(layout,plan,completed);
+    if (rover) actors.push(rover);
+    if (completed.some(plot=>plot.kind==='hoverDealer')&&paths.length) {
+      const circuit=plan.circuits?.at(-1);
+      const points=circuit?circuit.map(({x,z})=>[x,z]):laneLoop(paths.at(-1),.32);
+      actors.push(actor(vehicle('hover','#b982ac'),points,{kind:'hover',speed:3.15,phase:.38,corner:STREET_TURN_RADIUS,
+        elevation:(x,z)=>roadElevation(layout,x,z)+.17}));
+    }
+  }
   const station=completed.find(plot=>plot.kind==='busStation');
   if (station&&paths.length) {
     const entry=station.entries[0]??station;

@@ -10,6 +10,7 @@ import { curriculumTopic, levelForGrade, levelsForGrade, nextLevelForGrade } fro
 import { PROJECTS, projectById, projectScene, worldBuilding, worldBuildingOptions, worldBuildingPreview } from './projects.js';
 import { isWorld, isRegion, currentWorld, worldStatus, worldCompletedPlaces, worldSelect, worldAdvance, freshWorld, replaceCurrentWorld, startNewWorld, WORLD_IDS, REGION_PLACES } from './worlds.js';
 import { mountProjectView } from './project-view.js';
+import { seasonForDate, seasonMark } from './seasons.js';
 
 const root = document.querySelector('#app');
 const announcer = document.querySelector('#announcer');
@@ -85,7 +86,7 @@ function icon(name, css = '') {
 function buddy(happy = false, surprised = false) {
   return `<div class="buddy ${happy ? 'happy' : surprised ? 'surprised' : ''}" aria-hidden="true"><div class="buddy-shadow"></div><div class="buddy-leaf"></div><div class="buddy-body"><i class="buddy-eye left"></i><i class="buddy-eye right"></i><i class="buddy-smile"></i><i class="buddy-cheek left"></i><i class="buddy-cheek right"></i></div><span class="buddy-spark">✦</span><span class="buddy-spark right">✦</span></div>`;
 }
-function brand() { return `<div class="brand"><span class="brand-mark">${icon('brand-friend', 'brand-friend')}</span><span>tallvenn</span></div>`; }
+function brand() { return `<div class="brand"><span class="brand-mark">${icon('brand-friend', 'brand-friend')}<span class="brand-season">${seasonMark(seasonForDate())}</span></span><span>Mattopia</span></div>`; }
 function betaMark() { return CHANNEL === 'preview' ? '<span class="beta-mark"><strong>BETA</strong><span class="sr-only"> Testversjon</span></span>' : ''; }
 function soundButton() { return `<button class="icon-button sound-toggle" data-action="sound" aria-label="${state.sound ? 'Lyd på. Slå av lyd' : 'Lyd av. Slå på lyd'}" aria-pressed="${state.sound}">${icon(state.sound ? 'sound' : 'muted')}</button>`; }
 function header(showAdult = true, showSound = true) { return `<header class="site-header"><div class="brand-wrap">${brand()}${betaMark()}</div><div class="header-controls">${showSound ? soundButton() : ''}${showAdult ? `<button class="adult-link" data-action="adult">${icon('settings')}For voksne</button>` : ''}</div></header>`; }
@@ -196,7 +197,7 @@ function renderOnboarding() {
   setup ||= makeSetup('first');
   const carry = state.roundsCompleted || state.active;
   root.innerHTML = `<div class="app-shell">${header(CHANNEL === 'preview', false)}${updateBanner()}<main class="onboarding">
-    <p class="home-eyebrow">Hei fra Tallvenn!</p><h1 tabindex="-1">${SETUP_TITLES[setup.step]}</h1>
+    <p class="home-eyebrow">Hei fra Mattopia!</p><h1 tabindex="-1">${SETUP_TITLES[setup.step]}</h1>
     ${setup.step === 0 ? `<p>${carry ? 'Øvingen du har fra før, følger med denne profilen.' : 'Lag en spiller og velg en figur som kan heie på deg.'}</p>` : ''}
     ${setupForm(setup)}<p class="adult-note">Profilen lagres på denne enheten.</p>
     ${!storageWorks ? '<p class="storage-warning">Framgangen kan forsvinne hvis nettleseren blokkerer lagring.</p>' : ''}
@@ -379,24 +380,66 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         <p data-demo-status aria-live="polite">${latest()}</p>
         <button class="secondary" data-demo-step="1" aria-label="Neste byggesteg">Neste ${icon('arrow')}</button>
       </div>` : ''}
-      <canvas tabindex="0" role="img" aria-label="${scene.world ? 'Kart: '+title : title+' i 3D'}" aria-describedby="project-instructions project-milestone"></canvas>
+      <div class="project-map-stage">
+        <canvas tabindex="0" role="img" aria-label="${scene.world ? 'Kart: '+title : title+' i 3D'}" aria-describedby="project-instructions project-milestone"></canvas>
+        ${scene.world?`<section class="map-info-card" data-map-info hidden aria-live="polite">
+          <div><small data-map-info-status></small><h3></h3><p data-map-info-description></p><p data-map-info-story></p></div>
+          <button class="icon-button" type="button" data-map-info-close aria-label="Lukk bygginformasjonen">${icon('close')}</button>
+        </section>`:''}
+      </div>
       <div class="project-controls">
+        ${scene.world?`<label class="map-inspect-label" hidden><span>Bygg på kartet</span><select data-map-inspect aria-label="Velg bygg på kartet"></select></label>`:''}
         <div class="project-control-group" role="group" aria-label="Zoom og tilbakestill">
           <button class="secondary project-zoom" data-project-zoom=".8" aria-label="Zoom ut">−</button>
           <button class="secondary project-zoom" data-project-zoom="1.25" aria-label="Zoom inn">+</button>
           <button class="secondary" data-project-reset>Oversikt</button>
         </div>
       </div>
-      <p id="project-instructions">Dra for å ${scene.world?'flytte':'rotere'}. Klyp eller bruk pluss og minus for å zoome.</p>
+      <p id="project-instructions">${scene.world?'Dra kartet for å flytte. Trykk på et bygg for å se hva som skjer der.':'Dra for å rotere.'} Klyp eller bruk pluss og minus for å zoome.</p>
       ${scene.world ? `<div class="project-atmosphere"><button class="secondary" data-project-ambience aria-pressed="false" ${state.sound ? '' : 'disabled'}>${icon('muted')} Omgivelseslyd</button>${state.sound ? '' : '<small>Applyden er slått av.</small>'}</div>` : ''}
       ${!demo && !target && progress().completed ? `<div class="project-latest"><div><small>Siste byggesteg · ${progress().completed} av ${progress().total}</small>${latest()}</div><button class="secondary" data-project-latest>Vis siste steg</button></div>` : ''}
     </div>
     <p id="project-milestone" class="project-milestone">${milestone()}</p>
     ${trail ? '<button class="secondary demo-new-map" data-demo-new>Nytt demokart</button>' : ''}`, 'project-dialog', dialog => {
     const viewer = dialog.querySelector('.project-viewer');
+    const selector=viewer.querySelector('[data-map-inspect]');
+    const card=viewer.querySelector('[data-map-info]');
+    const inspect=index=>{
+      if (!card) return;
+      const site=index===null?null:scene.sites?.[index];
+      const building=site&&worldBuilding(id,index,map);
+      card.hidden=!building;
+      selector.value=building?String(index):'';
+      if (!building) return;
+      card.querySelector('h3').textContent=building.name;
+      card.querySelector('[data-map-info-status]').textContent=site.built?'På kartet':'Under bygging';
+      card.querySelector('[data-map-info-description]').textContent=building.description;
+      card.querySelector('[data-map-info-story]').textContent=building.story;
+    };
+    const updateBuildingList=()=>{
+      if (!selector) return;
+      const sites=Object.entries(scene.sites??{});
+      const current=selector.value;
+      selector.innerHTML='<option value="">Velg et bygg</option>'+sites.map(([index,site])=>{
+        const {name}=worldBuilding(id,Number(index),map);
+        return `<option value="${index}">${escapeHtml(name)}${site.built?'':' · under bygging'}</option>`;
+      }).join('');
+      selector.parentElement.hidden=sites.length===0;
+      inspect(current===''?null:Number(current));
+    };
+    if (selector) {
+      selector.addEventListener('change',()=>inspect(selector.value===''?null:Number(selector.value)));
+      card.querySelector('[data-map-info-close]').addEventListener('click',()=>{
+        inspect(null);
+        selector.focus({preventScroll:true});
+      });
+      updateBuildingList();
+      if (place!==null) inspect(place);
+    }
     const mount = reveal => mountProjectView(viewer, scene, true, {
       closeUp:!fromCollection && Boolean(progress().completed), reveal, demo, target,
       focusLatest:!demo&&!archivedMap&&!fromCollection&&(view==='complete'||Boolean(state.active)),
+      onInspect:selector?inspect:undefined,
     });
     let dispose = mount(false);
     projectAmbience(dialog, id);
@@ -406,6 +449,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       const refresh = amount => {
         const info = progress();
         scene = projectScene(id, map || completed);
+        updateBuildingList();
         previous.disabled = completed === 0;
         next.disabled = info.full;
         if (previous.disabled && document.activeElement === previous) next.focus({preventScroll:true});
@@ -445,7 +489,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         refresh(0);
       });
       dialog.addEventListener('keydown', event => {
-        if (event.target.matches('canvas') || !['ArrowLeft','ArrowRight'].includes(event.key)) return;
+        if (event.target.matches('canvas, select') || !['ArrowLeft','ArrowRight'].includes(event.key)) return;
         event.preventDefault();
         step(event.key === 'ArrowLeft' ? -1 : 1);
       });
@@ -466,7 +510,7 @@ function breakButtonLabel() {
 const BADGES = [
   { stars:3, name:'God start', tone:'leaf', shape:'M32 5 54 16v24L32 57 10 40V16Z',
     motif:'<path d="M32 44V29m0 8c-9 0-13-4-13-12 8 0 13 4 13 12Zm0-4c0-8 4-13 13-14 0 8-5 14-13 14Z" />' },
-  { stars:10, name:'Tallvenn', tone:'sun', shape:'M32 5 42 8 52 15 57 28 53 42 44 53 32 57 20 53 11 42 7 28 12 15 22 8Z',
+  { stars:10, name:'Tallbygger', tone:'sun', shape:'M32 5 42 8 52 15 57 28 53 42 44 53 32 57 20 53 11 42 7 28 12 15 22 8Z',
     motif:'<path d="M32 17 36.5 26.5 47 28 39.5 35.5 41 46 32 41 23 46l1.5-10.5L17 28l10.5-1.5Z" />' },
   { stars:25, name:'Talloppdager', tone:'sky', shape:'M32 3 59 31 32 59 5 31Z',
     motif:'<circle cx="32" cy="31" r="13" fill="none"/><path d="m39 23-4 12-11 4 4-12Z"/><circle cx="32" cy="31" r="1.7" />' },
@@ -1177,6 +1221,7 @@ function renderComplete() {
 let renderedScreen;
 function render() {
   const taskScroll = root.querySelector('.task-scroll')?.scrollTop ?? 0;
+  document.documentElement?.setAttribute('data-season', seasonForDate());
   disposeProjectPreview?.();
   if (view === 'round') renderRound();
   else if (view === 'complete') renderComplete();
@@ -1432,7 +1477,7 @@ function adultView() {
     <div class="update-section"><p class="adult-section-title">Appversjon ${VERSION}</p><p class="adult-note" data-update-status role="status">${updateStatus.message}</p><div class="update-actions"><button class="secondary" data-action="check-update" ${updateStatus.checking || updateStatus.applying ? 'disabled' : ''}>Se etter oppdatering</button><button class="secondary update-apply" data-action="apply-update" ${updateStatus.ready ? '' : 'hidden'} ${updateStatus.applying ? 'disabled' : ''}>${updateStatus.applying ? 'Oppdaterer …' : 'Oppdater nå'}</button></div></div>
     <details class="adult-details"><summary>Tips til en god økt</summary><p>La barnet tenke ferdig. Spør av og til «Hvordan fant du det ut?». Bruk gjerne klosser ved siden av. Avslutt når overskuddet er brukt opp; en halv runde kan fortsettes senere.</p><p>Appen gir øving og erstatter ikke lærerens kartlegging eller oppfølging.</p></details>
     <details class="adult-details"><summary>Legg appen på hjemskjermen</summary><p>På iPad og iPhone: åpne adressen i Safari, velg Del og «Legg til på Hjem-skjerm». Åpne appen på nett én gang før dere bruker den uten nett.</p><p>Profiler og framgang lagres lokalt i denne nettleseren eller i den installerte appen. Safari og hjemskjermappen kan ha hver sine profiler. Det er ingen konto, sporing eller eksterne ressurser.</p></details>
-    <button class="delete-button" data-action="reset">${profile ? 'Slett denne spillerens øvingshistorikk' : 'Slett øvingshistorikken'}</button><button class="primary" data-action="close-dialog">Ferdig</button><p class="version">Tallvenn ${VERSION}</p>`, '', d => {
+    <button class="delete-button" data-action="reset">${profile ? 'Slett denne spillerens øvingshistorikk' : 'Slett øvingshistorikken'}</button><button class="primary" data-action="close-dialog">Ferdig</button><p class="version">Mattopia ${VERSION}</p>`, '', d => {
       if (CHANNEL === 'preview') checkPublishedRelease(d);
       d.addEventListener('change', e => {
         if (e.target.name === 'level' && levelsForGrade(profile?.grade).includes(Number(e.target.value))) {

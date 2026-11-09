@@ -132,14 +132,19 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
   const {nodes,edges,origin,available,links,connectorLayout}=graph;
   const open=new Map(), active=new Set(), connectors=[],connectedNodes=new Set(),plots=[];
   const usedLots=new Set();
+  let latestPaths=new Map();
+  let track=false;
   const add=edge=>{
     if (!edge) return;
+    if (track&&!open.has(edge.key)) latestPaths.set(edge.points,!active.has(edge.a)&&active.has(edge.b));
     open.set(edge.key,edge);
     active.add(edge.a);active.add(edge.b);
   };
   origin.perimeter.forEach(add);
+  track=true;
 
   for (const {index,kind} of buildings) {
+    latestPaths=new Map();
     const special=layout.berths[kind];
     if (special) {
       const entries=specialEntrances(special,kind);
@@ -153,7 +158,9 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
         }
         if (!candidates.length) continue;
         const start=candidates.reduce((near,point)=>gap(point,entry)<gap(near,entry)?point:near);
-        connectors.push(connectWaterfront(connectorLayout,start,entry,kind==='bridge'));
+        const path=connectWaterfront(connectorLayout,start,entry,kind==='bridge');
+        connectors.push(path);
+        latestPaths.set(path,false);
         connectedNodes.add(start.id);
         active.add(start.id);
       }
@@ -188,7 +195,7 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     openLinks[a].push(b);openLinks[b].push(a);
   }
   return {
-    origin,plots,paths:[...open.values()].map(edge=>edge.points).concat(connectors),
+    origin,plots,paths:[...open.values()].map(edge=>edge.points).concat(connectors),latestPaths,
     junctions:[...active].filter(id=>openLinks[id].length>=2).map(id=>{
       const {x,z}=nodes[id];
       const arms=openLinks[id].map(neighbor=>[Math.sign(nodes[neighbor].x-x),Math.sign(nodes[neighbor].z-z)]);

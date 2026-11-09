@@ -2,6 +2,9 @@ import {box,tube,roof,rounded,dome,at,worldSign,vehicle,worldActors,districtActo
 import {isWorld,isRegion,hasExpandedCatalog,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,randomGenerator} from './worlds.js';
 import {expandedWorldScene} from './region-scenery.js';
 import {NEW_LANDMARKS,EXPANDED_LANDMARKS,landmarkStages} from './world-landmarks.js';
+import {shapeLandmarkGround} from './landmark-ground.js';
+import {landmarkStory} from './landmark-stories.js';
+import {seasonForDate} from './seasons.js';
 
 const stage = (label, ...parts) => ({label,parts:parts.flat()});
 
@@ -399,7 +402,7 @@ function worldScene(theme) {
     return {...item,finished:item.label};
   };
   PLACES[theme].forEach((definition,i)=>{
-    steps.push(...landmark(theme,i,definition));
+    steps.push(...landmark(theme,i,definition).map(step=>({...step,parts:step.parts.map(part=>({...part,landmark:i}))})));
     steps.push(detail(i));
     if(i%2===1) steps.push(detail(16+Math.floor(i/2)));
   });
@@ -430,11 +433,12 @@ export function worldBuilding(id,index,map=null) {
   const custom=catalogBuilding(id,index,map);
   if (custom) {
     const [name,description,kind,family=kind]=custom;
-    return {name,description,kind,family};
+    return {name,description,kind,family,story:landmarkStory(id,index,kind)};
   }
   const definition=PLACES[id]?.[index];
   if (!definition) return null;
-  return {name:definition[0],description:DETAILS[id][index],kind:definition[1]};
+  const [name,kind]=definition;
+  return {name,description:DETAILS[id][index],kind,story:landmarkStory(id,index,kind)};
 }
 
 export function worldBuildingOptions(id,map) {
@@ -468,6 +472,7 @@ function regionLandmarkParts(id,index,site,map) {
     ];
   }
   if (site?.waterfront) return stages;
+  stages=shapeLandmarkGround(stages,custom?.[2]??PLACES[id][index][1]);
   // Broad, thin surfaces stay in elevation order in the Canvas painter.
   return stages.map(parts=>parts.map(part=>{
     const top=part.y+part.h;
@@ -620,14 +625,16 @@ function plannedWorldScene(id,map) {
   const terrain=previous??generatedTerrain(id,layout,lots);
   const parts=terrain.parts.slice();
   const landmarks=Object.fromEntries(legacyPlacement(map.legacy).finished.map(index=>[index,legacyTarget(id,index)]));
+  const sites=Object.fromEntries(Object.entries(landmarks).map(([index,site])=>[index,{...site,built:true}]));
   let latest=previous?.latest??[],last=previous?.last,finished=previous?.finished??null;
   if (partial && map.progress) {
     const steps=landmark(id,partial.id,PLACES[id][partial.id]);
-    latest=steps.slice(partial.stages).flatMap(step=>step.parts);
+    latest=steps.slice(partial.stages).flatMap(step=>step.parts).map(part=>({...part,landmark:partial.id}));
     parts.push(...latest);
     last=steps.at(-1).label;
     finished=steps.at(-1).finished;
     landmarks[partial.id]=legacyTarget(id,partial.id);
+    sites[partial.id]={...landmarks[partial.id],built:true};
   }
   map.order.forEach((place,i)=>{
     const amount=Math.max(0,Math.min(WORLD_BUILD_STEPS,earned-i*WORLD_BUILD_STEPS));
@@ -636,15 +643,16 @@ function plannedWorldScene(id,map) {
     const definition=PLACES[id][place];
     const steps=landmark(id,place,definition,lot?[lot.x,lot.z]:undefined);
     for (let j=0;j<amount;j++) {
-      latest=steps.slice(j*2,j*2+2).flatMap(step=>step.parts);
+      latest=steps.slice(j*2,j*2+2).flatMap(step=>step.parts).map(part=>({...part,landmark:place}));
       parts.push(...latest);
     }
     last=`${definition[0]} · ${PHASES[amount-1].toLowerCase()}`;
     finished=amount===WORLD_BUILD_STEPS?definition[0]:null;
-    if (finished) landmarks[place]=lot?{x:lot.x,z:lot.z,y:0}:legacyTarget(id,place);
+    sites[place]={...(lot?{x:lot.x,z:lot.z,y:0}:legacyTarget(id,place)),built:Boolean(finished)};
+    if (finished) landmarks[place]=sites[place];
   });
   return {
-    parts,latest,last,finished,landmarks,id,world:true,background:THEMES[id].sky,yaw:-.62,pitch:.57,center:1,closeSize:79,
+    parts,latest,last,finished,landmarks,sites,id,world:true,background:THEMES[id].sky,yaw:-.62,pitch:.57,center:1,closeSize:79,
     size:terrain.size,anchorX:terrain.anchorX,anchorZ:terrain.anchorZ,
     ambient:previous?.ambient??(earned>=2?districtActors(id,lots):[]),
     next:status.building!==null?`${PLACES[id][status.building][0]} · ${partial&&!map.progress?'ferdigstilling':PHASES[status.phase].toLowerCase()}`:null,
@@ -658,13 +666,13 @@ function legacyTarget(id,index) {
 
 const catalog = new Map();
 const regionScenes = new Map();
-export function projectScene(id, completed=0) {
+export function projectScene(id, completed=0, season=seasonForDate()) {
   const project=projectById(id);
   if(!project) return null;
   if (isWorld(id)&&isRegion(completed)) {
-    const key=`${id}:${completed.layout}:${completed.catalog??1}:${completed.seed}:${completed.progress}:${completed.order.join(',')}`;
+    const key=`${id}:${completed.layout}:${completed.catalog??1}:${completed.seed}:${completed.progress}:${completed.order.join(',')}:${season}`;
     if (regionScenes.has(key)) return regionScenes.get(key);
-    const scene=expandedWorldScene(id,completed,THEMES[id],index=>worldBuilding(id,index,completed),(index,site)=>regionLandmarkParts(id,index,site,completed));
+    const scene=expandedWorldScene(id,completed,THEMES[id],index=>worldBuilding(id,index,completed),(index,site)=>regionLandmarkParts(id,index,site,completed),season);
     regionScenes.set(key,scene);
     if (regionScenes.size>5) regionScenes.delete(regionScenes.keys().next().value);
     return scene;

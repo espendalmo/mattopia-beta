@@ -1,6 +1,6 @@
-import {box,rounded,tube,dome,beam,placeParts,pointOnSite,coasterActor,visitor,swimmer} from './scenery.js';
+import {box,rounded,tube,dome,beam,placeParts,pointOnSite,actor,coasterActor,visitor,swimmer} from './scenery.js';
 import {regionSurface} from './regions.js';
-import {AIRPORT_PAD,COASTER_TRACK,ROCKET_PAD,WHEEL_HUB} from './world-landmarks.js';
+import {airportRunway,COASTER_TRACK,planeModel,ROCKET_PAD,WHEEL_HUB} from './world-landmarks.js';
 import {randomGenerator} from './worlds.js';
 
 const paint='#e3ae55';
@@ -91,21 +91,40 @@ export function rideModels(plot,stages) {
   }
   if (plot.kind==='coaster') {
     const points=COASTER_TRACK.map(([x,y,z])=>pointOnSite([x,y+.11,z],plot));
-    return ['#da866a','#70aeb0'].map((color,i)=>coasterActor([
-      rounded(0,0,.68,.91,.24,color,.013),rounded(0,-.19,.64,.32,.19,'#f3dbb3',.22),
-      box(0,.16,.57,.095,.12,'#596f7d',.13),
-    ],points,.23+i*.039));
+    return ['#da866a','#70aeb0'].map((color,i)=>coasterActor(coasterCarModel(color,true),points,.23+i*.039));
+  }
+  if (plot.kind==='field'||plot.kind==='spaceField') {
+    const space=plot.kind==='spaceField',radius=space?2.34:1.53;
+    return [-1,1].map((side,i)=>{
+      const path=[[side*radius,0],[side*.75,-1.02],[-side*.28,.3],[side*radius,1.08]].map(([x,z])=>{
+        const [a,,b]=pointOnSite([x,0,z],plot);
+        return [a,b];
+      });
+      return actor(visitor(space?'astronaut':'human',i?'#6b9bbc':'#d48078',i?'#b48466':'#edb78a',false,.61),
+        path,{kind:'walk',ground:plot.y+(space?.52:.35),speed:1.24+i*.18,phase:.12+i*.48,corner:.54});
+    });
   }
   const model=stages.flat().filter(part=>part.flight);
   if (model.length) {
     const kind=model[0].flight;
-    const local=kind==='rocket'?ROCKET_PAD:AIRPORT_PAD;
-    const [x,y,z]=pointOnSite(local,plot);
-    const parts=placeParts(model,{x:-local[0],y:-local[1],z:-local[2]});
-    const craft={kind,x,y,z,yaw:plot.yaw,delay:(plot.index*11%7)*.28,parts};
-    return kind==='rocket'?[craft,{...craft,kind:'rocket-flame',parts:rocketFlame()}]:[craft];
+    const delay=(plot.index*11%7)*.28;
+    if (kind==='plane') {
+      const runway=airportRunway(plot.kind);
+      const [x,y,z]=pointOnSite([runway.x,runway.y,runway.z],plot);
+      return [{kind,x,y,z,yaw:plot.yaw+runway.yaw,runway:runway.length,delay,parts:planeModel()}];
+    }
+    const [x,y,z]=pointOnSite(ROCKET_PAD,plot);
+    const parts=placeParts(model,{x:-ROCKET_PAD[0],y:-ROCKET_PAD[1],z:-ROCKET_PAD[2]});
+    const craft={kind,x,y,z,yaw:plot.yaw,delay,parts};
+    return [craft,{...craft,kind:'rocket-flame',parts:rocketFlame()}];
   }
   return [];
+}
+
+export function coasterCarModel(color,passenger=false) {
+  return [rounded(0,0,.68,.91,.24,color,.013),rounded(0,-.19,.64,.32,.19,'#f3dbb3',.22),
+    box(0,.16,.57,.095,.12,'#596f7d',.13),
+    ...(passenger?[rounded(0,-.1,.36,.32,.25,'#668f9a',.22),dome(0,-.09,.26,.28,.28,'#efc391',.44)]:[])];
 }
 
 function rocketFlame() {
@@ -138,8 +157,18 @@ const VISITORS={
   arcade:[[-1.54,.35,2.62,.51],[1.7,.35,2.74,-.62]],
   lunarArcade:[[-1.44,.35,2.59,.54],[1.61,.35,2.63,-.52]],
   islandArcade:[[-1.44,.35,2.59,.54],[1.61,.35,2.63,-.52]],
-  airport:[[-2.92,.35,2.63,-.43],[-1.27,.35,1.98,.42]],
+  airport:[[-2.92,.59,4.57,-.43],[-4.27,.59,4.56,.42]],
   airstrip:[[-2.86,.35,2.18,-.26]],
+  wheel:[[-2.84,.35,3.52,-.44],[-1.68,.35,3.28,-.41],[1.87,.35,3.07,.42]],
+  coaster:[[-1.66,.35,3.42,-.3],[-.63,.35,3.53,-.3],[1.92,.35,3.9,Math.PI]],
+  field:[[-.64,.55,-3.07,0,true],[.68,.55,-3.1,.07,true]],
+  spaceField:[[-1.93,.37,4.22,-.5],[1.47,.37,4.28,-.56]],
+  cinema:[[-1.53,.35,3.57,.54],[1.55,.35,3.66,-.51]],
+  nightCinema:[[-1.53,.35,3.26,.54],[1.53,.35,3.42,-.51]],
+  roverGarage:[[.17,.37,3.62,-.37]],
+  moonWorkshop:[[-2.8,.35,3.44,-.41],[.69,.36,3.74,-.35]],
+  moonCargo:[[-3.05,.36,3.49,-.53],[3.63,.36,3.55,.44]],
+  cargoDepot:[[-2.79,.35,3.78,-.42]],
 };
 
 export function landmarkVisitors(theme,plot) {
@@ -155,6 +184,9 @@ export function landmarkVisitors(theme,plot) {
     :plot.kind==='tropicalPools'?[[1.5,.65,-.93],[-1.72,.65,2.02]]
     :plot.kind==='beachClub'?[[2.28,.64,2.16]]:[];
   for (const [x,y,z] of pools) people.push(...placeParts(swimmer('#dda97d','#d99c81'),{x,y,z,yaw:-.32}));
+  if (plot.kind==='field'||plot.kind==='spaceField') {
+    people.push(dome(.21,-.17,.235,.235,.224,'#f4e6cb',plot.kind==='field'?.365:.512));
+  }
   return placeParts(people,plot);
 }
 

@@ -1,5 +1,6 @@
 import {actorPose,MAX_ACTORS} from './scenery.js';
 import {createFireworks,FIREWORKS_END} from './project-fireworks.js';
+import {landmarkAt} from './project-picking.js';
 
 const clamp = (value,min,max) => Math.max(min,Math.min(value,max));
 const cross = ([ax,ay,az],[bx,by,bz]) => [ay*bz-az*by,az*bx-ax*bz,ax*by-ay*bx];
@@ -146,9 +147,9 @@ export function projectFaces(scene) {
       const fade=color=>color.map((value,i)=>value+(haze[i]-value)*(piece.fog??0));
       const vertexColors=piece.colors??(piece.shape==='dome'&&faceIndex>0 ? points.map(point=>fade(shaded(domeNormal(piece,point)))) : null);
       const color=landscape ? fade(rgb) : vertexColors ? rgb.map((_,i)=>vertexColors.reduce((sum,vertex)=>sum+vertex[i],0)/points.length) : fade(shaded(unit));
-      return {points,normal:unit,color,vertexColors,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,
+      return {points,normal:unit,color,vertexColors,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,landmark:part.landmark,
         origin:landscape||piece.radial ? [piece.x,piece.y,piece.z] : null,
-        group:layerIndex?layerIndex+1:latest.has(part)?1:0,stride:part.stride??0};
+        group:layerIndex?layerIndex+1:part.roadBuild!==undefined?-Math.max(.001,part.roadBuild):latest.has(part)?1:0,stride:part.stride??0};
     });
   })));
 }
@@ -203,7 +204,7 @@ function canvasPainter(canvas, faces, background) {
   const flat=faces.flatMap(splitWideFace).map(face=>({...face,paint:paintColor(face.color)}));
   const terrain=flat.filter(face=>Number.isFinite(face.layer));
   const objects=flat.filter(face=>!Number.isFinite(face.layer));
-  const terrainChanges=terrain.some(face=>face.group===1);
+  const terrainChanges=terrain.some(face=>face.group===1||face.group<0);
   const backing=terrain.length?canvas.ownerDocument.createElement('canvas'):null;
   const groundContext=backing?.getContext('2d');
   let viewKey;
@@ -215,6 +216,7 @@ function canvasPainter(canvas, faces, background) {
     function drawFaces(surface,list) {
       const polygons=[];
       for (const face of list) {
+        if (face.group<0&&-face.group>effects.road||face.group===1&&effects.growth===0) continue;
         const actor=face.group>=2?effects.actors[face.group-2]:null;
         let [nx,ny,nz]=face.normal;
         if (actor&&!face.hinge&&(actor.rollCos!==1||actor.rollSin)) {
@@ -272,7 +274,7 @@ function canvasPainter(canvas, faces, background) {
     if (groundContext) {
       // Actors can move while the same projected landscape is reused.
       const key=[canvas.width,canvas.height,width,height,camera.yaw,camera.pitch,camera.x,camera.y,scale,center,
-        ...(terrainChanges?[effects.growth,effects.lift,effects.highlight,effects.sweep]:[])].join(',');
+        ...(terrainChanges?[effects.growth,effects.lift,effects.highlight,effects.sweep,effects.road]:[])].join(',');
       if (key!==viewKey) {
         if (backing.width!==canvas.width||backing.height!==canvas.height) {
           backing.width=canvas.width; backing.height=canvas.height;
@@ -323,6 +325,11 @@ function webGLPainter(canvas, faces, background, illustrated) {
       vec3 pos = position;
       latest = group == 1.0 ? 1.0 : 0.0;
       modelHeight = pos.y;
+      shade = color;
+      if ((group < 0.0 && -group > reveal.w) || (latest == 1.0 && reveal.y == 0.0)) {
+        gl_Position = vec4(2.0,2.0,2.0,1.0);
+        return;
+      }
       if (latest == 1.0) pos.y = reveal.z + (pos.y-reveal.z)*reveal.y + reveal.x;
       for (int i = 0; i < ${MAX_ACTORS}; i++) {
         if (group == 2.0+float(i)) {
@@ -340,7 +347,6 @@ function webGLPainter(canvas, faces, background, illustrated) {
       float y = pos.y-center;
       vec2 point = vec2(pos.x*yaw.x-pos.z*yaw.y,y*pitch.x-forward*pitch.y);
       gl_Position = vec4(point*zoom+pan,-(y*pitch.y+forward*pitch.x)/160.0,1.0);
-      shade = color;
     }
   `);
   const fragment=shader(gl.FRAGMENT_SHADER,`
@@ -397,7 +403,7 @@ function webGLPainter(canvas, faces, background, illustrated) {
       gl.uniform2f(uniforms.zoom,2*scale/width,2*scale/height);
       gl.uniform2f(uniforms.pan,2*camera.x/width,-2*camera.y/height);
       gl.uniform1f(uniforms.center,center);
-      gl.uniform4f(uniforms.reveal,effects.lift,effects.growth,effects.ground,0);
+      gl.uniform4f(uniforms.reveal,effects.lift,effects.growth,effects.ground,effects.road);
       gl.uniform2f(uniforms.shine,effects.highlight,effects.sweep);
       effects.actors.forEach(({x,y,z,cos,sin,stride,rollCos,rollSin},i)=>{
         actorPositions.set([x,y,z,cos],i*4);
@@ -418,13 +424,18 @@ function webGLPainter(canvas, faces, background, illustrated) {
 const MAX_ZOOM=4.5;
 const turnToward=(from,to)=>from+Math.atan2(Math.sin(to-from),Math.cos(to-from));
 
-export function buildMotion(world, elapsed, ground, top, marked) {
+const ROAD_BUILD_MS=540;
+
+export function buildMotion(world, elapsed, ground, top, marked, roadBuild=false) {
+  const road=roadBuild?Math.floor(clamp(elapsed/ROAD_BUILD_MS,0,1)*24)/24:1;
+  if (roadBuild) elapsed-=ROAD_BUILD_MS;
   const t=clamp((elapsed-90)/725,0,1);
   const growing=t*t*(3-2*t);
   const settled=clamp((elapsed-700)/500,0,1);
   return {
     ground,
-    growth:world ? Math.max(.012,growing) : 1,
+    road,
+    growth:world ? road<1?0:Math.max(.012,growing) : 1,
     lift:world ? 0 : 3.8*(1-clamp((elapsed-230)/620,0,1))**3,
     highlight:marked ? .1+.22*(1-settled) : 0,
     sweep:world&&marked&&t>0&&t<1 ? ground+(top-ground)*growing : -999,
@@ -457,7 +468,7 @@ export function finishTransition(elapsed) {
   return {travel: t*t*(3-2*t),opacity:1-.31*Math.sin(Math.PI*t)};
 }
 
-export function mountProjectView(container, scene, interactive=false, {closeUp=false, reveal=false, demo=false,target=null,still=false,focusLatest=false}={}) {
+export function mountProjectView(container, scene, interactive=false, {closeUp=false, reveal=false, demo=false,target=null,still=false,focusLatest=false,onInspect}={}) {
   let canvas=container.querySelector('canvas');
   const faces=projectFaces(scene);
   let engine;
@@ -478,7 +489,8 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   const high=heights.length ? Math.max(...heights) : 0;
   const camera={...initial};
   const pointers=new Map();
-  let frame=0,width=0,height=0,fireworks;
+  const selectable=onInspect?faces.filter(face=>Number.isInteger(face.landmark)):[];
+  let frame=0,width=0,height=0,fireworks,projectedView,tap;
   const events=new AbortController();
   const listen=(node,name,handler,options={})=>node.addEventListener(name,handler,{...options,signal:events.signal});
   const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -490,7 +502,7 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
     : {x:0,y:Math.max(...scene.parts.map(part=>part.y+part.h)),z:0});
   const fireworkY=fireworkTarget.y+(fireworkTarget.height??0)+1.4;
   const mounted=performance.now();
-  if (target || closeUp && (!reveal || motion.matches || demo&&!scene.world || focusLatest&&!completedBuild)) Object.assign(camera,detail);
+  if (target || closeUp && (!reveal || motion.matches || demo&&!scene.world || focusLatest&&!completedBuild&&!scene.roadBuild)) Object.assign(camera,detail);
   else if (reveal&&scene.world) Object.assign(camera,context);
   from={...camera};
   if (marked && !motion.matches) started=performance.now();
@@ -514,15 +526,16 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
     const elapsed=playing ? Math.max(0,now-started) : Infinity;
     if (playing) {
       const finish=completedBuild?finishTransition(elapsed):null;
-      const ease=finish?.travel??(1-(1-clamp(elapsed/680,0,1))**3);
+      const stageTime=elapsed-(scene.roadBuild?ROAD_BUILD_MS:0);
+      const ease=finish?.travel??(1-(1-clamp(stageTime/680,0,1))**3);
       for (const key of Object.keys(detail)) {
         const target=key==='yaw'?turnToward(from.yaw,detail.yaw):detail[key];
         camera[key]=from[key]+(target-from[key])*ease;
       }
       if (finish) canvas.style.opacity=finish.opacity.toFixed(3);
-      if (elapsed>=(canCelebrate?FIREWORKS_END:1950)) stopTransition();
+      if (stageTime>=(canCelebrate?FIREWORKS_END:1950)) stopTransition();
     }
-    const effects=buildMotion(scene.world,elapsed,low,high,marked);
+    const effects=buildMotion(scene.world,elapsed,low,high,marked,scene.roadBuild);
     const age=still||motion.matches?0:Math.max(0,now-mounted)/1000;
     effects.actors=(scene.ambient??[]).map(actor=>actorPose(actor,age));
     const scale=Math.min(width,height)*camera.zoom/scene.size;
@@ -532,6 +545,7 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
       y:camera.y-forward*Math.sin(camera.pitch)*scale,
     };
     paint(width,height,position,scale,camera.center,effects);
+    if (onInspect) projectedView={camera:position,scale,width,height,effects};
     if (canCelebrate&&playing&&elapsed>=910&&elapsed<FIREWORKS_END) {
       fireworks??=createFireworks(canvas);
       const cos=Math.cos(camera.yaw),sin=Math.sin(camera.yaw);
@@ -582,7 +596,7 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
   listen(container,'click',event=>{
     if (!event.target.closest('[data-project-latest]')) return;
     if (!interactive) canvas.scrollIntoView({block:'nearest'});
-    if (completedBuild) Object.assign(camera,context);
+    if (completedBuild||scene.roadBuild) Object.assign(camera,context);
     from={...camera};
     marked=true;
     if (motion.matches) Object.assign(camera,detail);
@@ -598,12 +612,17 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
       if (event.button!==0 || pointers.size>=2) return;
       stopTransition();
       pointers.set(event.pointerId,position(event));
+      tap=onInspect&&pointers.size===1?{id:event.pointerId,x:event.clientX,y:event.clientY}:null;
       canvas.setPointerCapture(event.pointerId);
     });
     listen(canvas,'pointermove',event=>{
       const old=pointers.get(event.pointerId);
       if (!old) return;
       const current=position(event);
+      if (tap?.id===event.pointerId) {
+        if (Math.hypot(event.clientX-tap.x,event.clientY-tap.y)<7) return;
+        tap=null;
+      }
       if (pointers.size===2) {
         const other=[...pointers].find(([id])=>id!==event.pointerId)[1];
         const [oldX,oldY]=midpoint(old,other),[newX,newY]=midpoint(current,other);
@@ -620,9 +639,16 @@ export function mountProjectView(container, scene, interactive=false, {closeUp=f
       pointers.set(event.pointerId,current);
       schedule();
     });
-    for (const name of ['pointerup','pointercancel','lostpointercapture']) {
-      listen(canvas,name,event=>pointers.delete(event.pointerId));
-    }
+    const release=event=>{
+      pointers.delete(event.pointerId);
+      if (tap?.id!==event.pointerId) return;
+      const isTap=event.type==='pointerup'&&Math.hypot(event.clientX-tap.x,event.clientY-tap.y)<7;
+      tap=null;
+      if (!isTap) return;
+      const bounds=canvas.getBoundingClientRect();
+      onInspect(landmarkAt(selectable,projectedView,event.clientX-bounds.left-canvas.clientLeft,event.clientY-bounds.top-canvas.clientTop));
+    };
+    for (const name of ['pointerup','pointercancel','lostpointercapture']) listen(canvas,name,release);
     listen(canvas,'wheel',event=>{
       event.preventDefault();
       stopTransition();

@@ -217,6 +217,7 @@ export function planRegion(layout,buildings) {
   const network=[root];
   const paths=[];
   const plots=[];
+  let latestStart=0;
   let land=0;
   const closest=(points,place)=>points.reduce((near,point)=>distance(point,place)<distance(near,place)?point:near,points[0]);
   for (const {index,kind} of buildings) {
@@ -234,13 +235,14 @@ export function planRegion(layout,buildings) {
       const origin=onBank.length?closest(onBank,entry):stub;
       return curvePath([origin,...routeCells(layout,origin,entry,true),entry]);
     });
+    latestStart=paths.length;
     for (const path of routes) {
       paths.push(path);
       network.push(...path.filter((_,i)=>i%4===0),path.at(-1));
     }
     plots.push({...site,...entrance,entries,kind,index});
   }
-  return {plots,paths,origin};
+  return {plots,paths,origin,latestPaths:new Map(paths.slice(latestStart).map(path=>[path,false]))};
 }
 
 export function regionVisibility(plan,x,z,full=false) {

@@ -974,3 +974,52 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 .complete .result-gallery.primary { margin: 12px auto 0; }
 .complete .secondary-cta[data-action="home"] { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .complete .secondary-cta[data-action="home"] svg { width: 17px; height: 17px; flex: none; }
+
+.brand-mark { position: relative; }
+.brand-season {
+  position: absolute;
+  bottom: -4px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border: 1px solid #e2d4b6;
+  border-radius: 50%;
+  background: #fbf2dd;
+  color: #95713e;
+}
+.brand-season svg { width: 11px; height: 11px; }
+[data-season="christmas"] .brand-season, [data-season="winter"] .brand-season { color: #4f7585; background: #eaf4f5; border-color: #cddfe0; }
+[data-season="spring"] .brand-season, [data-season="easter"] .brand-season { color: #7d6294; background: #f5edfa; border-color: #e8dcec; }
+[data-season="halloween"] .brand-season { color: #956238; background: #fce9d5; border-color: #e4caad; }
+
+.project-map-stage { position: relative; }
+.map-inspect-label { display: grid; gap: 2px; flex: 1 1 170px; max-width: 260px; margin-right: auto; text-align: left; }
+.map-inspect-label[hidden], .map-info-card[hidden] { display: none; }
+.map-inspect-label > span { font-size: .73rem; font-weight: 700; color: var(--muted); }
+.map-inspect-label select { min-height: 42px; width: 100%; font: inherit; font-size: .86rem; color: var(--ink); border: 1px solid var(--line); border-radius: 11px; padding: 7px 9px; background: white; }
+.map-info-card {
+  position: absolute;
+  z-index: 2;
+  left: 9px;
+  bottom: 9px;
+  width: min(calc(100% - 18px), 350px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 3px;
+  padding: 11px 9px 12px 13px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fcfdf8;
+  box-shadow: 0 6px 20px #183c3620;
+}
+.map-info-card h3 { font-size: 1.08rem; margin: 2px 0 0; }
+.map-info-card small { display: block; color: var(--green); font-size: .71rem; font-weight: 700; }
+.map-info-card .icon-button { width: 44px; height: 44px; }
+.map-info-card [data-map-info-story] { color: #3c5c51; }
+@media (max-width: 440px) {
+  .map-info-card { padding: 8px 7px 9px 10px; }
+  .map-info-card p { font-size: .78rem; }
+}
