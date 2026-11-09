@@ -1,5 +1,5 @@
 const TAU=2*Math.PI;
-const loopLength=20;
+const loopLengths={city:48,island:56,moon:60};
 const unit=value=>Math.max(0,Math.min(1,value));
 const wave=(time,pitch)=>Math.sin(TAU*time*pitch);
 
@@ -23,40 +23,62 @@ function chirp(t,length,pitch) {
   return Math.sin(Math.PI*t/length)**2*wave(t,pitch*(1-.145*t/length));
 }
 
-const fairPhrases=[
-  {at:3.1,notes:[523,659,784,698,659,587,523,392]},
-  {at:13.4,notes:[392,523,659,784,659,698,587,523]},
-];
-function fairground(t) {
-  for (const {at,notes} of fairPhrases) {
-    const beat=(t-at)/.29,index=Math.floor(beat);
-    if (index<0||index>=notes.length) continue;
-    const phase=(beat-index)*.29,pitch=notes[index];
-    const pulse=unit(phase*45)*unit((.27-phase)*8);
-    return pulse*(wave(phase,pitch)*.53+wave(phase,pitch*2)*.18+wave(phase,pitch*.5)*.22);
-  }
-  return 0;
+function phrase(t,notes,beat) {
+  const index=Math.floor(t/beat);
+  if (index<0||index>=notes.length) return 0;
+  const age=t-index*beat,pitch=notes[index];
+  return unit(age*40)*unit((beat*.94-age)*9)*
+    (wave(age,pitch)*.53+wave(age,pitch*2)*.17+wave(age,pitch*.5)*.24);
 }
 
-export function ambienceBuffer(context,world,buildings,fun) {
-  const calls=world==='city'?[[1.9,1550],[2.16,1790],[7.4,1850],[7.69,1580],[12.33,1710]]
-    :world==='island'?[[6.2,920],[12.6,1060]]:[[4.25,392],[4.49,466],[11.2,330]];
+function waltz(t) {
+  const beat=.38;
+  const melody=phrase(t,[523,659,784,698,659,587,523,392,494,523,659,784,880,784,698,659,587,523],beat);
+  const index=Math.floor(t/beat);
+  if (index<0||index>=18) return 0;
+  const age=t-index*beat;
+  const root=[130.81,130.81,146.83,98,130.81,98][Math.floor(index/3)];
+  const chord=index%3===0?wave(age,root)*.54:(wave(age,root*3)*.34+wave(age,root*4)*.19);
+  return melody*.68+unit(age*38)*Math.exp(-age*10)*chord;
+}
+
+function salsa(t,mid) {
+  if (t<0||t>7.6) return 0;
+  const figure=phrase(t-.19,[523,659,0,784,659,0,587,698,0,784,880,0,784,659,587,523],.235);
+  const beat=t%.94;
+  const bass=(wave(beat,130.81)*.49+wave(beat,196)*.18)*unit(beat*40)*Math.exp(-beat*8);
+  const claveAge=[0,.354,.704].reduce((age,hit)=>beat>=hit?Math.min(age,beat-hit):age,1);
+  const clave=(wave(claveAge,1160)+mid*.78)*Math.exp(-claveAge*85)*unit(claveAge*430);
+  return (figure*.66+bass*.46+clave*.21)*unit((7.6-t)*2);
+}
+
+function theremin(t) {
+  if (t<0||t>3.9) return 0;
+  const glide=306*t+31*Math.sin(t*1.85)+.68*Math.sin(t*36);
+  return Math.sin(TAU*glide)*Math.sin(Math.PI*t/3.9)**2*.37;
+}
+
+export function ambienceBuffer(context,world,buildings,{fun=0,wheel=false,hotel=false}={}) {
+  const loopLength=loopLengths[world]??48;
+  const calls=world==='city'?[[1.9,1550],[2.16,1790],[12.4,1850],[12.69,1580],[34.33,1710]]
+    :world==='island'?[[6.2,920],[12.6,1060],[36.7,1230],[39.1,1100]]:[[4.25,392],[19.1,330],[47.2,510]];
   return synthesize(context,loopLength,(t,noise,low,mid)=>{
     let bed;
     if (world==='island') {
-      const swell=.17+.69*(.5-.5*Math.cos(t*TAU/4))**2;
+      const swell=.17+.69*(.5-.5*Math.cos(t*TAU/7))**2;
       bed=swell*(low*1.8+mid*.75+noise*.11);
     } else if (world==='moon') {
-      bed=low*.53+mid*.12+.085*wave(t,56)*(.8+.2*Math.cos(t*TAU/8));
-    } else bed=(.78+.22*wave(t,1/8))*(low*.93+mid*.17);
+      bed=low*.37+mid*.09+.087*wave(t,56)*(.8+.2*Math.cos(t*TAU/12))+.16*(theremin(t-11.4)+theremin(t-41.6));
+    } else bed=(.78+.22*wave(t,1/12))*(low*.93+mid*.17);
     for (const [at,pitch] of calls) {
       bed+=(world==='city'?.11:.065)*chirp(t-at,world==='island'?.42:.15,pitch);
     }
     const passes=(.4+.32*wave(t,1/8)+.23*wave(t,3/16))**2;
     const street=buildings*.11*passes*(low*1.2+wave(t,world==='moon'?172:124)*.25);
-    const fair=fun?(.22+fun*.075)*fairground(t):0;
+    const fair=wheel?.19*waltz(t-(hotel?35:25)):fun?.14*phrase(t-30.1,[392,523,659,784,659,587,523],.31):0;
+    const tropical=hotel?.22*salsa(t-14.5,mid):0;
     const chatter=buildings>=2 ? mid*.16*unit((t-9.2)*1.9)*unit((12.1-t)*1.6)*(.7+.24*wave(t,5)) : 0;
-    return (bed+street+fair+chatter)*Math.min(1,t*3,(loopLength-t)*3);
+    return (bed+street+fair+tropical+chatter)*Math.min(1,t*3,(loopLength-t)*3);
   });
 }
 
@@ -65,6 +87,8 @@ export const ACTIVITY_SOUNDS=Object.freeze({
   plane:[2.8,.29,3],
   helicopter:[3.45,.29,4],
   train:[1.9,.21,4],
+  'tram-bell':[.65,.24,0],
+  horn:[.52,.16,11],
   monorail:[1.65,.19,4],
   traffic:[1.45,.17,5.8],
   rover:[1.65,.14,6.5],
@@ -126,6 +150,14 @@ export function soundClip(context,kind) {
     if (kind==='helicopter') {
       const rotor=.27+.71*wave(t,11.2)**4;
       return pass*rotor*(low*.82+mid*.47+.31*wave(t,112-2*t)+.18*wave(t,224-4*t));
+    }
+    if (kind==='tram-bell') {
+      const bell=age=>age<0?0:unit(age*195)*Math.exp(-age*13)*(wave(age,986)*.67+wave(age,1525)*.24+wave(age,2164)*.13);
+      return bell(t-.01)+bell(t-.18)*.84;
+    }
+    if (kind==='horn') {
+      const toot=age=>age<0?0:unit(age*105)*unit((.16-age)*27)*(wave(age,392)*.63+wave(age,512)*.31+wave(age,783)*.13);
+      return toot(t-.01)+toot(t-.22)*.72;
     }
     if (kind==='train') return pass*(low*.65+(.5+.49*wave(t,6)**4)*(mid*.61+noise*.095)+chirp(t-.5,.53,357)*.17);
     if (kind==='monorail') return pass*(low*.36+.23*wave(t,136+t*11)+chirp(t-.13,.75,442)*.24);

@@ -1,5 +1,5 @@
-import {box,rounded,dome,tube,roof,beam,placeParts,pointOnSite} from './scenery.js';
-import {regionSurface,regionVisibility} from './regions.js';
+import {box,rounded,dome,tube,roof,beam,placeParts,pointOnSite,tunnelLandform} from './scenery.js';
+import {regionSurface} from './regions.js';
 
 const cream='#f4e5c6', dark='#455366', glass='#74aab9', steel='#a7b6bb';
 const sides=[-1,1];
@@ -7,12 +7,12 @@ const clamp=value=>Math.max(0,Math.min(1,value));
 const smooth=value=>{ const t=clamp(value); return t*t*(3-2*t); };
 const railZ=-2.45;
 const deckHeight=moon=>moon?3.38:2.95;
-const pose=(x,y,z,yaw,sound=false)=>({
-  x,y,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:0,rollCos:1,rollSin:0,sound:Number(sound),
+const pose=(x,y,z,yaw,sound=false,pitch=0)=>({
+  x,y,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:0,rollCos:1,rollSin:0,pitch,sound:Number(sound),
 });
 
-function trainModel(moon,carriage=false,tram=false) {
-  const paint=tram?'#389589':moon?'#70b9c1':'#b96761', stripe=tram?'#ffe0a4':moon?'#f0b979':'#efd2a2';
+function trainModel(moon,carriage=false) {
+  const paint=moon?'#70b9c1':'#b96761', stripe=moon?'#f0b979':'#efd2a2';
   const end=carriage?1.31:1.49;
   const drive=moon
     ? [rounded(0,0,.56,2.43,.29,'#638791',-.09)]
@@ -210,11 +210,36 @@ export function districtRail(layout,plot,plan) {
     return points[next-1].map((value,axis)=>value+(points[next][axis]-value)*progress);
   };
 
-  const onMap=([x,,z])=>Math.max(Math.abs(x),Math.abs(z))<84;
-  const parts=railTrack(points.filter(onMap),moon);
+  const portals=sides.map(side=>{
+    const candidates=Array.from({length:20},(_,i)=>station+side*(40+i*2.2));
+    const score=distance=>{
+      const [x,y,z]=sample(distance),[a,b,c]=sample(distance-side*5);
+      const terrain=regionSurface(layout,x,z);
+      const near=Math.min(...obstacles.map(plot=>Math.hypot(plot.x-x,plot.z-z)));
+      const edge=Math.max(Math.abs(x),Math.abs(z));
+      return (terrain.water?100:0)+(edge>75?30:0)+(edge<30?12:0)+(roadClearance(plan.paths,x,z)?0:13)
+        +Math.max(0,11-near)*5+Math.abs(y-b)+Math.abs(distance-station-side*61)*.21;
+    };
+    const distance=candidates.sort((a,b)=>score(a)-score(b))[0];
+    const [x,y,z]=sample(distance),[a,,b]=sample(distance-side*.8);
+    return {distance,x,y,z,yaw:Math.atan2(a-x,b-z)};
+  });
+  const [start,end]=portals.map(portal=>portal.distance);
+  const onMap=distance=>distance>=start-.4&&distance<=end+.4;
+  const trackStart=start-2.6,trackEnd=end+2.6;
+  const parts=railTrack([sample(trackStart),
+    ...points.filter((_,i)=>distances[i]>trackStart+.0001&&distances[i]<trackEnd-.0001),sample(trackEnd)],moon);
+  for (const portal of portals) {
+    parts.push(...tunnelLandform(portal,layout.theme,{width:1.04,height:1.72,depth:8}).map(part=>({...part,tunnel:true})));
+    const ground=regionSurface(layout,portal.x,portal.z);
+    for (const side of sides) {
+      const [x,,z]=pointOnSite([side*1.82,0,-3.6],portal);
+      parts.push({...dome(x,z,3.65,7.8,Math.max(.8,portal.y-ground.y+1.22),moon?'#9390aa':'#949e74',ground.y-.22,-portal.yaw),tunnel:true});
+    }
+  }
   for (let distance=3.4;distance<length-1;distance+=4.65) {
     const [x,y,z]=sample(distance);
-    if (!onMap([x,y,z])||Math.hypot(x-plot.x,z-plot.z)<5.6) continue;
+    if (!onMap(distance)||Math.hypot(x-plot.x,z-plot.z)<5.6) continue;
     const [nx,,nz]=sample(distance+.49),run=Math.hypot(nx-x,nz-z);
     const bases=roadClearance(plan.paths,x,z)?[[x,z]]:sides
       .map(side=>[x-side*(nz-z)/run*2.69,z+side*(nx-x)/run*2.69])
@@ -257,12 +282,13 @@ export function districtRail(layout,plot,plan) {
       const direction=reverse?-1:1;
       const distance=from+(to-from)*ease-(carriage?direction*3.15:0);
       const [x,y,z]=sample(distance);
-      const [a,,b]=sample(distance-.34*direction),[c,,d]=sample(distance+.34*direction);
-      const visible=Math.max(Math.abs(x),Math.abs(z))<86&&regionVisibility(plan,x,z)>.095;
-      return pose(x,visible?y:-540,z,Math.atan2(c-a,d-b),!carriage&&visible&&fraction<1);
+      const [a,ay,b]=sample(distance-.34*direction),[c,cy,d]=sample(distance+.34*direction);
+      const visible=distance>start-1.3&&distance<end+1.3;
+      return pose(x,visible?y:-540,z,Math.atan2(c-a,d-b),!carriage&&visible&&fraction<1,
+        Math.atan2(cy-ay,Math.hypot(c-a,d-b)));
     },
   }));
-  return {parts,points:points.filter(onMap).map(([x,y,z])=>({x,y,z})),actors};
+  return {parts,portals,points:points.filter((_,i)=>onMap(distances[i])).map(([x,y,z])=>({x,y,z})),actors};
 }
 
 function railPlatform(moon) {
@@ -273,6 +299,26 @@ function railPlatform(moon) {
     ...sides.map(side=>tube(1.81,side*1.26,.13,.13,1.47,steel,.13)),
     rounded(1.45,0,1.45,3.05,.24,accent,1.56),
     rounded(1.58,.16,.46,1.26,.22,'#7e858c',.34),
+  ];
+}
+
+function cableCar() {
+  const teal='#328779',cream='#f4e0b2',red='#a94e49',brass='#d4a45f';
+  return [
+    rounded(0,0,1.49,3.22,.23,red,.16),rounded(0,0,1.48,3.14,.12,cream,.38),
+    rounded(0,-.47,1.5,1.82,.59,teal,.48),rounded(0,-.49,1.56,1.86,.67,'#87b3b4',.98),
+    rounded(0,-.47,1.62,1.89,.1,cream,1.61),
+    rounded(0,.57,1.66,1.78,.16,red,1.63),dome(0,-.1,1.65,3.12,.28,'#485b5c',1.69),
+    ...sides.flatMap(side=>[
+      ...[-1.03,-.45,.25,1.36].map(z=>box(side*.72,z,.075,.085,1.23,z>0?brass:teal,.43)),
+      box(side*.84,.91,.27,1.26,.105,teal,.3),
+      box(side*.39,.83,.26,.9,.18,'#a87953',.71),
+      tube(side*.6,-.9,.15,.37,.37,dark,.0,'x'),
+      tube(side*.6,.9,.15,.37,.37,dark,.0,'x'),
+      ...[-.81,-.23].map(z=>box(side*.786,z,.03,.06,.63,cream,1)),
+    ]),
+    box(0,1.43,1.23,.12,.52,teal,.44),box(0,1.51,.7,.07,.16,cream,.79),
+    dome(0,1.57,.25,.19,.27,'#f7dc89',.51),
   ];
 }
 
@@ -313,17 +359,19 @@ export function districtTram(layout,plot,plan) {
   }
   const speed=4.2,dwell=2,period=length/speed+stops.length*dwell;
   return {parts,points:points.map(([x,y,z])=>({x,y,z})),actors:[{
-    kind:'tram',parts:trainModel(false,false,true),
+    kind:'tram',parts:cableCar(),
     pose(seconds) {
       const t=seconds%period;
-      let distance=t*speed,stopped=false;
+      let distance=t*speed,departing=false;
       for (let i=0;i<stops.length;i++) {
         if (distance<stops[i]) break;
-        if (distance<stops[i]+dwell*speed) { distance=stops[i]; stopped=true; break; }
+        if (distance<stops[i]+dwell*speed) { distance=stops[i]; break; }
+        if (distance<stops[i]+(dwell+.63)*speed) departing=true;
         distance-=dwell*speed;
       }
-      const [x,y,z]=sample(distance),[a,,b]=sample(distance-.35),[c,,d]=sample(distance+.35);
-      return pose(x,y,z,Math.atan2(c-a,d-b),!stopped&&t%11<3);
+      const [x,y,z]=sample(distance),[a,ay,b]=sample(distance-.35),[c,cy,d]=sample(distance+.35);
+      const model=pose(x,y,z,Math.atan2(c-a,d-b),departing,Math.atan2(cy-ay,Math.hypot(c-a,d-b)));
+      return departing?{...model,cue:'tram-bell'}:model;
     },
   }]};
 }

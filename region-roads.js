@@ -1,4 +1,4 @@
-import {beam,box,dome,tube} from './scenery.js';
+import {beam,box,dome,tube,tunnelLandform} from './scenery.js';
 import {regionSurface,roadElevation,riverAt,riverWidth} from './regions.js';
 import {STREET_TURN_RADIUS} from './street-grid.js';
 
@@ -48,14 +48,14 @@ function surface(outline,color,layer) {
   return {shape:'terrain',outline,color,layer,x,y,z,h:0};
 }
 
-function measureRoad(layout,path) {
+function measureRoad(layout,path,elevation=(x,z)=>roadElevation(layout,x,z)) {
   const distinct=path.filter((point,i)=>!i||length(path[i-1],point)>.0001);
   let distance=0;
   return distinct.map((point,i)=>{
     const prev=distinct[Math.max(0,i-1)],next=distinct[Math.min(distinct.length-1,i+1)];
     const span=length(prev,next);
     if (i) distance+=length(prev,point);
-    return {...point,y:point.y??roadElevation(layout,point.x,point.z),distance,
+    return {...point,y:point.y??elevation(point.x,point.z),distance,
       tangent:point.tangent??(span?[(next.x-prev.x)/span,(next.z-prev.z)/span]:[1,0])};
   });
 }
@@ -181,7 +181,7 @@ function bridgeSpan(a,b,width,pier) {
 }
 
 function pavedRoute(layout,path,width,{junctions,plan,stage}={}) {
-  const road=measureRoad(layout,path);
+  const road=measureRoad(layout,path,plan?.streetElevation);
   if (road.length<2) return [];
   const [curb,asphalt,mark]=STREET_TONES[layout.theme];
   const parts=[],total=road.at(-1).distance;
@@ -243,6 +243,45 @@ function intersections(layout,junctions,width) {
     }));
     return cap;
   });
+}
+
+export function prepareRoadTunnels(layout,plan) {
+  if (layout.theme==='island') return [];
+  const candidates=plan.paths.flatMap(path=>{
+    const first=path[0],last=path.at(-1);
+    const span=length(first,last);
+    if (span<13||Math.min(Math.abs(first.x-last.x),Math.abs(first.z-last.z))>.001
+      ||path.some(point=>regionSurface(layout,point.x,point.z).water)) return [];
+    const dx=(last.x-first.x)/span,dz=(last.z-first.z)/span;
+    const x=(first.x+last.x)/2,z=(first.z+last.z)/2;
+    const base=roadElevation(layout,x,z);
+    const grade=(roadElevation(layout,x+dx*3,z+dz*3)-roadElevation(layout,x-dx*3,z-dz*3))/6;
+    if (Math.abs(grade)>.19||plan.plots.some(plot=>Math.hypot(x-plot.x,z-plot.z)<6.3)
+      ||plan.transitPortals?.some(portal=>Math.hypot(x-portal.x,z-portal.z)<12)) return [];
+    const seed=(Math.imul(Math.round(x*100),19)^Math.imul(Math.round(z*100),37)^layout.seed)>>>0;
+    const relief=regionSurface(layout,x,z).relief;
+    return relief>.65&&seed%7<3?[{x,z,dx,dz,base,grade}]:[];
+  });
+  const selected=candidates.slice(0,plan.plots.length>=14?2:1);
+  if (selected.length&&plan.plots.length>=4) {
+    plan.streetElevation=(x,z)=>{
+      const natural=roadElevation(layout,x,z);
+      for (const tunnel of selected) {
+        const along=(x-tunnel.x)*tunnel.dx+(z-tunnel.z)*tunnel.dz;
+        const across=(x-tunnel.x)*tunnel.dz-(z-tunnel.z)*tunnel.dx;
+        if (Math.abs(along)>5.7||Math.abs(across)>1.5) continue;
+        const mix=Math.min(1,(5.7-Math.abs(along))/1.7);
+        return natural+(tunnel.base+along*tunnel.grade-natural)*mix;
+      }
+      return natural;
+    };
+    return selected.flatMap(({x,z,dx,dz})=>[-1,1].flatMap(side=>{
+      const a=x+side*dx*3.55,b=z+side*dz*3.55;
+      return tunnelLandform({x:a,y:plan.streetElevation(a,b),z:b,yaw:Math.atan2(side*dx,side*dz)},layout.theme,
+        {width:1.6,height:1.64,depth:3.75}).map(part=>({...part,tunnel:'road'}));
+    }));
+  }
+  return [];
 }
 
 export function regionRoads(layout,plan,animate=false) {
