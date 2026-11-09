@@ -124,6 +124,7 @@ function alignPracticeLevel(grade) {
   const level = levelForGrade(grade, state.level);
   if (level !== state.level || !grade) state.progressRounds = 0;
   if (!grade) state.autoProgress = false;
+  if (!grade && state.mix === 'grade') state.mix = null;
   state.level = level;
 }
 
@@ -140,12 +141,14 @@ const SETUP_TITLES = ['Hvem skal øve?', 'Hvordan vil du øve?', 'Hva vil du byg
 function makeSetup(mode) {
   const practice = mode === 'first' ? state : freshState();
   const level = practice.active || practice.roundsCompleted || practice.level !== 1 ? practice.level : null;
-  return {mode,step:0,person:profileDetails(),level,autoProgress:practice.autoProgress,roundLength:practice.roundLength,rewardMode:practice.rewardMode};
+  return {mode,step:0,person:profileDetails(),level,mix:practice.mix,autoProgress:practice.autoProgress,roundLength:practice.roundLength,rewardMode:practice.rewardMode};
 }
 
 function setupForm(draft) {
-  const {step,person,autoProgress,roundLength,rewardMode} = draft;
-  const modes = [['fixed','Velg et spor','Øv videre på sporet du velger.'],['auto','Følg progresjonen','Oppgavene endrer seg gradvis mens du øver.']];
+  const {step,person,mix,autoProgress,roundLength,rewardMode} = draft;
+  const modes = [['fixed','Velg et spor','Øv videre på sporet du velger.'],['auto','Følg progresjonen','Oppgavene endrer seg gradvis mens du øver.'],
+    ['grade','Fri blanding på trinnet','Bland oppgaver fra alle øvingsområdene på trinnet.'],
+    ['all','Fri blanding fra 3.–10. trinn','Prøv oppgaver fra flere klassetrinn i samme runde.']];
   const rewards = [
     ['plant','Plante','Så et frø og se det vokse.',icon('sprout')],
     ['bricks','Klossebygging','Samle små figurer.',icon('brick')],
@@ -154,10 +157,10 @@ function setupForm(draft) {
   const fields = [
     () => profileFields(person),
     () => `<fieldset class="setup-modes"><legend>Velg øvingsmåte</legend>${modes.map(([id,label,note])=>`<label class="level-option">
-      <input type="radio" name="practice" value="${id}" ${id === (autoProgress && person.grade ? 'auto' : 'fixed') ? 'checked' : ''} ${id === 'auto' && !person.grade ? 'disabled' : ''}>
-      <span><strong>${label}</strong><small>${id === 'auto' && !person.grade ? 'Velg klassetrinn for å bruke dette.' : note}</small></span>
+      <input type="radio" name="practice" value="${id}" ${id === (mix || (autoProgress && person.grade ? 'auto' : 'fixed')) ? 'checked' : ''} ${['auto','grade'].includes(id) && !person.grade ? 'disabled' : ''}>
+      <span><strong>${label}</strong><small>${['auto','grade'].includes(id) && !person.grade ? 'Velg klassetrinn for å bruke dette.' : note}</small></span>
     </label>`).join('')}</fieldset>
-    <label class="profile-field"><span>Startspor</span><select name="level">${levelsForGrade(person.grade).map(id=>`<option value="${id}" ${id === levelForGrade(person.grade,draft.level) ? 'selected' : ''}>${LEVELS[id].label}</option>`).join('')}</select></label>
+    <label class="profile-field"><span>Startspor (for spor og progresjon)</span><select name="level">${levelsForGrade(person.grade).map(id=>`<option value="${id}" ${id === levelForGrade(person.grade,draft.level) ? 'selected' : ''}>${LEVELS[id].label}</option>`).join('')}</select></label>
     <label class="profile-field"><span>Oppgaver per runde</span><select name="length">${ROUND_LENGTHS.map(length=>`<option value="${length}" ${length === roundLength ? 'selected' : ''}>${length} oppgaver</option>`).join('')}</select></label>`,
     () => `<fieldset class="setup-rewards"><legend class="sr-only">Velg belønning</legend><div>${rewards.map(([id,label,note,art])=>`<label class="setup-reward">
       <input type="radio" name="reward" value="${id}" class="sr-only" ${id === rewardMode ? 'checked' : ''}>
@@ -179,9 +182,12 @@ function stepSetup(form, direction) {
   if (setup.step === 0) {
     const next = profileDetails(Object.fromEntries(values));
     if (next.grade !== setup.person.grade) setup.autoProgress = false;
+    if (!next.grade&&setup.mix==='grade') setup.mix=null;
     setup.person = next;
   } else if (setup.step === 1) {
-    setup.autoProgress = Boolean(setup.person.grade && values.get('practice') === 'auto');
+    const mode=values.get('practice');
+    setup.autoProgress = Boolean(setup.person.grade && mode === 'auto');
+    setup.mix=mode==='all'||mode==='grade'&&setup.person.grade?mode:null;
     setup.level = levelForGrade(setup.person.grade,Number(values.get('level')));
     const length = Number(values.get('length'));
     if (ROUND_LENGTHS.includes(length)) setup.roundLength = length;
@@ -281,7 +287,7 @@ function submitProfile(mode, details, preferences = null) {
     const level = levelForGrade(person.grade,preferences.level);
     const autoProgress = Boolean(person.grade && preferences.autoProgress);
     if (practice.level !== level || practice.autoProgress !== autoProgress) practice.progressRounds = 0;
-    practice = selectRewardMode({...practice,level,autoProgress,roundLength:preferences.roundLength},preferences.rewardMode);
+    practice = selectRewardMode({...practice,level,autoProgress,mix:preferences.mix??null,roundLength:preferences.roundLength},preferences.rewardMode);
   }
   openProfile({ ...person, name, id }, practice, true);
 }
@@ -407,11 +413,11 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       <div class="project-map-stage">
         <canvas tabindex="0" role="img" aria-label="${scene.world ? 'Kart: '+title : title+' i 3D'}" aria-describedby="project-instructions project-milestone"></canvas>
         ${scene.world?`<section class="map-info-card" data-map-info hidden aria-live="polite">
-          <div><small data-map-info-status></small><h3></h3><p data-map-info-description></p><p data-map-info-story></p></div>
+          <div><small data-map-info-status></small><h3></h3><p data-map-info-description></p><div class="map-story"><span class="eplo-avatar">${buddy()}</span><p><strong class="sr-only">Eplo</strong><span data-map-info-story></span></p></div></div>
           <button class="icon-button" type="button" data-map-info-close aria-label="Lukk bygginformasjonen">${icon('close')}</button>
         </section>`:''}
+        ${demo ? `<div class="map-eplo-overlay" data-demo-finale hidden>${projectCongratulations(id)}</div>` : ''}
       </div>
-      ${demo ? `<div data-demo-finale hidden>${projectCongratulations(id)}</div>` : ''}
       <div class="project-controls">
         ${scene.world?`<label class="map-inspect-label" hidden><span>Bygg på kartet</span><select data-map-inspect aria-label="Velg bygg på kartet"></select></label>`:''}
         <div class="project-control-group" role="group" aria-label="Zoom og tilbakestill">
@@ -441,8 +447,9 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       if (!building) return;
       card.querySelector('h3').textContent=building.name;
       card.querySelector('[data-map-info-status]').textContent=site.built?'På kartet':'Under bygging';
-      card.querySelector('[data-map-info-description]').textContent=building.description;
-      card.querySelector('[data-map-info-story]').textContent=building.story?`Eplo · ${building.story}`:'';
+      card.querySelector('[data-map-info-description]').textContent=building.story?building.description:'';
+      const story=card.querySelector('[data-map-info-story]');
+      story.textContent=building.story||building.description;
     };
     const updateBuildingList=()=>{
       if (!selector) return;
@@ -795,7 +802,7 @@ function startRound() {
     state = prepareReward(state);
     const seed = globalThis.crypto?.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Date.now();
     state.active = createRound(state.level, seed, state.roundsCompleted === 0, {
-      length:state.roundLength, history:state.history, alwaysShowVisuals:state.alwaysShowVisuals, preview:progressionPreview(state, profile?.grade),
+      length:state.roundLength, mix:state.mix, grade:profile?.grade, history:state.history, alwaysShowVisuals:state.alwaysShowVisuals, preview:progressionPreview(state, profile?.grade),
     });
     save();
   }
@@ -1275,7 +1282,7 @@ function renderComplete() {
   const newMap = g.map && g.full && g.mode === state.rewardMode && !state.focusBreakPending;
   const again = newMap ? 'Start et nytt kart' : state.focusBreakPending ? breakButtonLabel() : 'En runde til';
   const headline=finishedProject?`${g.label} er ferdig!`:'Du klarte runden!';
-  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">${headline}</h1>${finishedProject?projectCongratulations(g.mode):''}${latest}${gallery}${(!projectStep || g.full&&!finishedProject) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="${finishedProject?'secondary secondary-cta':'primary'}" data-action="home">Ferdig for nå${icon('check')}</button><button class="secondary secondary-cta" data-action="${newMap ? 'world-new' : 'again'}">${again}</button></main></div>${party}`;
+  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}${finishedProject&&g.map?`<div class="map-eplo-overlay">${projectCongratulations(g.mode)}</div>`: ''}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">${headline}</h1>${finishedProject&&!g.map?projectCongratulations(g.mode):''}${latest}${gallery}${(!projectStep || g.full&&!finishedProject) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="${finishedProject?'secondary secondary-cta':'primary'}" data-action="home">Ferdig for nå${icon('check')}</button><button class="secondary secondary-cta" data-action="${newMap ? 'world-new' : 'again'}">${again}</button></main></div>${party}`;
   celebrateOnRender = false;
 }
 
@@ -1390,11 +1397,11 @@ function showPause() {
   const info=rewardDetails();
   const preview=info.project&&info.completed>0?rewardArt():'';
   const name=profile?.name;
-  const hello=name&&!/^Spiller(?: \d+)?$/u.test(name)?`Hei, ${name}!`:'Hei!';
+  const hello=name&&!/^Spiller(?: \d+)?$/u.test(name)?`Hei igjen, ${name}!`:'Hei igjen!';
   const encouragement=pauseEncouragements[pauseVisits++%pauseEncouragements.length];
+  const note=eploNote(`${hello} ${pauseProgress(info)} ${encouragement}`);
   showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>En liten pause?</h2>
-    ${eploNote(`${hello} ${pauseProgress(info)} ${encouragement}`)}
-    ${preview}<p class="pause-context">Oppgavene venter på deg. Du kan fortsette senere.</p>
+    ${preview&&isWorld(info.mode)?`<div class="project-map-stage">${preview}<div class="map-eplo-overlay">${note}</div></div>`:`${note}${preview}`}<p class="pause-context">Oppgavene venter på deg. Du kan fortsette senere.</p>
     <button class="primary" data-action="close-dialog">Fortsett runden</button><button class="secondary secondary-cta" data-action="pause-home">Ta en pause</button>${CHANNEL === 'preview' ? '<button class="text-button beta-danger" data-action="beta-abort-round">Avbryt runden</button>' : ''}`, preview ? 'pause-dialog pause-dialog--map' : 'pause-dialog', preview ? mountDialogProjectPreview : undefined);
 }
 
@@ -1470,6 +1477,7 @@ function welcomeBack() {
 }
 
 function progressionNote() {
+  if (state.mix) return 'Velg et øvingsspor for å bruke automatisk progresjon.';
   if (!profile?.grade) return 'Velg et klassetrinn for å bruke automatisk progresjon.';
   const next = nextLevelForGrade(profile.grade, state.level);
   if (!next) return 'Dette er siste øvingsspor på trinnet. Øvingen fortsetter her.';
@@ -1481,12 +1489,16 @@ function practiceOptions() {
   const title = profile?.grade ? `Øving på ${profile.grade}. trinn` : 'Hva skal dere øve på?';
   const options = levels.map(n => {
     const level = LEVELS[n];
-    return `<label class="level-option"><input type="radio" name="level" value="${n}" ${state.level === n ? 'checked' : ''}><span><strong>${level.label}</strong><small>${level.description}</small></span></label>`;
+    return `<label class="level-option"><input type="radio" name="level" value="${n}" ${!state.mix && state.level === n ? 'checked' : ''}><span><strong>${level.label}</strong><small>${level.description}</small></span></label>`;
   }).join('');
   const groups = levels.includes(4) ? '<p class="adult-note"><strong>Ganging og deling.</strong> Sporet blander ganging og deling med pluss, minus og oppgaver med et manglende tall. Fordelingen kan endres etter hva barnet trenger hjelp med.</p>' : '';
-  return `<legend>${title}</legend>${options}${groups}
+  const mixes = [
+    ...(profile?.grade ? [['grade','Fri blanding på '+profile.grade+'. trinn','Oppgaver fra alle øvingsområdene på trinnet, i tilfeldig rekkefølge.']] : []),
+    ['all','Fri blanding fra 3.–10. trinn','En runde kan blande enkel hoderegning med brøk, algebra og andre oppgaver fra høyere trinn.'],
+  ].map(([id,label,help])=>`<label class="level-option"><input type="radio" name="level" value="${id}" ${state.mix===id?'checked':''}><span><strong>${label}</strong><small>${help}</small></span></label>`).join('');
+  return `<legend>${title}</legend>${options}${mixes}${groups}
     <p class="adult-note">Valget gjelder fra neste nye runde.</p>
-    <div class="progression-setting"><label class="sound-setting"><input type="checkbox" id="auto-progress" aria-describedby="progression-note" ${state.autoProgress ? 'checked' : ''} ${profile?.grade ? '' : 'disabled'}>Automatisk progresjon</label>
+    <div class="progression-setting"><label class="sound-setting"><input type="checkbox" id="auto-progress" aria-describedby="progression-note" ${state.autoProgress && !state.mix ? 'checked' : ''} ${profile?.grade && !state.mix ? '' : 'disabled'}>Automatisk progresjon</label>
       <p class="adult-note" id="progression-note">${progressionNote()}</p></div>`;
 }
 
@@ -1583,11 +1595,17 @@ function adultView() {
     <button class="delete-button" data-action="reset">${profile ? 'Slett denne spillerens øvingshistorikk' : 'Slett øvingshistorikken'}</button><button class="primary" data-action="close-dialog">Ferdig</button><p class="version">Mattopia ${VERSION}</p>`, '', d => {
       if (CHANNEL === 'preview') checkPublishedRelease(d);
       d.addEventListener('change', e => {
-        if (e.target.name === 'level' && levelsForGrade(profile?.grade).includes(Number(e.target.value))) {
-          state.level = Number(e.target.value);
+        if (e.target.name === 'level') {
+          const value=e.target.value;
+          if (value==='all' || value==='grade'&&profile?.grade) state.mix=value;
+          else if (levelsForGrade(profile?.grade).includes(Number(value))) {
+            state.level=Number(value);
+            state.mix=null;
+          } else return;
           state.progressRounds = 0;
           save();
-          d.querySelector('#progression-note').textContent = progressionNote();
+          d.querySelector('#practice-options').innerHTML = practiceOptions();
+          d.querySelector('input[name=level]:checked')?.focus({preventScroll:true});
           d.querySelector('#adult-topic-summary').innerHTML = adultTopicSummary();
         }
         if (e.target.id === 'player-grade' && profile) {
@@ -1798,7 +1816,7 @@ document.addEventListener('click', e => {
       if (summary && !state.history.some(r => r.id === summary.id)) {
         state.history.push(summary); state.history = state.history.slice(-40); state.roundsCompleted++;
         const awarded = awardPractice(state, summary.id);
-        state = advancePractice(awarded.state, profile?.grade, summary.level); completedReward = awarded.reward;
+        state = summary.mix ? awarded.state : advancePractice(awarded.state, profile?.grade, summary.level); completedReward = awarded.reward;
         state.focusBreakPending = state.focusBreaks && state.roundsCompleted % BREAK_INTERVAL === 0;
       }
       const stage = completedReward?.added ? projectScene(completedReward.mode, completedReward.map || completedReward.completed) : null;
@@ -1868,7 +1886,7 @@ document.addEventListener('click', e => {
     finishBetaTestAction();
   }
   if (action === 'reset') showDialog('<h2 id="dialog-title">Slette historikken?</h2><p>Denne spilleren mister stjerner, plantevekst, bygg og en påbegynt runde.</p><button class="primary" data-action="close-dialog" autofocus>Behold historikken</button><button class="text-button" data-action="confirm-reset">Ja, slett historikken</button>', 'pause-dialog');
-  if (action === 'confirm-reset') { closeDialog(); const { level, sound, haptics, rewardMode, focusBreaks, alwaysShowVisuals, autoProgress, roundLength } = state; state = selectRewardMode({ ...freshState(), level, sound, haptics, focusBreaks, alwaysShowVisuals, autoProgress, roundLength }, rewardMode); completedReward = null; focusGame = null; save(); view = profile ? 'home' : 'onboarding'; render(); focusHeading(); }
+  if (action === 'confirm-reset') { closeDialog(); const { level, sound, haptics, rewardMode, focusBreaks, alwaysShowVisuals, autoProgress, roundLength, mix } = state; state = selectRewardMode({ ...freshState(), level, sound, haptics, focusBreaks, alwaysShowVisuals, autoProgress, roundLength, mix }, rewardMode); completedReward = null; focusGame = null; save(); view = profile ? 'home' : 'onboarding'; render(); focusHeading(); }
 });
 
 document.addEventListener('submit', event => {

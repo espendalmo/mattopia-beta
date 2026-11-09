@@ -1,4 +1,4 @@
-import {randomGenerator, REGION_PLACES} from './worlds.js';
+import {randomGenerator, REGION_PLACES, GRAND_REGION_PLACES} from './worlds.js';
 
 const STEP=2.65;
 const GRID=61;
@@ -16,7 +16,7 @@ export function riverAt(layout,z) {
 }
 
 export function riverWidth(layout,z) {
-  return 3.85+1.1*Math.sin(z*.071+layout.phase)+.45*Math.cos(z*.23);
+  return (layout.grand?5.2:3.85)+1.1*Math.sin(z*.071+layout.phase)+.45*Math.cos(z*.23);
 }
 
 function coastAt(layout,x,z) {
@@ -45,13 +45,15 @@ export function regionSurface(layout,x,z) {
   }
   y+=relief+detail*(theme==='moon'?.38:.22);
   if (theme==='moon') return {y,water:false,bank:Infinity,basin,detail,relief};
-  const bank=theme==='city' ? Math.min(Math.abs(x-riverAt(layout,z))-riverWidth(layout,z),basin) : Math.min(coastAt(layout,x,z),basin);
+  const outerBank=theme==='city' ? Math.abs(x-riverAt(layout,z))-riverWidth(layout,z) : coastAt(layout,x,z);
+  const bank=Math.min(outerBank,basin);
+  const pond=basin<outerBank;
   const water=bank<0;
-  return {y:water?.015:mix(.06,y,clamp(bank/3.25,0,1)),water,bank,basin,detail,relief};
+  return {y:water?.015:mix(.06,y,clamp(bank/3.25,0,1)),water,bank,basin,detail,relief,pond};
 }
 
 function coastSite(layout,angle) {
-  let near=0,far=85;
+  let near=0,far=layout.grand?95:85;
   for (let i=0;i<15;i++) {
     const point=polar(angle,(near+far)/2);
     if (coastAt(layout,point.x,point.z)>0) near=(near+far)/2;
@@ -81,11 +83,20 @@ function landscapeFeatures(theme,rng) {
   return {hills,basins};
 }
 
-export function regionLayout(theme,seed) {
-  const key=theme+':'+seed;
+export function regionLayout(theme,seed,grand=false) {
+  const key=theme+':'+seed+':'+grand;
   if (layouts.has(key)) return layouts.get(key);
   const rng=randomGenerator(seed);
-  const layout={theme,seed,phase:rng()*Math.PI*2,radiusX:63+rng()*5,radiusZ:55+rng()*5,...landscapeFeatures(theme,rng)};
+  const layout={theme,seed,grand,phase:rng()*Math.PI*2,radiusX:63+rng()*5,radiusZ:55+rng()*5,...landscapeFeatures(theme,rng)};
+  if (grand && theme==='city') {
+    layout.basins=layout.basins.map(pond=>({...pond,w:pond.w*1.23,d:pond.d*1.26}));
+  }
+  if (grand && theme==='island') {
+    layout.radiusX+=6;
+    layout.radiusZ+=11;
+    layout.basins=layout.basins.map(pond=>({...pond,w:pond.w*1.24,d:pond.d*1.24}));
+  }
+  const capacity=grand?GRAND_REGION_PLACES:REGION_PLACES;
   const side=rng()<.5?1:-1;
   const quayZ=22+rng()*8;
   const bridgeZ=(rng()<.5?1:-1)*(5+rng()*8);
@@ -101,7 +112,7 @@ export function regionLayout(theme,seed) {
 
   const startZ=(rng()-.5)*12;
   const start={z:startZ,x:theme==='city'?riverAt(layout,startZ)+side*(17+rng()*2): (rng()-.5)*14};
-  const candidates=Array.from({length:1700},()=>({x:(rng()-.5)*126,z:(rng()-.5)*106,weight:rng()*18}));
+  const candidates=Array.from({length:1700},()=>({x:(rng()-.5)*(grand?140:126),z:(rng()-.5)*(grand?132:106),weight:rng()*18}));
   candidates.sort((a,b)=>distance(a,start)+a.weight-distance(b,start)-b.weight);
   const suitable=candidates.filter(point=>{
     if (Object.values(berths).some(berth=>distance(berth,point)<(berth.span??12))) return false;
@@ -115,10 +126,10 @@ export function regionLayout(theme,seed) {
   const sites=[];
   for (const spacing of [14.4,13,11.8]) {
     for (const point of suitable) {
-      if (sites.length===REGION_PLACES) break;
+      if (sites.length===capacity) break;
       if (sites.every(site=>distance(site,point)>=spacing)) sites.push(point);
     }
-    if (sites.length===REGION_PLACES) break;
+    if (sites.length===capacity) break;
   }
   layout.sites=sites;
   layout.origin=sites[0];

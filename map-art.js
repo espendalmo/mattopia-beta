@@ -82,6 +82,13 @@ export function constructionYard(layout,plot,phase,height) {
 }
 
 export function rideModels(plot,stages) {
+  if (plot.kind==='needleTower') {
+    const parts=stages.flat().filter(part=>part.observation).map(part=>({...part,y:part.y-7.85}));
+    return [{kind:'observation',parts,pose(seconds) {
+      const yaw=plot.yaw+seconds*.12;
+      return {x:plot.x,y:plot.y+7.85,z:plot.z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:0,rollCos:1,rollSin:0,sound:0};
+    }}];
+  }
   if (plot.kind==='wheel') {
     const [hx,hy,hz]=WHEEL_HUB;
     const parts=placeParts(stages.flat().filter(part=>part.wheel),{x:-hx,y:-hy,z:-hz})
@@ -100,7 +107,7 @@ export function rideModels(plot,stages) {
         const [a,,b]=pointOnSite([x,0,z],plot);
         return [a,b];
       });
-      return actor(visitor(space?'astronaut':'human',i?'#6b9bbc':'#d48078',i?'#b48466':'#edb78a',false,.61),
+      return actor(visitor(space?'astronaut':'human',i?'#6b9bbc':'#d48078',i?'#b48466':'#edb78a',false),
         path,{kind:'walk',ground:plot.y+(space?.52:.35),speed:1.24+i*.18,phase:.12+i*.48,corner:.54,
           voice:space?'astronaut':'people'});
     });
@@ -159,6 +166,7 @@ const VISITORS={
   lunarArcade:[[-1.44,.35,2.59,.54],[1.61,.35,2.63,-.52]],
   islandArcade:[[-1.44,.35,2.59,.54],[1.61,.35,2.63,-.52]],
   airport:[[-2.92,.59,4.57,-.43],[-4.27,.59,4.56,.42]],
+  tramStation:hotelVisitors, hangar:hotelVisitors, casino:cafeVisitors, needleTower:hotelVisitors,
   airstrip:[[-2.86,.35,2.18,-.26]],
   wheel:[[-2.84,.35,3.52,-.44],[-1.68,.35,3.28,-.41],[1.87,.35,3.07,.42]],
   coaster:[[-1.66,.35,3.42,-.3],[-.63,.35,3.53,-.3],[1.92,.35,3.9,Math.PI]],

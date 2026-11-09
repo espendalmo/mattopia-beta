@@ -10,7 +10,7 @@ export const at = (parts,x,y,z) => parts.map(part=>({...part,x:part.x+x,y:part.y
 export const beam = (from,to,width,color) => ({
   shape:'beam',from,to,width,color,x:(from[0]+to[0])/2,z:(from[2]+to[2])/2,y:Math.min(from[1],to[1]),h:Math.abs(from[1]-to[1])+width,
 });
-export const MAX_ACTORS=16;
+export const MAX_ACTORS=22;
 
 export function pointOnSite([a,b,d],{x,y,z,yaw=0}) {
   const c=Math.cos(yaw),s=Math.sin(yaw);
@@ -256,7 +256,7 @@ export function districtActors(theme,lots) {
 
 const engineKinds=new Set(['road','bus','hover','offroad-rover','jetski']);
 
-export function actorPose(actor, seconds) {
+export function actorPose(actor, seconds, distanceOverride) {
   if (actor.pose) return actor.pose(seconds);
   if (actor.kind==='wheel') {
     const {x,y,z,yaw}=actor;
@@ -267,8 +267,8 @@ export function actorPose(actor, seconds) {
   if (actor.kind==='plane') return planePose(actor,seconds);
   if (actor.kind==='rocket'||actor.kind==='rocket-flame') return rocketPose(actor,seconds);
   const {segments,length}=actor.route;
-  const traveled=seconds*actor.speed;
-  const distance=(traveled+length*actor.phase)%length;
+  const traveled=distanceOverride??seconds*actor.speed;
+  const distance=(traveled+(distanceOverride===undefined?length*actor.phase:0))%length;
   const segment=segments.find(part=>distance<part.end) ?? segments[0];
   const t=(distance-segment.start)/(segment.end-segment.start);
   const x=segment.x+segment.dx*t,z=segment.z+segment.dz*t;
@@ -286,6 +286,71 @@ export function actorPose(actor, seconds) {
     :actor.kind==='coaster'?Number(segment.dy<-.1&&cycle%7.4<4.3)
     :actor.voice?Number(cycle%14.5<2.4)*.8:0;
   return {x,y:y+bob,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking?Math.sin(traveled*6)*.17:0,rollCos:1,rollSin:0,sound};
+}
+
+const streetKinds=new Set(['road','bus','hover','offroad-rover','jetski']);
+
+function vehicleFootprint(actor) {
+  return actor.kind==='bus'?[1.83,.76]:actor.kind==='jetski'?[.69,.34]:[1.31,.74];
+}
+
+function overlaps(a,b) {
+  const dx=b.pose.x-a.pose.x,dz=b.pose.z-a.pose.z;
+  if (Math.abs(dx)>4||Math.abs(dz)>4||Math.abs(a.pose.y-b.pose.y)>1.7) return false;
+  const axes=({sin,cos})=>[[sin,cos],[cos,-sin]];
+  const aa=axes(a.pose),bb=axes(b.pose);
+  const radius=(axes,[long,wide],[x,z])=>Math.abs(x*axes[0][0]+z*axes[0][1])*long
+    +Math.abs(x*axes[1][0]+z*axes[1][1])*wide;
+  return [...aa,...bb].every(([x,z])=>Math.abs(dx*x+dz*z)<radius(aa,a.size,[x,z])+radius(bb,b.size,[x,z]));
+}
+
+function followsTooClosely(a,b) {
+  const {x,z,sin,cos,y}=a.pose;
+  const dx=b.pose.x-x,dz=b.pose.z-z;
+  const ahead=dx*sin+dz*cos,across=dx*cos-dz*sin;
+  return ahead>0&&ahead<a.size[0]+b.size[0]+.76&&Math.abs(across)<1.12&&Math.abs(y-b.pose.y)<1.7
+    &&sin*b.pose.sin+cos*b.pose.cos>.72;
+}
+
+// Advance along each lane in small steps. Each moving vehicle reserves its new
+// footprint before the next vehicle can enter it, including at intersections.
+export function createTraffic(actors) {
+  const vehicles=[];
+  actors.forEach((actor,index)=>{
+    if (!actor.route||!streetKinds.has(actor.kind)) return;
+    const {length}=actor.route;
+    const size=vehicleFootprint(actor);
+    for (let offset=0;offset<length;offset+=.53) {
+      const distance=actor.phase*length+offset;
+      const candidate={actor,index,distance,size,pose:actorPose(actor,0,distance),wait:0};
+      if (vehicles.some(other=>overlaps(candidate,other)||followsTooClosely(candidate,other)||followsTooClosely(other,candidate))) continue;
+      vehicles.push(candidate);
+      return;
+    }
+  });
+  let last=0,carry=0;
+  const byIndex=new Map(vehicles.map(vehicle=>[vehicle.index,vehicle]));
+  return seconds=>{
+    carry+=Math.max(0,Math.min(.2,seconds-last));
+    last=seconds;
+    const step=1/30;
+    while (carry>=step) {
+      carry-=step;
+      const priority=vehicles.slice().sort((a,b)=>b.wait-a.wait);
+      for (const vehicle of priority) {
+        const distance=vehicle.distance+vehicle.actor.speed*step;
+        const next={size:vehicle.size,pose:actorPose(vehicle.actor,seconds,distance)};
+        if (vehicles.some(other=>other!==vehicle&&(overlaps(next,other)||followsTooClosely(next,other)))) {
+          vehicle.wait+=step;
+          vehicle.pose={...vehicle.pose,sound:0};
+        } else {
+          Object.assign(vehicle,next,{distance,wait:0});
+        }
+      }
+    }
+    return actors.map((actor,i)=>byIndex.get(i)?.pose??(actor.route&&streetKinds.has(actor.kind)
+      ? {...actorPose(actor,seconds),y:-540,sound:0} : actorPose(actor,seconds)));
+  };
 }
 
 function rocketPose({x,y,z,yaw,kind,delay},seconds) {
@@ -326,9 +391,10 @@ function planePose({x,y,z,yaw,delay,runway},seconds) {
     turn=Math.PI*Math.max(0,Math.min(1,(t-22)/1.75));
   }
   const direction=reverse?-1:1,heading=yaw+(reverse?Math.PI:0)+turn;
+  const bend=altitude>0 ? Math.sign(along)*Math.sin(Math.min(1,altitude/125)*Math.PI)*altitude*.56 : 0;
   const roll=altitude>0?Math.sin(t*2.4)*Math.min(.12,altitude*.012):0;
-  return {x:x+Math.sin(yaw)*along*direction,y:y+altitude,z:z+Math.cos(yaw)*along*direction,
-    cos:Math.cos(heading),sin:Math.sin(heading),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),
+  return {x:x+Math.sin(yaw)*along*direction+Math.cos(yaw)*bend,y:y+altitude,z:z+Math.cos(yaw)*along*direction-Math.sin(yaw)*bend,
+    cos:Math.cos(heading+roll),sin:Math.sin(heading+roll),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),
     sound:Number(clock>0&&(t>=2.42&&t<8.16||t>=15.4&&t<21.2))};
 }
 
@@ -416,11 +482,12 @@ function islandWaterLife(layout,plan,completed) {
         const at=(dx,dz)=>{ const [x,,z]=pointOnSite([across+dx,0,out+dz],site); return [x,z]; };
         const lagoon=[[-1.32,-.82],[1.32,-.82],[1.32,.82],[-1.32,.82]].map(([x,z])=>at(x,z));
         if (!lagoon.every(([x,z])=>water(x,z)&&regionVisibility(plan,x,z)>.57)) continue;
-        const swimmers=[actor(swimmer(),lagoon,{kind:'swimmer',ground:.034,speed:.68,phase:.17,corner:.6}),
-          actor(swimmer('#a67457','#e9c67e'),lagoon,{kind:'swimmer',ground:.034,speed:.57,phase:.67,corner:.55})];
+        const swimRoute=(dx,dz)=>[[-1.1,-.32],[-.68,-.77],[.68,-.65],[1.18,-.19],[.88,.63],[-.4,.76]].map(([x,z])=>at(x+dx,z+dz));
+        const swimmers=[actor(swimmer(),swimRoute(0,0),{kind:'swimmer',ground:.034,speed:.68,phase:.17,corner:.6}),
+          actor(swimmer('#a67457','#e9c67e'),swimRoute(.38,.25).reverse(),{kind:'swimmer',ground:.034,speed:.57,phase:.67,corner:.55})];
         if (!swimmers.every(safe)) continue;
         if (!beach.length) beach=swimmers;
-        const route=[[-4.3,2.4],[-4.9,5.2],[4.2,5.8],[4.4,3]].map(([x,z])=>at(x,z));
+        const route=[[-4.3,2.4],[-5.5,5.2],[-2.5,6.45],[2.4,6.25],[4.85,5.2],[4.4,3]].map(([x,z])=>at(x,z));
         if (route.every(([x,z])=>water(x,z)&&regionVisibility(plan,x,z)>.45)) {
           const scooters=['#d37d6d','#4d9cac'].map((color,i)=>actor(jetski(color),route,
             {kind:'jetski',ground:.045,speed:4.6,phase:.23+i*.52,corner:1.67}));
@@ -436,10 +503,21 @@ function offroadRover(layout,plan,plots) {
   const routes=plan.paths.flat();
   const safe=(x,z)=>{
     const ground=regionSurface(layout,x,z);
-    return ground.basin>-.86&&regionVisibility(plan,x,z)>.59
+    return ground.basin>-2.8&&regionVisibility(plan,x,z)>.59
       &&plan.plots.every(plot=>Math.hypot(plot.x-x,plot.z-z)>7.1)
       &&routes.every(point=>Math.hypot(point.x-x,point.z-z)>2.15);
   };
+  for (const crater of layout.basins) {
+    const points=Array.from({length:9},(_,i)=>{
+      const angle=i*Math.PI*2/9;
+      const radius=i===2?.57:i===3?.74:1.16;
+      return [crater.x+Math.cos(angle)*crater.w*radius,crater.z+Math.sin(angle)*crater.d*radius];
+    });
+    if (!points.every(([x,z])=>safe(x,z))) continue;
+    const rover=actor(vehicle('rover','#caa18f'),points,{kind:'offroad-rover',speed:1.5,phase:.22,corner:1.35,
+      elevation:(x,z)=>regionSurface(layout,x,z).y+.043});
+    if (rover.route.segments.every(({x,z,dx,dz})=>safe(x,z)&&safe(x+dx*.5,z+dz*.5))) return rover;
+  }
   for (const plot of plots.slice().reverse()) {
     for (let direction=0;direction<8;direction++) {
       const angle=direction*Math.PI/4, reach=15.3+(direction%2)*1.5;
@@ -461,6 +539,16 @@ export function regionActors(theme,layout,plan,completed) {
   if (!completed.length&&!plan.circuits?.length) return [];
   const actors=[], moon=theme==='moon';
   const paths=plan.paths.filter(path=>path.length>=4);
+  const circuits=(plan.circuits??[]).slice().sort((a,b)=>b.length-a.length);
+  const lane=(points,offset=.87)=>points.map((point,i)=>{
+    const before=points.at(i-1),after=points[(i+1)%points.length];
+    const a=Math.hypot(point.x-before.x,point.z-before.z)||1;
+    const b=Math.hypot(after.x-point.x,after.z-point.z)||1;
+    const ax=(point.x-before.x)/a,az=(point.z-before.z)/a;
+    const bx=(after.x-point.x)/b,bz=(after.z-point.z)/b;
+    const miter=offset/Math.max(.5,1+ax*bx+az*bz);
+    return [point.x-(az+bz)*miter,point.z+(ax+bx)*miter];
+  });
   const colors=['#deaa73','#8eb1c6','#d27d84','#e0bb83'];
   const walkers=moon?['astronaut','alien']:['human'];
   if (theme==='island') actors.push(...islandWaterLife(layout,plan,completed));
@@ -468,8 +556,8 @@ export function regionActors(theme,layout,plan,completed) {
     const rover=offroadRover(layout,plan,completed);
     if (rover) actors.push(rover);
     if (completed.some(plot=>plot.kind==='hoverDealer')&&paths.length) {
-      const circuit=plan.circuits?.at(-1);
-      const points=circuit?circuit.map(({x,z})=>[x,z]):laneLoop(paths.at(-1),.32);
+      const circuit=circuits[1]??circuits[0];
+      const points=circuit?lane(circuit):laneLoop(paths.at(-1),.78);
       actors.push(actor(vehicle('hover','#b982ac'),points,{kind:'hover',speed:3.15,phase:.38,corner:STREET_TURN_RADIUS,
         elevation:(x,z)=>roadElevation(layout,x,z)+.17}));
     }
@@ -478,9 +566,10 @@ export function regionActors(theme,layout,plan,completed) {
   if (station&&paths.length) {
     const entry=station.entries[0]??station;
     const distance=path=>Math.min(...path.map(point=>Math.hypot(point.x-entry.x,point.z-entry.z)));
-    const routes=plan.circuits?.length?plan.circuits:paths;
-    const closest=routes.reduce((near,route)=>distance(route)<distance(near)?route:near);
-    const points=plan.circuits?.length?closest.map(({x,z})=>[x,z]):laneLoop(closest,.28);
+    const routes=circuits.length?circuits:paths;
+    const cost=path=>distance(path)-Math.min(path.length,12)*.8;
+    const closest=routes.reduce((near,route)=>cost(route)<cost(near)?route:near);
+    const points=circuits.length?lane(closest):laneLoop(closest,.83);
     actors.push(actor(vehicle('bus','#4c9694'),points,{kind:'bus',speed:2.25,phase:.33,
       elevation:(x,z)=>roadElevation(layout,x,z),corner:STREET_TURN_RADIUS}));
   }
@@ -499,8 +588,8 @@ export function regionActors(theme,layout,plan,completed) {
   }
   for (let i=0;i<Math.min(paths.length,suspension?3:4,1+Math.floor(completed.length/5));i++) {
     const path=paths[(paths.length-1-i*3+paths.length*3)%paths.length];
-    const circuit=plan.circuits?.[i%plan.circuits.length];
-    const points=circuit?circuit.map(({x,z})=>[x,z]):laneLoop(path,.32);
+    const circuit=circuits[i%circuits.length];
+    const points=circuit?lane(circuit):laneLoop(path,.83);
     actors.push(actor(vehicle(moon?'rover':theme==='island'?'cart':'car',colors[i]),points,{
       kind:'road',elevation:(x,z)=>roadElevation(layout,x,z),speed:moon?2.3:2.9,phase:i*.23+.12,
       corner:circuit?STREET_TURN_RADIUS:1.12,
@@ -508,9 +597,10 @@ export function regionActors(theme,layout,plan,completed) {
   }
   for (let i=0;completed.length&&i<Math.min(paths.length,4,1+Math.floor(completed.length/4));i++) {
     const path=paths[(i*3+1)%paths.length];
-    const points=laneLoop(path.slice(0,Math.min(path.length,24)),theme==='island'?1:1.29);
+    const walkCircuit=circuits.find(circuit=>circuit.length>=6)??circuits[0];
+    const points=walkCircuit ? lane(walkCircuit,i%2===0?1.86:-1.86) : laneLoop(path,1.83);
     const person=walkers[i%walkers.length];
-    actors.push(actor(walker(person,colors[(i+1)%4],i%2?'#a97963':'#edb88c'),points,{
+    actors.push(actor(visitor(person,colors[(i+1)%4],i%2?'#a97963':'#edb88c'),points,{
       kind:'walk',elevation:(x,z)=>roadElevation(layout,x,z)+.012,speed:.87+i*.092,phase:.13+i*.17,corner:.52,
       voice:moon?person:'people',
     }));

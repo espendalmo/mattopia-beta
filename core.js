@@ -1,8 +1,8 @@
 import {randomGenerator} from './worlds.js';
 export {randomGenerator};
 import {restoreRewards} from './rewards.js';
-import {CURRICULUM_LEVELS, CURRICULUM_TOPICS, curriculumTopic, createCurriculumTask, validCurriculumTask, nextLevelForGrade} from './curriculum.js';
-export const VERSION='1.21.0';
+import {CURRICULUM_LEVELS, CURRICULUM_TOPICS, curriculumTopic, createCurriculumTask, validCurriculumTask, nextLevelForGrade, levelsForGrade} from './curriculum.js';
+export const VERSION='1.22.0';
 export const CHANNEL = 'preview';
 export const ROUND_LENGTH=8;
 export const ROUND_LENGTHS=Object.freeze([5,6,ROUND_LENGTH]);
@@ -34,8 +34,8 @@ function shuffle(items,rng){const a=[...items];for(let i=a.length-1;i>0;i--){con
 
 export function topicStats(history=[],level=1){
   const stats=Object.fromEntries(Object.keys(TOPICS).map(k=>[k,{total:0,firstTry:0,helped:0,recent:[],rounds:new Set(),independent:0,keys:new Set()}]));
-  for(const round of history.filter(r=>r.level===Number(level)).slice(-12))for(const result of round.results||[]){
-    if(!result||!Object.hasOwn(stats,topicOf(result)))continue;
+  for(const round of history.filter(r=>r.level===Number(level)||r.results?.some(t=>t?.practiceLevel===Number(level))).slice(-12))for(const result of round.results||[]){
+    if(!result||(result.practiceLevel??round.level)!==Number(level)||!Object.hasOwn(stats,topicOf(result)))continue;
     const s=stats[topicOf(result)];s.total++;if(result.firstTry)s.firstTry++;if(result.helped)s.helped++;
     s.recent.push(result);s.recent=s.recent.slice(-12);
     if(result.firstTry&&!result.helped)s.rounds.add(round.id);
@@ -98,6 +98,29 @@ function generateTask(type,level,rng,index,first=false){
   for(const c of [differentTen,...neighbors,...others]){if(Number.isInteger(c)&&c>=0&&c<=max&&!choices.includes(c))choices.push(c);if(choices.length===3)break;}
   return{id:`${index}-${type}`,type,...(n!==undefined&&{n}),...(a!==undefined&&{a}),...(b!==undefined&&{b}),answer,choices:shuffle(choices,rng),support:'visible',mode:'choice'};
 }
+function mixedRound(mode,grade,length,rng) {
+  const grades=mode==='all'?[3,4,5,6,7,8,9,10]:[grade];
+  const pools=new Map(grades.map(grade=>{
+    const topics=new Map();
+    for (const practiceLevel of levelsForGrade(grade)) {
+      for (const type of new Set(LEVELS[practiceLevel].pattern)) {
+        const topic=topicOf(type);
+        if (!topics.has(topic)) topics.set(topic,[]);
+        topics.get(topic).push({type,practiceLevel});
+      }
+    }
+    return [grade,shuffle([...topics.values()],rng)];
+  }));
+  const order=shuffle(grades,rng);
+  return Array.from({length},(_,i)=>{
+    const topics=pools.get(order[i%order.length]);
+    const candidates=topics[Math.floor(i/order.length)%topics.length];
+    const {type,practiceLevel}=candidates[Math.floor(rng()*candidates.length)];
+    const task=generateTask(type,practiceLevel,rng,i);
+    return {...task,practiceLevel,role:'mix'};
+  });
+}
+
 export function createRound(level=1,seed=Date.now(),first=false,options={}){
   level=validLevel(level)?Number(level):1;
   const length=validRoundLength(options.length)?options.length:ROUND_LENGTH;
@@ -105,8 +128,8 @@ export function createRound(level=1,seed=Date.now(),first=false,options={}){
   const rng=randomGenerator(seed),history=options.history||[],stats=topicStats(history,level);
   let focus=null, pattern=[...LEVELS[level].pattern];
   const pool=[...new Set(pattern)];
-  if(!first&&history.some(r=>r.level===level&&r.results?.length)){
-    const recent=history.filter(r=>r.level===level).slice(-3).flatMap(r=>r.results||[]).filter(r=>r&&pool.includes(r.type)),needs=recent.filter(r=>!r.firstTry||r.helped);
+  if(!first&&history.some(r=>r.level===level&&!r.mix&&r.results?.length)){
+    const recent=history.filter(r=>r.level===level&&!r.mix).slice(-3).flatMap(r=>r.results||[]).filter(r=>r&&pool.includes(r.type)),needs=recent.filter(r=>!r.firstTry||r.helped);
     focus=needs.length?needs[needs.length-1].type:shuffle(pool,rng).sort((a,b)=>stats[topicOf(a)].total-stats[topicOf(b)].total)[0];
     const familiar=shuffle(pool.filter(t=>t!==focus),rng).sort((a,b)=>{const score=t=>{const s=stats[topicOf(t)];return s.total?s.firstTry/s.total:0;};return score(b)-score(a);}),other=shuffle(pool.filter(t=>t!==focus),rng);
     const review=Array.from({length:length-reviewStart},(_,i)=>other[i]||focus);
@@ -114,19 +137,21 @@ export function createRound(level=1,seed=Date.now(),first=false,options={}){
   } else if(length<ROUND_LENGTH && pool.length>=length) {
     pattern=[pool[0],...shuffle(pool.slice(1),rng)];
   }
-  const tasks=pattern.slice(0,length).map((type,i)=>generateTask(type,level,rng,i,first));
-  for(let i=1;i<tasks.length;i++)for(let j=0;j<12&&factKey(tasks[i])===factKey(tasks[i-1]);j++)tasks[i]=generateTask(tasks[i].type,level,rng,i);
-  tasks.forEach((t,i)=>{const s=supportFor(t.type,stats,options.alwaysShowVisuals);t.support=s.support;if(i>=reviewStart&&s.input)t.mode='input';t.role=i<2?'warmup':i<reviewStart?'focus':'review';});
-  const preview = options.preview;
-  if (preview && validLevel(preview.level) && preview.level !== level && Number.isInteger(preview.count)) {
-    const types = [...new Set(LEVELS[preview.level].pattern)];
-    const count=Math.min(preview.count,PROGRESSION_ROUNDS-1);
-    for (let i=0; i<count; i++) {
-      const index=length-count+i;
-      tasks[index]={...generateTask(types[i%types.length],preview.level,rng,index), practiceLevel:preview.level, role:'preview'};
+  const tasks=options.mix?mixedRound(options.mix,options.grade,length,rng):pattern.slice(0,length).map((type,i)=>generateTask(type,level,rng,i,first));
+  if (!options.mix) {
+    for(let i=1;i<tasks.length;i++)for(let j=0;j<12&&factKey(tasks[i])===factKey(tasks[i-1]);j++)tasks[i]=generateTask(tasks[i].type,level,rng,i);
+    tasks.forEach((t,i)=>{const s=supportFor(t.type,stats,options.alwaysShowVisuals);t.support=s.support;if(i>=reviewStart&&s.input)t.mode='input';t.role=i<2?'warmup':i<reviewStart?'focus':'review';});
+    const preview = options.preview;
+    if (preview && validLevel(preview.level) && preview.level !== level && Number.isInteger(preview.count)) {
+      const types = [...new Set(LEVELS[preview.level].pattern)];
+      const count=Math.min(preview.count,PROGRESSION_ROUNDS-1);
+      for (let i=0; i<count; i++) {
+        const index=length-count+i;
+        tasks[index]={...generateTask(types[i%types.length],preview.level,rng,index), practiceLevel:preview.level, role:'preview'};
+      }
     }
   }
-  return{id:`${seed}-${level}`,seed,level,focus,tasks,index:0,attempts:Array(length).fill(0),helped:Array(length).fill(false),hintStages:Array(length).fill(0),results:Array(length).fill(null),solved:false,startedAt:new Date().toISOString()};
+  return{id:`${seed}-${level}`,seed,level,focus:options.mix?null:focus,tasks,...(options.mix&&{mix:options.mix}),index:0,attempts:Array(length).fill(0),helped:Array(length).fill(false),hintStages:Array(length).fill(0),results:Array(length).fill(null),solved:false,startedAt:new Date().toISOString()};
 }
 export function noteHelp(round){if(!round||round.solved||round.index>=round.tasks.length)return round;const helped=[...round.helped],hintStages=[...(round.hintStages||Array(round.tasks.length).fill(0))];helped[round.index]=true;hintStages[round.index]=Math.min(3,hintStages[round.index]+1);return{...round,helped,hintStages};}
 export function answerRound(round,value){
@@ -134,23 +159,23 @@ export function answerRound(round,value){
   if(!Number.isInteger(value)||value<0||value>999||(t.mode!=='input'&&!t.choices.includes(value)))return round;
   const index=round.index,attempts=[...round.attempts];attempts[index]++;
   if(value!==t.answer)return{...round,attempts};const results=[...round.results];
-  results[index]={type:t.type,firstTry:attempts[index]===1,helped:round.helped[index],attempts:attempts[index],support:t.support||'visible',mode:t.mode||'choice',key:factKey(t),...(t.n!==undefined&&{n:t.n}),...(t.a!==undefined&&{a:t.a}),...(t.b!==undefined&&{b:t.b}),answer:t.answer};
+  results[index]={type:t.type,firstTry:attempts[index]===1,helped:round.helped[index],attempts:attempts[index],support:t.support||'visible',mode:t.mode||'choice',key:factKey(t),...(t.practiceLevel&&{practiceLevel:t.practiceLevel}),...(t.n!==undefined&&{n:t.n}),...(t.a!==undefined&&{a:t.a}),...(t.b!==undefined&&{b:t.b}),answer:t.answer};
   return{...round,attempts,results,solved:true};
 }
 export function advanceRound(round){
   if(!round||!round.solved||round.index>=round.tasks.length)return round;
   const tasks=[...round.tasks],source=round.tasks[round.index],result=round.results[round.index],target=round.index+3;
-  if(target<tasks.length&&tasks[target].role!=='preview'&&(!result.firstTry||result.helped)){
+  if(!round.mix&&target<tasks.length&&tasks[target].role!=='preview'&&(!result.firstTry||result.helped)){
     const rng=randomGenerator((round.seed||Number.parseInt(round.id)||1)+round.index*37+991), practiceLevel=source.practiceLevel||round.level;
     let repeated=generateTask(source.type,practiceLevel,rng,target);
     for(let j=0;j<12&&factKey(repeated)===factKey(source);j++)repeated=generateTask(source.type,practiceLevel,rng,target);
     tasks[target]={...repeated,...(source.practiceLevel&&{practiceLevel}),role:'review',reviewOf:round.index};
   }return{...round,tasks,index:round.index+1,solved:false};
 }
-export function roundSummary(r){if(!r||r.index!==r.tasks.length||!r.results.every(Boolean))return null;return{id:r.id,level:r.level,length:r.tasks.length,date:new Date().toISOString(),focus:r.focus||null,firstTry:r.results.filter(x=>x.firstTry).length,helped:r.results.filter(x=>x.helped).length,results:r.results};}
+export function roundSummary(r){if(!r||r.index!==r.tasks.length||!r.results.every(Boolean))return null;return{id:r.id,level:r.level,...(r.mix&&{mix:r.mix}),length:r.tasks.length,date:new Date().toISOString(),focus:r.focus||null,firstTry:r.results.filter(x=>x.firstTry).length,helped:r.results.filter(x=>x.helped).length,results:r.results};}
 export function growthState(total){total=Math.max(0,Math.floor(Number(total)||0));const stage=total===0?0:((total-1)%5)+1;return{stage,flowers:Math.floor(total/5),label:['Et lite frø','En ny spire!','To fine blader!','Planten vokser!','Snart en blomst!','Nå blomstrer det!'][stage]};}
 export function progressionPreview(state, grade) {
-  const level = state.autoProgress && nextLevelForGrade(grade, state.level);
+  const level = !state.mix && state.autoProgress && nextLevelForGrade(grade, state.level);
   return level ? {level, count:state.progressRounds} : null;
 }
 
@@ -161,7 +186,7 @@ export function advancePractice(state, grade, finishedLevel) {
   return progressRounds >= PROGRESSION_ROUNDS ? {...state, level:next.level, progressRounds:0} : {...state, progressRounds};
 }
 
-export function freshState(){return{version:1,level:1,roundLength:ROUND_LENGTH,autoProgress:false,progressRounds:0,sound:true,haptics:true,alwaysShowVisuals:false,focusBreaks:false,focusBreakPending:false,roundsCompleted:0,history:[],active:null,...restoreRewards(null,0)};}
+export function freshState(){return{version:1,level:1,roundLength:ROUND_LENGTH,mix:null,autoProgress:false,progressRounds:0,sound:true,haptics:true,alwaysShowVisuals:false,focusBreaks:false,focusBreakPending:false,roundsCompleted:0,history:[],active:null,...restoreRewards(null,0)};}
 export function restoreState(raw){
   const fallback=freshState();if(!raw||raw.version!==1)return fallback;
   const history=Array.isArray(raw.history)?raw.history.filter(r=>{
@@ -183,5 +208,5 @@ export function restoreState(raw){
   const active=valid?{...r,tasks:r.tasks.map(t=>({...t,support:t.support==='optional'&&!curriculumTopic(t.type)?'optional':'visible',mode:t.mode==='input'&&!curriculumTopic(t.type)?'input':'choice'})),hintStages:Array.isArray(r.hintStages)&&r.hintStages.length===length?r.hintStages.map(x=>Number.isInteger(x)?Math.max(0,Math.min(3,x)):0):r.helped.map(v=>v?3:0)}:null;
   const total=Number.isSafeInteger(raw.roundsCompleted)&&raw.roundsCompleted>=history.length?raw.roundsCompleted:history.length;
   const autoProgress=raw.autoProgress===true, progressRounds=autoProgress&&Number.isInteger(raw.progressRounds)&&raw.progressRounds>=0&&raw.progressRounds<PROGRESSION_ROUNDS ? raw.progressRounds : 0;
-  return{...fallback,level:validLevel(raw.level)?Number(raw.level):1,roundLength:validRoundLength(raw.roundLength)?raw.roundLength:ROUND_LENGTH,autoProgress,progressRounds,sound:typeof raw.sound==='boolean'?raw.sound:fallback.sound,haptics:raw.haptics!==false,alwaysShowVisuals:raw.alwaysShowVisuals===true,focusBreaks:raw.focusBreaks===true,focusBreakPending:raw.focusBreaks===true&&raw.focusBreakPending===true&&!active,roundsCompleted:total,history,active,...restoreRewards(raw,total)};
+  return{...fallback,level:validLevel(raw.level)?Number(raw.level):1,roundLength:validRoundLength(raw.roundLength)?raw.roundLength:ROUND_LENGTH,autoProgress,progressRounds,mix:['grade','all'].includes(raw.mix)?raw.mix:null,sound:typeof raw.sound==='boolean'?raw.sound:fallback.sound,haptics:raw.haptics!==false,alwaysShowVisuals:raw.alwaysShowVisuals===true,focusBreaks:raw.focusBreaks===true,focusBreakPending:raw.focusBreaks===true&&raw.focusBreakPending===true&&!active,roundsCompleted:total,history,active,...restoreRewards(raw,total)};
 }

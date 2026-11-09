@@ -51,7 +51,7 @@ function streetGraph(layout,spacing,shift) {
     for (let col=0;col<WIDTH-1;col++) {
       const nw=row*WIDTH+col, ring=[nw,nw+1,nw+WIDTH+1,nw+WIDTH];
       const x=nodes[nw].x+spacing/2,z=nodes[nw].z+spacing/2;
-      if (Math.abs(x)>67||Math.abs(z)>66) continue;
+      if (Math.abs(x)>(layout.grand?73:67)||Math.abs(z)>(layout.grand?72:66)) continue;
       const perimeter=ring.map((id,i)=>edges.get(edgeKey(id,ring[(i+1)%ring.length])));
       const front=perimeter[2],west=perimeter[3];
       if (!front&&!west) continue;
@@ -82,12 +82,14 @@ function layoutStreets(layout,requiredLots) {
   const versions=streets.get(layout)??new Map();
   if (versions.has(requiredLots)) return versions.get(requiredLots);
   let graph;
-  for (const [spacing,shift] of [[15.2,0],[14.3,0],[14.3,1],[13.6,0],[13.6,1],[13.6,2],[13.1,0],[13.1,2],[13.1,3]]) {
+  const attempts=[[15.2,0],[14.3,0],[14.3,1],[13.6,0],[13.6,1],[13.6,2],[13.1,0],[13.1,2],[13.1,3]];
+  if (layout.grand) attempts.push([12.9,0],[12.9,1],[12.9,2],[12.9,3],[12.9,4]);
+  for (const [spacing,shift] of attempts) {
     const candidate=streetGraph(layout,spacing,shift);
     if (candidate?.available.length>=requiredLots) { graph=candidate; break; }
   }
   if (graph) {
-    const reserved=graph.available.slice(0,REGION_PLACES+4);
+    const reserved=graph.available.slice(0,(layout.grand?requiredLots:REGION_PLACES)+4);
     graph.connectorLayout={...layout,grid:layout.grid.map(tile=>({...tile,blocked:reserved.some(site=>gap(site,tile)<5.5)}))};
   }
   versions.set(requiredLots,graph??null);
@@ -122,6 +124,32 @@ function streetCircuits(nodes,open,links,starter) {
     if (used.has(signature)) continue;
     used.add(signature);
     result.push(cycle.map(id=>nodes[id]));
+  }
+  // Join adjacent blocks across their shared edge to make routes through several streets.
+  const local=result.slice();
+  for (const first of local.slice(0,12)) {
+    let circuit=first;
+    for (let step=0;step<4;step++) {
+      const ids=new Set(circuit.map(node=>node.id));
+      let joined;
+      for (let i=0;i<circuit.length&&!joined;i++) {
+        const a=circuit[i].id,b=circuit[(i+1)%circuit.length].id;
+        for (const next of local) {
+          const start=next.findIndex(node=>node.id===a);
+          if (start<0||next.filter(node=>ids.has(node.id)).length!==2) continue;
+          const length=next.length;
+          const direction=next[(start+1)%length].id===b?-1:next[(start+length-1)%length].id===b?1:0;
+          if (!direction) continue;
+          const detour=Array.from({length:length-2},(_,j)=>next[(start+direction*(j+1)+length)%length]);
+          joined=circuit.slice(0,i+1).concat(detour,circuit.slice(i+1));
+          break;
+        }
+      }
+      if (!joined) break;
+      circuit=joined;
+    }
+    const signature=circuit.map(node=>node.id).sort((a,b)=>a-b).join(',');
+    if (!used.has(signature)) { used.add(signature); result.push(circuit); }
   }
   return result;
 }

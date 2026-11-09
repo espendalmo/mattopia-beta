@@ -63,8 +63,14 @@ const stories={
 };
 
 export function landmarkStory(theme,index,kind) {
-  if (kind==='railwayStation') return 'Toget stopper på perrongen. Følg sporet for å se det forsvinne i en tunnel.';
-  if (kind==='monorailStation') return 'Månetoget trenger bare én skinne. Se det gli over gatene før det forsvinner inn i tunnelen.';
+  if (kind==='railwayStation') return 'Toget stopper på perrongen. Følg sporet fra stopp til stopp helt ut av byen.';
+  if (kind==='monorailStation') return 'Månetoget trenger bare én skinne. Se det gli over gatene og stoppe underveis.';
+  if (kind==='tramStation') return 'Du kan ta trikken hele veien rundt og ende på samme sted. Hvor mange stopp finner du?';
+  if (kind==='needleTower') return 'Restauranten snurrer sakte, så alle bord får utsikt i alle retninger.';
+  if (kind==='lighthouse') return 'På mørke kvelder viser lykta båtene vei forbi grunna.';
+  if (kind==='telescopeArray') return 'De små teleskopene hjelper det store med å finne riktig del av stjernehimmelen.';
+  if (kind==='airport'&&theme==='city') return 'Se etter lysene langs rullebanen når flyet lander. Helikopteret har sin egen plass.';
+  if (kind==='hangar') return 'Mekanikerne bruker den store porten når kjøretøy skal ut på prøvetur.';
   if (kind==='mill') return 'Vingene tar tak i vinden og driver kvernsteinen som maler korn til mel.';
   if (kind==='dock') return 'Ved moloen kan småbåter ligge i le for bølgene.';
   return stories[theme]?.[index]??'';

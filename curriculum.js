@@ -4,26 +4,26 @@ function track(label, description, ...types) {
 }
 
 export const CURRICULUM_LEVELS = {
-  11:track('Tall og mengder', 'Tell brikker, legg til og ta bort med tall til 10.', 'tally', 'tinyAdd', 'tinySubtract'),
-  21:track('Mønstre og former', 'Fortsett tallmønstre og tell sider på figurer.', 'pattern', 'shapeSides', 'tally'),
-  31:track('Måling og kart', 'Finn punkter i rutenett og regn med lengde og masse.', 'coordinate', 'measure'),
-  41:track('Gangetabell og deling', 'Gangetabeller, like grupper og deling i praktiske situasjoner.', 'tables', 'sharing', 'arrayCount'),
-  42:track('Ruter og klosser', 'Finn hvor mange ruter en flate dekker, og hvor mange klosser en boks rommer.', 'arrayCount', 'boxUnits', 'pattern'),
-  51:track('Brøk og desimaltall', 'Les brøker, finn en del av en mengde og sammenlign brøker.', 'fractionModel', 'fractionOf', 'fractionCompare', 'fractionDecimal'),
-  52:track('Likninger og sjanse', 'Finn det ukjente tallet og regn ut sjansen for å trekke en bestemt farge.', 'oneStep', 'chance'),
-  61:track('Desimaltall og prosent', 'Regn med desimaltall, brøk og prosent i hverdagen.', 'decimalSum', 'percentOf', 'fractionOf'),
-  62:track('Areal, omkrets og volum', 'Mål et rektangel, regn på en boks og finn diameteren til en sirkel.', 'area', 'perimeter', 'prism', 'diameter'),
-  71:track('Tall og regnerekkefølge', 'Regn med negative tall og uttrykk med flere regnearter.', 'integers', 'order'),
-  72:track('Brøk, desimaltall og prosent', 'Legg sammen brøker og bytt mellom ulike måter å vise en andel på.', 'fractionSum', 'fractionDecimal', 'percentMatch'),
-  73:track('Likninger og statistikk', 'Løs lineære likninger og finn gjennomsnitt og median.', 'linearEquation', 'mean', 'median'),
-  81:track('Primtall og brøk', 'Finn primtallsfaktorer og forkort brøker.', 'primeFactors', 'reduceFraction'),
-  82:track('Algebra og likninger', 'Sett inn tall i uttrykk, løs likninger og finn regelen i et mønster.', 'expression', 'linearEquation', 'patternRule'),
-  83:track('Funksjoner og fart', 'Les en funksjonstabell og regn med fart, tid og avstand.', 'functionTable', 'speed'),
-  91:track('Trekanter og romfigurer', 'Bruk Pytagoras, målestokk og volumformler.', 'pythagoras', 'scale', 'prism'),
-  92:track('Statistikk og sannsynlighet', 'Finn median og variasjonsbredde, og regn ut sannsynlighet.', 'median', 'range', 'chance', 'dice'),
-  101:track('Funksjoner og vekst', 'Finn stigningstall, vekstfaktor og verdi etter flere endringer.', 'slope', 'growthFactor', 'repeatedGrowth'),
-  102:track('Likningssett', 'Bruk to opplysninger sammen til å finne to ukjente.', 'systemSum', 'systemPrice'),
-  103:track('Økonomi og fart', 'Regn med rabatt, sparepenger og gjennomsnittsfart.', 'discount', 'interest', 'speed'),
+  11:track('Tall og mengder', 'Tell brikker, legg til og ta bort med tall til 10.', 'tally', 'tinyAdd', 'tinySubtract', 'compareQuantity'),
+  21:track('Mønstre og former', 'Fortsett tallmønstre og tell sider på figurer.', 'pattern', 'shapeSides', 'tally', 'clockHours'),
+  31:track('Måling og kart', 'Finn punkter i rutenett og regn med lengde og masse.', 'coordinate', 'measure', 'coordinateMove'),
+  41:track('Gangetabell og deling', 'Gangetabeller, like grupper og deling i praktiske situasjoner.', 'tables', 'sharing', 'arrayCount', 'groupsMissing'),
+  42:track('Ruter og klosser', 'Finn hvor mange ruter en flate dekker, og hvor mange klosser en boks rommer.', 'arrayCount', 'boxUnits', 'pattern', 'compositeArea'),
+  51:track('Brøk og desimaltall', 'Les brøker, finn en del av en mengde og sammenlign brøker.', 'fractionModel', 'fractionOf', 'fractionCompare', 'fractionDecimal', 'equivalentFraction'),
+  52:track('Likninger og sjanse', 'Finn det ukjente tallet og regn ut sjansen for å trekke en bestemt farge.', 'oneStep', 'chance', 'chanceCompare'),
+  61:track('Desimaltall og prosent', 'Regn med desimaltall, brøk og prosent i hverdagen.', 'decimalSum', 'percentOf', 'fractionOf', 'decimalDifference'),
+  62:track('Areal, omkrets og volum', 'Mål et rektangel, regn på en boks og finn diameteren til en sirkel.', 'area', 'perimeter', 'prism', 'diameter', 'angleRemainder'),
+  71:track('Tall og regnerekkefølge', 'Regn med negative tall og uttrykk med flere regnearter.', 'integers', 'order', 'orderCompare'),
+  72:track('Brøk, desimaltall og prosent', 'Legg sammen brøker og bytt mellom ulike måter å vise en andel på.', 'fractionSum', 'fractionDecimal', 'percentMatch', 'fractionDifference'),
+  73:track('Likninger og statistikk', 'Løs lineære likninger og finn gjennomsnitt og median.', 'linearEquation', 'mean', 'median', 'missingMean'),
+  81:track('Primtall og brøk', 'Finn primtallsfaktorer og forkort brøker.', 'primeFactors', 'reduceFraction', 'divisible'),
+  82:track('Algebra og likninger', 'Sett inn tall i uttrykk, løs likninger og finn regelen i et mønster.', 'expression', 'linearEquation', 'patternRule', 'distributive'),
+  83:track('Funksjoner og fart', 'Les en funksjonstabell og regn med fart, tid og avstand.', 'functionTable', 'speed', 'intercept'),
+  91:track('Trekanter og romfigurer', 'Bruk Pytagoras, målestokk og volumformler.', 'pythagoras', 'scale', 'prism', 'scaleBack'),
+  92:track('Statistikk og sannsynlighet', 'Finn median og variasjonsbredde, og regn ut sannsynlighet.', 'median', 'range', 'chance', 'dice', 'frequency'),
+  101:track('Funksjoner og vekst', 'Finn stigningstall, vekstfaktor og verdi etter flere endringer.', 'slope', 'growthFactor', 'repeatedGrowth', 'comparePlans'),
+  102:track('Likningssett', 'Bruk to opplysninger sammen til å finne to ukjente.', 'systemSum', 'systemPrice', 'systemTotal'),
+  103:track('Økonomi og fart', 'Regn med rabatt, sparepenger og gjennomsnittsfart.', 'discount', 'interest', 'speed', 'budgetBalance'),
 };
 
 export const GRADE_LEVELS = {
@@ -91,6 +91,121 @@ const table = (headers, cells) => ({ kind:'table', headers, cells });
 const equation = (a, b) => `${a}x ${b < 0 ? '−' : '+'} ${Math.abs(b)}`;
 
 const tasks = {
+  compareQuantity:['quantities', int => {
+    const a=int(2,7),b=a+int(1,3);
+    return number('Hvilket tall er størst?', `Se på ${a} og ${b}.`,b,'Tenk på hvor mange brikker hvert tall betyr.',
+      'Tallet med flest brikker er størst.',`${b} er større enn ${a}.`,{wrong:[a,b+1]});
+  }],
+  clockHours:['geometry', int => {
+    const start=int(8,13),hours=int(2,4);
+    return number('Hvor mange timer går det?', `Øvinga begynner kl. ${start}.00 og slutter kl. ${start+hours}.00.`,hours,
+      'Tell fram én time om gangen.',`Trekk ${start} fra ${start+hours}.`,`Det går ${hours} timer.`,{unit:' timer'});
+  }],
+  coordinateMove:['geometry', int => {
+    const x=int(1,3),y=int(1,3),step=int(1,4-x);
+    const answer=`(${x+step}, ${y})`;
+    return exercise('Flytt punktet',`Start på (${x}, ${y}). Gå ${step} steg mot høyre.`,answer,
+      [`(${x}, ${y+step})`,`(${x}, ${y})`],'Når du går til høyre, endres den første koordinaten.',
+      `Legg ${step} til ${x}. La den andre koordinaten stå.`,`Du havner på ${answer}.`,{kind:'point',x,y});
+  }],
+  groupsMissing:['quantities', int => {
+    const rows=int(2,5),per=int(3,7),total=rows*per;
+    return number('Hvor mange grupper blir det?', `Du har ${total} klosser og legger ${per} klosser i hver eske.`,rows,
+      'Lag like store grupper.',`Del ${total} på ${per}.`,`${total} ÷ ${per} = ${rows} esker.`,{unit:' esker',wrong:[per,total-per]});
+  }],
+  compositeArea:['geometry', int => {
+    const a=int(3,7),b=int(3,6),cut=int(1,2);
+    return number('Hvor mange ruter er igjen?', `Et brett har ${a} kolonner og ${b} rader. Vi fjerner ${cut} ruter i et hjørne.`,a*b-cut,
+      'Finn først hvor mange ruter hele brettet har.',`Gang ${a} med ${b}. Trekk så fra ${cut}.`,`${a} × ${b} − ${cut} = ${a*b-cut} ruter.`,{wrong:[a*b,a*b+cut]});
+  }],
+  equivalentFraction:['fractions', int => {
+    const n=int(1,3),d=n+int(2,5),k=int(2,4);
+    return exercise('Hvilken brøk har samme verdi?',`Finn en brøk som er like stor som ${n}/${d}.`,`${n*k}/${d*k}`,
+      [`${n*k}/${d}`,`${n}/${d*k}`],'Telleren og nevneren må endres med samme faktor.',
+      `Gang begge med ${k}.`,`${n}/${d} = ${n*k}/${d*k}.`);
+  }],
+  chanceCompare:['probability', int => {
+    const red=int(2,4),blue=red+int(1,3);
+    return exercise('Hva er mest sannsynlig?',`En pose har ${red} røde og ${blue} blå brikker. Du trekker én uten å se.`,'Å få blå',
+      ['Å få rød','Like stor sjanse'],'Tenk på hvilken farge det er flest av.',`Sammenlign ${red} med ${blue}.`,
+      'Det er flest blå brikker, så det er større sjanse for blå.');
+  }],
+  decimalDifference:['decimals', int => {
+    const cents=int(3,8),paid=int(4,9),price=paid-cents/10;
+    return number('Hvor mye får du tilbake?',`Du betaler ${paid} kr for noe som koster ${format(price)} kr.`,cents/10,
+      'Vekslepengene er forskjellen mellom beløpene.',`Regn ${paid} − ${format(price)}.`,
+      `Du får ${format(cents/10)} kr tilbake.`,{unit:' kr',step:.1,wrong:[price,cents]});
+  }],
+  angleRemainder:['geometry', int => {
+    const a=5*int(5,12);
+    return number('Finn resten av den rette vinkelen',`En rett vinkel deles i to. Den ene delen er ${a}°.`,90-a,
+      'En rett vinkel er 90°.',`Trekk ${a}° fra 90°.`,`90° − ${a}° = ${90-a}°.`,{unit:'°',wrong:[180-a,90+a]});
+  }],
+  orderCompare:['operations', int => {
+    const a=int(2,5),b=int(3,7),c=int(2,5);
+    return number('Hvilken verdi får uttrykket?',`(${a} + ${b}) × ${c}`,(a+b)*c,
+      'Regn ut parentesen først.',`Gang ${a+b} med ${c}.`,`${a+b} × ${c} = ${(a+b)*c}.`,{wrong:[a+b*c,a+b+c]});
+  }],
+  fractionDifference:['fractions', int => {
+    const denominator=int(5,10),n=int(3,denominator-1),part=int(1,n-1);
+    return exercise('Hvor stor brøk er igjen?',`Du har ${n}/${denominator} av en plate og gir bort ${part}/${denominator}.`,
+      `${n-part}/${denominator}`,[`${n+part}/${denominator}`,`${n}/${denominator}`],
+      'Bitene har samme størrelse, så nevneren beholdes.',`Trekk ${part} fra ${n} i telleren.`,
+      `Det er ${n-part}/${denominator} igjen.`);
+  }],
+  missingMean:['statistics', int => {
+    const mean=int(5,16),d=int(1,4),last=mean+d;
+    return number('Finn det tredje tallet',`Tre tall har gjennomsnitt ${mean}. To av tallene er ${mean-d} og ${mean}.`,last,
+      'Gang gjennomsnittet med 3 for å finne summen.',`Trekk ${mean-d} og ${mean} fra ${mean*3}.`,
+      `Det tredje tallet er ${last}.`,{wrong:[mean,mean-d]});
+  }],
+  divisible:['factors', int => {
+    const d=int(3,9),n=d*int(3,9);
+    return number('Hvilket tall er delelig?',`Hvilket alternativ kan deles på ${d} uten rest?`,n,
+      `Tenk på ${d}-gangen.`,`Se etter et multiplum av ${d}.`,`${n} kan deles på ${d} uten rest.`,{wrong:[n-1,n+1]});
+  }],
+  distributive:['algebra', int => {
+    const a=int(2,6),b=int(2,7);
+    return exercise('Multipliser inn i parentesen',`${a}(x + ${b})`,`${a}x + ${a*b}`,
+      [`${a}x + ${b}`,`x + ${a*b}`],'Tallet utenfor parentesen skal ganges med begge ledd.',
+      `Gang ${a} med x og deretter med ${b}.`,`${a}(x + ${b}) = ${a}x + ${a*b}.`);
+  }],
+  intercept:['functions', int => {
+    const a=int(2,7),b=int(2,14);
+    return number('Hvor krysser linja y-aksen?',`y = ${a}x + ${b}`,b,'På y-aksen er x lik 0.',
+      'Sett inn x = 0 i uttrykket.',`y = ${a} × 0 + ${b} = ${b}.`,{wrong:[a,a+b]});
+  }],
+  scaleBack:['geometry', int => {
+    const scale=int(2,6),a=int(3,9);
+    return number('Hvor langt er det på tegningen?',`Målestokken er 1 : ${scale}. I virkeligheten er lengden ${scale*a} cm.`,a,
+      'Én cm på tegningen svarer til flere cm i virkeligheten.',`Del ${scale*a} på ${scale}.`,
+      `Tegningen viser ${a} cm.`,{unit:' cm',wrong:[scale*a,scale*a*scale]});
+  }],
+  frequency:['statistics', int => {
+    const a=int(2,6),b=int(7,12),c=int(13,20);
+    return number('Hvor mange svarte totalt?', 'Tabellen viser tre svaralternativer og antallet som valgte hvert alternativ.',a+b+c,
+      'Summér kolonnen med antall.',`Legg sammen ${a}, ${b} og ${c}.`,`${a} + ${b} + ${c} = ${a+b+c}.`,
+      {visual:table(['Svar','Antall'],[['A',a],['B',b],['C',c]]),wrong:[a+b,b+c]});
+  }],
+  comparePlans:['functions', int => {
+    const start=int(3,7)*10,delta=int(2,6),rides=int(3,7);
+    const fee=delta*rides;
+    return number('Når koster tilbudene det samme?',`A koster ${start} kr per tur. B koster ${fee} kr i startavgift og ${start-delta} kr per tur.`,rides,
+      'B sparer litt per tur, men har en startavgift.',`Del startavgiften på forskjellen per tur, ${delta} kr.`,
+      `Prisene er like etter ${rides} turer.`,{unit:' turer',wrong:[delta,fee]});
+  }],
+  systemTotal:['algebra', int => {
+    const a=int(4,9),b=int(2,6);
+    return number('Hvor mange store esker?',`Det er ${a+b} esker. En stor rommer 5 klosser, en liten 2. Til sammen rommer de ${5*a+2*b} klosser.`,
+      a,'Tenk først at alle eskene er små.',`De store eskene rommer 3 ekstra hver. Del forskjellen på 3.`,
+      `(${5*a+2*b} − 2 × ${a+b}) ÷ 3 = ${a} store esker.`,{wrong:[b,a+b]});
+  }],
+  budgetBalance:['finance', int => {
+    const income=100*int(17,30),fixed=100*int(8,12),extra=50*int(3,7);
+    return number('Hvor mye er igjen i budsjettet?',`Du har ${income} kr. Utgiftene er ${fixed} kr og ${extra} kr.`,income-fixed-extra,
+      'Legg sammen utgiftene først.',`Trekk ${fixed+extra} kr fra beløpet du har.`,
+      `Det er ${income-fixed-extra} kr igjen.`,{unit:' kr',wrong:[income-fixed,fixed+extra]});
+  }],
   tally:['quantities', int => {
     const n = int(2, 9);
     return number('Hvor mange brikker ser du?', '', n, 'Tell én brikke om gangen.', 'Begynn på den øverste raden.', `Det er ${n} brikker.`,

@@ -1,6 +1,6 @@
-import {actorPose,MAX_ACTORS} from './scenery.js';
+import {createTraffic,MAX_ACTORS} from './scenery.js';
 import {createFireworks,FIREWORKS_START,FIREWORKS_END,FINALE_FIREWORKS_END} from './project-fireworks.js';
-import {landmarkAt} from './project-picking.js';
+import {landmarkAt,landmarkSilhouette} from './project-picking.js';
 
 const clamp = (value,min,max) => Math.max(min,Math.min(value,max));
 const cross = ([ax,ay,az],[bx,by,bz]) => [ay*bz-az*by,az*bx-ax*bz,ax*by-ay*bx];
@@ -147,7 +147,7 @@ export function projectFaces(scene) {
       const fade=color=>color.map((value,i)=>value+(haze[i]-value)*(piece.fog??0));
       const vertexColors=piece.colors??(piece.shape==='dome'&&faceIndex>0 ? points.map(point=>fade(shaded(domeNormal(piece,point)))) : null);
       const color=landscape ? fade(rgb) : vertexColors ? rgb.map((_,i)=>vertexColors.reduce((sum,vertex)=>sum+vertex[i],0)/points.length) : fade(shaded(unit));
-      return {points,normal:unit,color,vertexColors,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,landmark:part.landmark,
+      return {points,normal:unit,color,vertexColors,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,landmark:part.landmark,foundation:Boolean(part.support||part.foundation),
         origin:landscape||piece.radial ? [piece.x,piece.y,piece.z] : null,
         group:layerIndex?layerIndex+1:part.roadBuild!==undefined?-Math.max(.001,part.roadBuild):latest.has(part)?1:0,stride:part.stride??0};
     });
@@ -453,7 +453,7 @@ export function projectCameras(scene,target=null,focusLatest=false) {
   const average=key=>latest.reduce((sum,part)=>sum+part[key],0)/latest.length;
   const point=target??scene.latestTarget??{x:average('x'),y:Math.max(0,average('y')-.6),z:average('z'),height:4.2};
   const height=point.height??6;
-  const station=point.kind==='railwayStation'||point.kind==='monorailStation';
+  const station=point.kind==='railwayStation'||point.kind==='monorailStation'||point.kind==='tramStation';
   const framing=station?23:height*1.13+3.2;
   const close={...initial,zoom:Math.min(maxZoom,scene.size/framing),anchorX:point.x,anchorZ:point.z,
     center:point.y+height*(height>10?.46:.37)};
@@ -471,7 +471,7 @@ export function finishTransition(elapsed) {
 }
 
 const nearbySounds={road:'traffic',bus:'traffic',jetski:'traffic',hover:'rover','offroad-rover':'rover',
-  wheel:'ride-cheer',coaster:'ride-cheer'};
+  wheel:'ride-cheer',coaster:'ride-cheer',tram:'train'};
 const aircraft=new Set(['plane','helicopter','rocket']);
 
 function projectPanorama(scene,initial,maxZoom) {
@@ -512,7 +512,7 @@ export function mountProjectView(container, scene, interactive=false, {
   const camera={...initial};
   const pointers=new Map();
   const selectable=onInspect?faces.filter(face=>Number.isInteger(face.landmark)):[];
-  let frame=0,width=0,height=0,fireworks,projectedView,tap,selectedSite,glow;
+  let frame=0,width=0,height=0,fireworks,projectedView,tap,selectedFaces,glow,glowKey;
   let lastActivity=-Infinity,audibleActors=new Set();
   const events=new AbortController();
   const listen=(node,name,handler,options={})=>node.addEventListener(name,handler,{...options,signal:events.signal});
@@ -527,6 +527,7 @@ export function mountProjectView(container, scene, interactive=false, {
     : {x:0,y:Math.max(...scene.parts.map(part=>part.y+part.h)),z:0});
   const fireworkY=fireworkTarget.y+(fireworkTarget.height??0)+1.4;
   const mounted=performance.now();
+  const moveActors=createTraffic(scene.ambient??[]);
   if (target || closeUp && (!reveal || motion.matches || demo&&!scene.world || focusLatest&&!completedBuild&&!scene.roadBuild)) Object.assign(camera,detail);
   else if (reveal&&scene.world) Object.assign(camera,context);
   from={...camera};
@@ -567,7 +568,7 @@ export function mountProjectView(container, scene, interactive=false, {
     }
     const effects=buildMotion(scene.world,elapsed,low,high,marked,scene.roadBuild);
     const age=still||motion.matches?0:Math.max(0,now-mounted)/1000;
-    effects.actors=(scene.ambient??[]).map(actor=>actorPose(actor,age));
+    effects.actors=moveActors(age);
     const scale=Math.min(width,height)*camera.zoom/scene.size;
     const forward=camera.anchorX*Math.sin(camera.yaw)+camera.anchorZ*Math.cos(camera.yaw);
     const position={...camera,
@@ -581,14 +582,13 @@ export function mountProjectView(container, scene, interactive=false, {
       return [width*.5+position.x+(x*cos-z*sin)*scale,
         height*.5+position.y-((y-camera.center)*Math.cos(camera.pitch)-depth*Math.sin(camera.pitch))*scale];
     };
-    if (selectedSite&&glow) {
-      const [x,y]=projectPoint(selectedSite.x,selectedSite.y+.27,selectedSite.z);
-      const diameter=scale*(selectedSite.waterfront?14.2:13.2);
-      const ring=glow.firstElementChild;
-      ring.style.left=`${x+canvas.offsetLeft}px`;
-      ring.style.top=`${y+canvas.offsetTop}px`;
-      ring.style.width=`${diameter}px`;
-      ring.style.height=`${diameter*Math.sin(camera.pitch)}px`;
+    if (glow) {
+      const key=[width,height,scale,position.x,position.y,position.center,effects.growth,effects.lift,selectedFaces.some(face=>face.group>=2)?age:0].join(':');
+      if (key!==glowKey) {
+        glowKey=key;
+        glow.setAttribute('viewBox',`0 0 ${width} ${height}`);
+        glow.querySelector('path').setAttribute('d',landmarkSilhouette(selectedFaces,projectedView));
+      }
     }
     if (canCelebrate&&playing&&elapsed>=FIREWORKS_START&&elapsed<fireworksEnd) {
       fireworks??=createFireworks(canvas,finale);
@@ -757,14 +757,21 @@ export function mountProjectView(container, scene, interactive=false, {
     engine?.dispose();
   };
   dispose.inspect=index=>{
-    selectedSite=index===null?null:scene.sites?.[index];
+    selectedFaces=selectable.filter(face=>face.landmark===index);
     glow?.remove();
     glow=null;
-    if (selectedSite) {
-      glow=canvas.ownerDocument.createElement('div');
-      glow.className='project-inspect-glow';
+    glowKey=null;
+    if (selectedFaces.length) {
+      const id='selection-'+Math.random().toString(36).slice(2);
+      const ns='http://www.w3.org/2000/svg';
+      glow=canvas.ownerDocument.createElementNS(ns,'svg');
+      glow.setAttribute('class','project-inspect-glow');
       glow.setAttribute('aria-hidden','true');
-      glow.append(canvas.ownerDocument.createElement('span'));
+      glow.innerHTML=`<defs><filter id="${id}" x="-50%" y="-50%" width="200%" height="200%">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="2" result="edge"/>
+        <feComposite in="edge" in2="SourceAlpha" operator="out" result="outline"/>
+        <feFlood flood-color="#fff0a8"/><feComposite in2="outline" operator="in"/>
+      </filter></defs><path fill="white" filter="url(#${id})"/>`;
       canvas.after(glow);
     }
     schedule();

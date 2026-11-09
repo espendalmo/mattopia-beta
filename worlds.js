@@ -4,13 +4,16 @@ export const WORLD_PLACES=16;
 export const REGION_PLACES=24;
 export const REGION_CATALOG_PLACES=36;
 export const RAIL_PLACE=REGION_CATALOG_PLACES;
+export const GRAND_REGION_PLACES=30;
+export const GRAND_REGION_CATALOG=44;
+export const grandCatalog=map=>map?.layout===3&&map.catalog===3;
 export const LEGACY_WORLD_STEPS=120;
 export const isWorld=id=>WORLD_IDS.includes(id);
 export const isRegion=map=>map?.layout===2||map?.layout===3;
-export const worldCapacity=map=>!map||isRegion(map)?REGION_PLACES:WORLD_PLACES;
-export const hasExpandedCatalog=map=>map?.layout===3&&map.catalog===2;
-export const worldPoolSize=map=>hasExpandedCatalog(map)?REGION_CATALOG_PLACES:worldCapacity(map);
-const hasRail=(theme,map)=>isRegion(map)&&(theme==='city'||theme==='moon');
+export const worldCapacity=map=>grandCatalog(map)?GRAND_REGION_PLACES:!map||isRegion(map)?REGION_PLACES:WORLD_PLACES;
+export const hasExpandedCatalog=map=>map?.layout===3&&[2,3].includes(map.catalog);
+export const worldPoolSize=map=>grandCatalog(map)?GRAND_REGION_CATALOG:hasExpandedCatalog(map)?REGION_CATALOG_PLACES:worldCapacity(map);
+const hasRail=(theme,map)=>isRegion(map)&&(theme==='city'||theme==='moon'||theme==='island'&&grandCatalog(map));
 
 export function randomGenerator(seed){
   let n=seed>>>0;
@@ -68,7 +71,7 @@ export function worldChoices(map,theme) {
   if (!map||status.full||status.building!==null) return [];
   const {finished,partial}=legacyPlacement(map.legacy);
   const used=new Set([...finished,partial?.id,...map.order]);
-  const pool=Array.from({length:worldPoolSize(map)},(_,i)=>i);
+  const pool=Array.from({length:worldPoolSize(map)},(_,i)=>i).filter(id=>id!==RAIL_PLACE);
   if (hasRail(theme,map) && status.built>=2) pool.push(RAIL_PLACE);
   const options=pool.filter(id=>!used.has(id));
   const rng=randomGenerator((map.seed??0x4fd37d89)+map.order.length*0x47c82f31+(map.legacy||0)*17);
@@ -93,7 +96,7 @@ export function worldAdvance(map,theme) {
 
 export function freshWorld(rng=Math.random,previous=null) {
   const seed=Math.floor(rng()*2**32)>>>0;
-  return {layout:3,catalog:2,seed:seed===previous?.seed?(seed+1)>>>0:seed,legacy:0,order:[],progress:0};
+  return {layout:3,catalog:3,seed:seed===previous?.seed?(seed+1)>>>0:seed,legacy:0,order:[],progress:0};
 }
 
 function restoreWorld(raw,budget,first,theme) {
@@ -103,13 +106,13 @@ function restoreWorld(raw,budget,first,theme) {
   if (!legacy && (!integer(raw.seed)||raw.seed>=2**32)) return null;
   const {finished,partial}=legacyPlacement(legacy);
   const layout=isRegion(raw)&&!legacy?raw.layout:1;
-  const catalog=layout===3&&hasExpandedCatalog(raw)?{catalog:2}:{};
-  const capacity=worldCapacity({layout});
+  const catalog=layout===3&&hasExpandedCatalog(raw)?{catalog:raw.catalog}:{};
+  const capacity=worldCapacity({layout,...catalog});
   const pool=worldPoolSize({layout,...catalog});
   const remaining=capacity-finished.length-Number(Boolean(partial));
   const used=new Set([...finished,partial?.id]);
   const ids=Array.isArray(raw.order)?[...new Set(raw.order)].filter(id=>
-    integer(id)&&(id<pool||id===RAIL_PLACE&&hasRail(theme,{layout}))&&!used.has(id)).slice(0,remaining):[];
+    integer(id)&&(id===RAIL_PLACE?hasRail(theme,{layout,...catalog}):id<pool)&&!used.has(id)).slice(0,remaining):[];
   const catchUp=Number(Boolean(partial));
   const progress=integer(raw.progress)?Math.min(raw.progress,budget-legacy,ids.length*WORLD_BUILD_STEPS+catchUp):0;
   // There can be at most one selected building beyond completed and in-progress buildings.
