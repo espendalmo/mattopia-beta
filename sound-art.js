@@ -42,56 +42,82 @@ function waltz(t) {
   return melody*.68+unit(age*38)*Math.exp(-age*10)*chord;
 }
 
-function salsa(t,mid) {
-  if (t<0||t>7.6) return 0;
-  const figure=phrase(t-.19,[523,659,0,784,659,0,587,698,0,784,880,0,784,659,587,523],.235);
-  const beat=t%.94;
-  const bass=(wave(beat,130.81)*.49+wave(beat,196)*.18)*unit(beat*40)*Math.exp(-beat*8);
-  const claveAge=[0,.354,.704].reduce((age,hit)=>beat>=hit?Math.min(age,beat-hit):age,1);
-  const clave=(wave(claveAge,1160)+mid*.78)*Math.exp(-claveAge*85)*unit(claveAge*430);
-  return (figure*.66+bass*.46+clave*.21)*unit((7.6-t)*2);
+const jazzNotes=[392,466,523,587,554,523,466,392,349,392,466,523,0,466,392,349,392,0];
+const jazzBass=[130.81,155.56,164.81,174.61,146.83,130.81,98,130.81];
+const cubanNotes=[523,659,0,784,698,659,0,587,698,0,880,784,698,659,587,523,0,659,784,0,698,659,587,523];
+const claveHits=[0,.324,.648,1.08,1.404];
+
+function jazz(t,mid) {
+  if (t<0||t>=7.6) return 0;
+  const beat=t%.46,index=Math.floor(t/.46);
+  const offbeat=beat>=.306;
+  const age=offbeat?beat-.306:beat;
+  const melody=jazzNotes[(index+(offbeat?1:0))%jazzNotes.length];
+  const lead=unit(age*42)*Math.exp(-age*7)*(wave(age,melody)*.57+wave(age,melody*2)*.15);
+  const root=jazzBass[index%jazzBass.length];
+  const bass=unit(beat*34)*Math.exp(-beat*10)*(wave(beat,root)*.52+wave(beat,root*2)*.19);
+  const brush=mid*unit(age*45)*Math.exp(-age*14)*(index%2?.62:.25);
+  return (lead*.7+bass*.57+brush)*unit((7.6-t)*3);
 }
 
-function theremin(t) {
-  if (t<0||t>3.9) return 0;
-  const glide=306*t+31*Math.sin(t*1.85)+.68*Math.sin(t*36);
-  return Math.sin(TAU*glide)*Math.sin(Math.PI*t/3.9)**2*.37;
+function salsa(t,mid) {
+  if (t<0||t>7.6) return 0;
+  const figure=phrase(t-.13,cubanNotes,.216);
+  const bar=t%1.728;
+  const bassAge=bar<.648?bar:bar-.648;
+  const root=Math.floor(t/1.728)%2?98:130.81;
+  const bass=(wave(bassAge,root)*.49+wave(bassAge,root*1.5)*.18)*unit(bassAge*40)*Math.exp(-bassAge*8);
+  const claveAge=claveHits.reduce((age,hit)=>bar>=hit?Math.min(age,bar-hit):age,1);
+  const clave=(wave(claveAge,1160)+mid*.78)*Math.exp(-claveAge*85)*unit(claveAge*430);
+  return (figure*.84+bass*.62+clave*.25)*unit((7.6-t)*2);
+}
+
+function moonPhrase(t) {
+  if (t<0||t>7.5) return 0;
+  const note=phrase(t,[220,261.63,329.63,293.66,261.63,196,220,0,329.63,392,329.63,261.63],.59);
+  const glide=270*t+19*Math.sin(t*1.55)+.085*Math.sin(t*31);
+  const halo=Math.sin(TAU*glide)*Math.sin(Math.PI*t/7.5)**2*.2;
+  return note*.42+halo;
 }
 
 export function ambienceBuffer(context,world,buildings,{fun=0,wheel=false,hotel=false}={}) {
   const loopLength=loopLengths[world]??48;
-  const calls=world==='city'?[[1.9,1550],[2.16,1790],[12.4,1850],[12.69,1580],[34.33,1710]]
-    :world==='island'?[[6.2,920],[12.6,1060],[36.7,1230],[39.1,1100]]:[[4.25,392],[19.1,330],[47.2,510]];
+  const birds=world==='city'?[[1.9,1550],[2.16,1790],[17.4,1850],[17.69,1580],[34.33,1710]]
+    :world==='island'?[[6.2,1220],[19.6,1360],[36.7,1530],[39.1,1480]]:[];
   return synthesize(context,loopLength,(t,noise,low,mid)=>{
-    let bed;
+    let bed,music;
     if (world==='island') {
-      const swell=.17+.69*(.5-.5*Math.cos(t*TAU/7))**2;
-      bed=swell*(low*1.8+mid*.75+noise*.11);
+      const swell=.18+.82*(.5-.5*Math.cos(t*TAU/7))**2;
+      bed=swell*(low*1.66+mid*.47+noise*.19);
+      music=(hotel?.57:.47)*(salsa(t-3.5,mid)+salsa(t-26,mid));
     } else if (world==='moon') {
-      bed=low*.37+mid*.09+.087*wave(t,56)*(.8+.2*Math.cos(t*TAU/12))+.16*(theremin(t-11.4)+theremin(t-41.6));
-    } else bed=(.78+.22*wave(t,1/12))*(low*.93+mid*.17);
-    for (const [at,pitch] of calls) {
-      bed+=(world==='city'?.11:.065)*chirp(t-at,world==='island'?.42:.15,pitch);
+      bed=low*.36+mid*.07+.065*wave(t,56)*(.8+.2*Math.cos(t*TAU/12));
+      music=.73*(moonPhrase(t-3.5)+moonPhrase(t-34));
+    } else {
+      const breeze=.67+.33*wave(t,1/12);
+      const river=.49+.28*wave(t,1/3.5);
+      bed=breeze*(low*.73+mid*.12)+river*(mid*.41+noise*.045);
+      music=.55*(jazz(t-3.5,mid)+jazz(t-21.5,mid));
     }
+    for (const [at,pitch] of birds) bed+=.085*chirp(t-at,world==='island'?.3:.15,pitch);
     const passes=(.4+.32*wave(t,1/8)+.23*wave(t,3/16))**2;
-    const street=buildings*.11*passes*(low*1.2+wave(t,world==='moon'?172:124)*.25);
-    const fair=wheel?.19*waltz(t-(hotel?35:25)):fun?.14*phrase(t-30.1,[392,523,659,784,659,587,523],.31):0;
-    const tropical=hotel?.22*salsa(t-14.5,mid):0;
-    const chatter=buildings>=2 ? mid*.16*unit((t-9.2)*1.9)*unit((12.1-t)*1.6)*(.7+.24*wave(t,5)) : 0;
-    return (bed+street+fair+tropical+chatter)*Math.min(1,t*3,(loopLength-t)*3);
+    const street=buildings*.043*passes*(low*1.2+mid*.12);
+    const fair=wheel?.19*waltz(t-(world==='city'?36:44))
+      :fun&&world!=='moon'?.105*phrase(t-(world==='city'?38:46),[392,523,659,784,659,698,587,523],.31):0;
+    return (bed+street+music+fair)*Math.min(1,t*3,(loopLength-t)*3);
   });
 }
 
 export const ACTIVITY_SOUNDS=Object.freeze({
-  rocket:[2.25,.24,3],
-  plane:[2.8,.29,3],
-  helicopter:[3.45,.29,4],
-  train:[1.9,.21,4],
+  rocket:[2.25,.055,4],
+  plane:[2.8,.058,4],
+  helicopter:[3.45,.057,5],
+  train:[1.9,.058,5],
   'tram-bell':[.65,.24,0],
-  horn:[.52,.16,11],
-  monorail:[1.65,.19,4],
-  traffic:[1.45,.17,5.8],
-  rover:[1.65,.14,6.5],
+  horn:[.52,.085,12],
+  monorail:[1.65,.052,5],
+  traffic:[1.45,.047,6.5],
+  rover:[1.65,.045,7.5],
   people:[1.63,.145,9],
   astronaut:[1.55,.14,11],
   alien:[1.57,.145,13],
@@ -163,7 +189,8 @@ export function soundClip(context,kind) {
     if (kind==='monorail') return pass*(low*.36+.23*wave(t,136+t*11)+chirp(t-.13,.75,442)*.24);
     if (kind==='traffic'||kind==='rover') {
       const engine=(kind==='traffic'?115:148)+30*pass-24*t;
-      return pass*(mid*.36+low*.51+.23*wave(t,engine)+.125*wave(t,engine*2.03));
+      return kind==='traffic'?pass*(mid*.49+low*.71+.08*wave(t,engine))
+        :pass*(mid*.36+low*.51+.23*wave(t,engine)+.125*wave(t,engine*2.03));
     }
     if (kind==='ride-cheer') {
       const a=chirp(t-.12,.83,618+110*pass),b=chirp(t-.33,.86,825+145*pass);

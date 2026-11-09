@@ -119,7 +119,8 @@ function regionGround(layout,plan,sky,full,horizon,season) {
     const base=surfaceColor(tile,layout,season);
     const distant=relief?.(x,z,tile);
     const color=distant?.tint?blend(base,distant.color,distant.tint*horizon):base;
-    return {point:[x,tile.y+(distant?.height??0)*horizon,z],color:blend(background,color,visibility),visibility};
+    const ground=plan.streetGround?.(x,z,tile.y)??tile.y;
+    return {point:[x,ground+(distant?.height??0)*horizon,z],color:blend(background,color,visibility),visibility};
   });
   const ground=[];
   for (let i=0;i<grid.length-row;i++) {

@@ -127,7 +127,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
       }
       source.connect(gain);
       gain.connect(context.destination);
-      const mix={key,source,gain,start,end,limited,heard:new Map(),lastCue:-Infinity};
+      const mix={key,world,source,gain,start,end,limited,heard:new Map(),lastCue:-Infinity};
       source.onended=()=>{
         if (ambience===mix) ambience=null;
         source.disconnect();
@@ -166,6 +166,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
   function activity(kind,intensity=1) {
     const clip=ACTIVITY_SOUNDS[kind];
     if (!clip||!ambience||!context) return false;
+    if (ambience.world!=='moon'&&['rocket','monorail','rover','astronaut','alien'].includes(kind)) return false;
     const now=context.currentTime;
     if (now<ambience.start||now>ambience.end-.8) return false;
     const [length,volume,rest]=clip;
