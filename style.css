@@ -1058,12 +1058,62 @@ canvas.lunar-starfield,
   margin: 0;
   box-shadow: 0 4px 18px #213d282c;
 }
+.home-reward { position: relative; display: flow-root; }
+.home-surprise {
+  position: absolute;
+  z-index: 2;
+  inset: auto auto 10px max(6px, calc((100% - 400px) / 2 + 8px));
+  width: 142px;
+  height: 132px;
+  transform: scale(.64);
+  transform-origin: bottom left;
+  pointer-events: none;
+}
+.home-reward:has(.home-surprise:not([hidden])) .garden-friend { visibility: hidden; }
+.eplo-act { position: relative; width: 100%; height: 100%; }
+.home-surprise .buddy { margin: 0; transform: none; }
+.juice-glass { position: absolute; width: 47px; height: 69px; left: 82px; top: 57px; }
+.sun-glasses { position: absolute; width: 71px; left: 38px; top: 55px; transform: rotate(-5deg); }
+.juggle-stars svg { position: absolute; width: 22px; height: 22px; fill: #f5cc69; color: #956322; }
+.juggle-stars svg:nth-child(1) { left: 10px; top: 53px; }
+.juggle-stars svg:nth-child(2) { left: 57px; top: 15px; }
+.juggle-stars svg:nth-child(3) { left: 108px; top: 53px; }
+.eplo-puff { width: 100%; height: 100%; }
 @media (prefers-reduced-motion: no-preference) {
   .perfect-round-toast { animation: perfect-round 3.5s ease both; }
   @keyframes perfect-round {
     0% { opacity: 0; transform: translateY(-6px); }
     7%, 88% { opacity: 1; transform: translateY(0); }
     100% { opacity: 0; transform: translateY(-4px); }
+  }
+  .eplo-act { animation: surprise-appear .38s cubic-bezier(.22,.8,.4,1.23) both; }
+  [data-act="juice"] .juice-glass { animation: eplo-sip 2.15s .38s ease-in-out 2; }
+  [data-act="shades"] .sun-glasses { animation: eplo-shades 2.6s .35s ease-in-out 2; }
+  .juggle-stars svg { animation: eplo-toss 1.65s .05s ease-in-out infinite; }
+  .juggle-stars svg:nth-child(2) { animation-delay: -.55s; }
+  .juggle-stars svg:nth-child(3) { animation-delay: -1.07s; }
+  .eplo-puff { animation: surprise-puff .42s ease-out both; }
+  @keyframes surprise-appear {
+    from { opacity: 0; transform: translateY(16px) scale(.76); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes eplo-sip {
+    0%, 72%, 100% { transform: translate(0, 0); }
+    28%, 57% { transform: translate(-19px, -5px) rotate(-12deg); }
+  }
+  @keyframes eplo-shades {
+    0%, 100% { transform: rotate(-5deg); }
+    24%, 66% { transform: translateY(-5px) rotate(-12deg); }
+    44% { transform: translateY(-4px) rotate(4deg); }
+  }
+  @keyframes eplo-toss {
+    0%, 100% { transform: translateY(5px) rotate(-18deg); }
+    48% { transform: translateY(-26px) rotate(86deg); }
+  }
+  @keyframes surprise-puff {
+    0% { opacity: .5; transform: scale(.68); }
+    34% { opacity: 1; }
+    100% { opacity: 0; transform: scale(1.28) translateY(-14px); }
   }
 }
 .eplo-hint-name { display: block; margin-bottom: 2px; font-size: .78rem; }

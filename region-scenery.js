@@ -307,7 +307,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const developments=plan.plots.map(plot=>({plot,steps:buildingParts(plot.index,plot)}));
   const completedPlots=plan.plots.slice(0,status.built);
   const station=completedPlots.find(plot=>['railwayStation','monorailStation','tramStation'].includes(plot.kind));
-  const rail=station&&(station.kind==='tramStation'?districtTram(layout,station,plan):districtRail(layout,station,plan));
+  const rail=station&&(station.kind==='tramStation'?districtTram(layout,station,plan,developments):districtRail(layout,station,plan,developments));
   if (rail) {
     plan.transit=rail.points;
     plan.transitPortals=rail.portals;
@@ -384,7 +384,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const street=locals.find(actor=>actor.kind==='road');
   const speakers=locals.filter(actor=>actor.voice).slice(0,id==='moon'?2:1);
   const essential=[...(rail?.actors??[]),...helicopter,...craft.slice(0,5),...speakers,
-    ...(street?[street]:[]),...locals.filter(actor=>['bus','offroad-rover'].includes(actor.kind))];
+    ...(street?[street]:[]),...locals.filter(actor=>['bus','offroad-rover','hover'].includes(actor.kind))];
   const ambient=[...new Set([...essential,...visitors.slice(0,2),...rides,...locals,...visitors])].slice(0,MAX_ACTORS);
   for (const visitor of visitors) if (!ambient.includes(visitor)) {
     const origin=visitor.pose(0);

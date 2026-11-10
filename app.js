@@ -34,6 +34,7 @@ let testBreakReturn = null;
 let brickDrag = null;
 let ignoredBrickClick = null;
 let disposeProjectPreview;
+let disposeHomeSurprise;
 let setup = null;
 let ui = makeUI();
 const sounds = createSoundPlayer();
@@ -763,6 +764,49 @@ function confetti(landmark = false) {
   return `<div class="confetti${landmark ? ' landmark-confetti' : ''}" aria-hidden="true">${Array.from({ length: landmark ? 48 : 38 }, (_, i) => `<i style="--x:${(i*37)%100}%;--drift:${(i%2?1:-1)*(25+i%7*15)}px;--delay:${(landmark ? .83 : 0)+(i%9)*.055}s;--duration:${2.3+i%5*.2}s;--turn:${220+i*29}deg;background:${colors[i%colors.length]}"></i>`).join('')}</div>`;
 }
 
+const homeSurpriseProps = {
+  juice: '<svg class="juice-glass" viewBox="0 0 46 68"><path d="m16 34 6-26 16-5" fill="none" stroke="#f4c6a0" stroke-width="4" stroke-linecap="round"/><path d="M5 27h35l-5 34q-1 4-5 4H15q-4 0-5-4Z" fill="#fff6dc" stroke="#385854" stroke-width="2"/><path d="M9 40q14-5 27 0l-3 20H13Z" fill="#eea744"/><path d="m13 33 3 22" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="36" cy="29" r="7" fill="#ffd474" stroke="#c77a43" stroke-width="2"/><path d="M36 25v8m-4-4h8" stroke="#fff0af" stroke-width="1.5"/></svg>',
+  shades: '<svg class="sun-glasses" viewBox="0 0 71 31"><path d="M2 8h23q6 0 7 5h7q1-5 7-5h23v6l-3 2-2 8q-2 4-7 4h-8q-6 0-8-6l-3-6h-5l-3 6q-2 6-8 6h-8q-5 0-7-4l-2-8-3-2Z" fill="#213d41" stroke="#f8d671" stroke-width="2.6" stroke-linejoin="round"/><path d="m10 17 8-5m29 5 8-5" stroke="#8dbbc3" stroke-width="2.5" stroke-linecap="round"/></svg>',
+  stars: `<div class="juggle-stars">${icon('star')}${icon('star')}${icon('star')}</div>`,
+};
+const homeSurpriseCloud = '<svg class="eplo-puff" viewBox="0 0 142 132"><path d="M38 91a19 19 0 0 1-4-37 25 25 0 0 1 45-17 22 22 0 0 1 29 17 18 18 0 0 1-3 36Z" fill="#f3f1e8" stroke="#b5c4bc" stroke-width="2"/><path d="M46 66q3-11 14-11m20-4q11 0 14 10" fill="none" stroke="#d5ded3" stroke-width="3" stroke-linecap="round"/><circle cx="19" cy="42" r="6" fill="#e0e7dc"/><circle cx="122" cy="39" r="5" fill="#f3f1e8"/><circle cx="124" cy="99" r="7" fill="#e0e7dc"/></svg>';
+
+function mountHomeSurprise() {
+  const stage = root.querySelector('[data-home-surprise]');
+  if (!stage) return;
+  const acts = Object.keys(homeSurpriseProps);
+  let idleTimer, sceneTimer, previous;
+  const schedule = (delay=12000) => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(appear, delay);
+  };
+  const dismiss = () => {
+    if (stage.hidden || stage.dataset.act === 'puff') return;
+    clearTimeout(sceneTimer);
+    stage.dataset.act = 'puff';
+    stage.innerHTML = homeSurpriseCloud;
+    sceneTimer = setTimeout(() => { stage.hidden = true; stage.replaceChildren(); }, 420);
+  };
+  function appear() {
+    if (document.hidden || document.querySelector('dialog[open]')) { schedule(); return; }
+    const choices = acts.filter(act => act !== previous);
+    previous = choices[Math.floor(Math.random() * choices.length)];
+    stage.dataset.act = previous;
+    stage.innerHTML = `<div class="eplo-act">${buddy(true)}${homeSurpriseProps[previous]}</div>`;
+    stage.hidden = false;
+    sceneTimer = setTimeout(() => { dismiss(); schedule(20000); }, 6400);
+  }
+  const activity = () => { dismiss(); schedule(); };
+  const events = ['pointerdown','keydown','scroll','visibilitychange'];
+  events.forEach(event => document.addEventListener(event,activity,{capture:true,passive:true}));
+  schedule();
+  return () => {
+    clearTimeout(idleTimer);
+    clearTimeout(sceneTimer);
+    events.forEach(event => document.removeEventListener(event,activity,true));
+  };
+}
+
 function renderHome() {
   const total = state.roundsCompleted;
   const stars = Array.from({ length: 5 }, (_, i) => icon('star', i < Math.min(total, 5) ? '' : 'empty-star')).join('');
@@ -778,7 +822,7 @@ function renderHome() {
   const cta = state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : choose ? firstBuild ? 'Velg første bygg' : 'Velg neste bygg' : 'Start runden';
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="home">
     ${profile ? `<button class="profile-switch" data-action="show-profiles">${avatarArt(profile.avatar)}<strong>${escapeHtml(profile.name)}</strong><span>Bytt spiller</span></button>` : ''}
-    ${rewardArt(false, next)}<p class="home-eyebrow">${g.label}</p>
+    <div class="home-reward">${rewardArt(false, next)}<div class="home-surprise" data-home-surprise aria-hidden="true" hidden></div></div><p class="home-eyebrow">${g.label}</p>
     <h1 tabindex="-1">${firstBuild ? 'Klar for å komme i gang?' : total % 2 ? 'Klar for en til økt?' : 'Klar for flere oppgaver?'}</h1>
     <p class="home-description">${state.active?.tasks.length ?? state.roundLength} oppgaver venter.</p>
     <button class="primary" data-action="start">${cta}${icon('arrow')}</button>
@@ -1281,8 +1325,7 @@ function renderComplete() {
   const stage = g.added ? projectScene(g.mode, g.map || g.completed) : null;
   const projectStep = stage?.last;
   const finishedProject = g.project && g.full && g.added;
-  const summary = state.history.at(-1);
-  const length = summary?.length ?? ROUND_LENGTH;
+  const length = state.history.at(-1)?.length ?? ROUND_LENGTH;
   const message = g.project
     ? `${g.label}${g.full ? ' er ferdig!' : ''}<br>${projectProgress(g)}.`
     : g.mode === 'bricks' ? g.full ? `${g.model.done}<br>Fem klosser, ett flott bygg!` : `En ny kloss på plass!<br>${g.build.pieces} av ${g.model.pieces.length} klosser.` : `${g.label}<br>${g.garden.stage} av 5 vekststeg.`;
@@ -1300,12 +1343,6 @@ function renderComplete() {
   const again = newMap ? 'Start et nytt kart' : state.focusBreakPending ? breakButtonLabel() : 'En runde til';
   const headline=finishedProject?`${g.label} er ferdig!`:'Du klarte runden!';
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}${finishedProject&&g.map?mapEplo(projectCongratulations(g.mode)):''}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">${headline}</h1>${finishedProject&&!g.map?projectCongratulations(g.mode):''}${latest}${(!projectStep || g.full&&!finishedProject) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="primary" data-action="${newMap ? 'world-new' : 'again'}">${again}${icon('again')}</button><button class="secondary secondary-cta" data-action="home">Ferdig for nå${icon('check')}</button>${gallery}</main></div>${party}`;
-  if (celebrateOnRender && summary?.firstTry === length) {
-    root.insertAdjacentHTML('beforeend', `<aside class="perfect-round-toast" aria-hidden="true">${eploNote('Perfekt runde!',true)}</aside>`);
-    const toast = root.querySelector('.perfect-round-toast');
-    setTimeout(()=>toast?.remove(),3500);
-    say('Eplo sier: Perfekt runde!');
-  }
   celebrateOnRender = false;
 }
 
@@ -1318,12 +1355,14 @@ function render() {
     sounds.stopAmbience();
   }
   disposeProjectPreview?.();
+  disposeHomeSurprise?.();
   if (view === 'round') renderRound();
   else if (view === 'complete') renderComplete();
   else if (view === 'focus-break') renderFocusBreak();
   else if (view === 'onboarding') renderOnboarding();
   else renderHome();
   disposeProjectPreview = mountProjectPreview(root);
+  disposeHomeSurprise = view === 'home' ? mountHomeSurprise() : null;
   const screen = view === 'round' ? `round-${state.active?.id}-${state.active?.index}`
     : view === 'focus-break' ? `${view}-${focusGame.kind}-${focusGame.phase}` : view;
   if (view === 'round' && taskScroll && renderedScreen === screen) root.querySelector('.task-scroll').scrollTop = taskScroll;
@@ -1686,10 +1725,17 @@ function submitAnswer(value) {
   state.active = answered;
   const task = answered.tasks[answered.index];
   if (answered.solved) {
+    const last = answered.index === answered.tasks.length - 1;
+    const perfect = last && answered.results.every(result => result?.firstTry);
     save(); render();
     feedback(`task-success-${taskSuccessStep(answered.index,answered.tasks.length)}`, 16);
     flashAnswer(task, value, true);
-    say(`Riktig. ${equationText(task)} Neste oppgave er klar.`);
+    if (perfect) {
+      root.insertAdjacentHTML('beforeend', `<aside class="perfect-round-toast" aria-hidden="true">${eploNote('Perfekt runde!',true)}</aside>`);
+      const toast = root.querySelector('.perfect-round-toast');
+      setTimeout(()=>toast?.remove(),3500);
+    }
+    say(`Riktig. ${equationText(task)} ${perfect ? 'Eplo sier: Perfekt runde!' : last ? 'Runden er klar til å fullføres.' : 'Neste oppgave er klar.'}`);
     root.querySelector('[data-action="next"]')?.focus({ preventScroll: true });
     root.querySelector('.feedback-area')?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
     return;

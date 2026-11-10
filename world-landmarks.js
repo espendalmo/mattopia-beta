@@ -530,7 +530,7 @@ function greatPark(theme) {
 }
 
 function factory() {
-  const brick='#ae766d',roofTone='#566d7a';
+  const brick='#ae766d',roofTone='#755257';
   return [base(10.72,9.52,'#aaa79a'),
     [r(-1.19,-.84,6.95,5.27,2.94,brick,.34),r(3.35,-1.54,2.22,3.49,1.87,'#c4977e',.36),
       ...[-2.75,.38].map(x=>roof(x,-.84,3.43,5.43,1.4,roofTone,3.25)),
@@ -632,7 +632,7 @@ function radioTower(lunar=false) {
         beam(node(i,j+1),node(i+1,j+1),.103,bright),
         beam(node(i,j),node(i+1,j+1),.113,mast),
       ])]),
-      r(-2.46,1.55,3.2,2.92,1.72,lunar?'#97a6bd':'#c7aa88',.33),roof(-2.46,1.55,3.49,3.07,.65,'#657e8e',2.02)],
+      r(-2.46,1.55,3.2,2.92,1.72,lunar?'#97a6bd':'#c7aa88',.33),roof(-2.46,1.55,3.49,3.07,.65,lunar?'#69577e':'#8f5e4d',2.02)],
     [beam([.88,8.49,-.57],[.88,11.9,-.57],.16,bright),
       t(.88,-.57,.6,.6,.53,'#ecb07f',10.55),d(.88,-.57,.54,.54,.41,'#ef867c',11.51),
       ...pair.flatMap(s=>[beam([.88,9.29,-.57],[.88+s*1.15,9.74,-.57],.115,cream),
@@ -713,28 +713,33 @@ function smoothie() {
 }
 
 function snackHouse(style) {
-  const tropical=['tikiBar','coralCafe'].includes(style), tiki=style==='tikiBar', moon=!tropical&&style!=='bistro';
+  const bistro=style==='bistro', tropical=['tikiBar','coralCafe'].includes(style), tiki=style==='tikiBar', moon=!tropical&&!bistro;
   const burgerShop=style==='moonBurger', iceShop=style==='cosmicIce';
   const main=tiki?'#b98462':iceShop?'#9a86b7':burgerShop?'#ba796b':style==='coralCafe'?'#d79b89':moon?'#9299b7':'#c39e81';
   const trim=tiki?'#608d77':iceShop?'#4c8fa5':burgerShop?'#654e69':style==='coralCafe'?'#428c92':'#647781';
-  const label=burgerShop?'MOON BURGER':iceShop?'COSMIC ICE':tiki?'TIKI':moon?'DUST CAFE':style==='bistro'?'BISTRO':'CAFE';
+  const label=burgerShop?'MOON BURGER':iceShop?'COSMIC ICE':tiki?'TIKI':moon?'DUST CAFE':bistro?'BISTRO':'CAFE';
   const awning=iceShop?'#dba7cc':burgerShop?'#edb574':tropical?'#efad82':'#9bbcb2';
+  const rooftop=bistro?[
+    r(0,-1.06,7.83,4.5,.18,'#f0c996',3.11),
+    roof(0,-1.06,7.65,4.38,.78,'#b3634d',3.26),
+    b(0,-1.06,.16,4.44,.10,'#c17d60',4),
+  ]:[r(0,-1.06,7.83,4.5,.23,moon&&!iceShop&&!burgerShop?'#625574':trim,3.11)];
   return [base(10.2,9.08,moon?'#adb1c3':'#cfb89a'),
     [r(0,-1.16,tiki?5.9:7.59,4.36,2.75,main,.36),
       ...(tiki?[roof(0,-1.08,6.84,4.86,1.14,'#b9a375',2.98),...pair.map(s=>t(s*2.77,1.31,.3,.3,2.42,'#946954',.39))]
-        :[r(0,-1.06,7.83,4.5,.23,trim,3.11),r(0,1.01,7.38,.36,.21,awning,2.96)]),
+        :[...rooftop,r(0,1.01,7.38,.36,.21,awning,2.96)]),
       b(0,2.32,8.81,2.48,.07,moon?'#c2b5c8':'#c1a27e',.349)],
     [...entrance(1.07,1.25,1.57),...glazing([-2.28,2.28],[1.11],1.067,{w:1.51,h:.94,color:'#85c5ca'}),
       ...Array.from({length:13},(_,i)=>b((i-6)*.49,1.49,.48,.98,.123,i%2?cream:awning,2.16)),
       ...nameplate(label,0,2.71,1.15,trim,tiki?.24:.171),
-      ...(burgerShop?burger(0,3.35,-1.12):iceShop?worldSign('ice',0,4.61,-.27,trim):tiki?smoothie():worldSign('cup',0,3.79,.5,trim)),
+      ...(burgerShop?burger(0,3.35,-1.12):iceShop?worldSign('ice',0,4.61,-.27,trim):tiki?smoothie():worldSign('cup',0,bistro?4.32:3.79,.5,trim)),
       ...umbrella(-2.8,2.57,awning),...umbrella(2.73,2.65,trim),
       ...(tropical?palm(-4.21,-1.81,2.57):shrub(4.19,-1.43,'#8aab98'))],
   ];
 }
 
 function hoverDealer() {
-  const slate='#6b7895',blue='#70aeb6';
+  const slate='#675475',blue='#70aeb6';
   return [base(10.77,9.53,'#aaaec4'),
     [r(-.95,-2.44,7.71,3.03,2.6,'#9eadd2',.35),r(-.95,-2.46,7.94,3.24,.38,slate,2.85),
       b(-.95,-.86,7.51,.13,1.68,blue,.69),
