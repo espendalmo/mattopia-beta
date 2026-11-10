@@ -1069,7 +1069,7 @@ canvas.lunar-starfield,
 
 .eplo-note {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 11px;
   padding: 11px 14px 11px 10px;
   border: 1px solid #d7e3cf;
@@ -1078,8 +1078,9 @@ canvas.lunar-starfield,
   color: var(--ink);
   text-align: left;
 }
-.eplo-avatar { position: relative; flex: 0 0 57px; height: 53px; }
+.eplo-avatar { position: relative; width: 57px; flex: 0 0 57px; height: 53px; }
 .eplo-avatar .buddy { position: absolute; inset: 0 auto auto 0; margin: 0; scale: .4; transform-origin: top left; }
+.eplo-note .eplo-bubble { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .eplo-note strong, .eplo-hint-name { color: var(--green); font-weight: 800; }
 .eplo-note p, .complete .eplo-note p { margin: 3px 0 0; color: var(--ink); font-size: .91rem; line-height: 1.46; }
 .welcome-dialog .eplo-note { gap: 8px; padding: 7px 10px; }
@@ -1151,29 +1152,12 @@ canvas.lunar-starfield,
 .home-surprise {
   position: absolute;
   z-index: 2;
-  inset: auto auto -33px max(-10px, calc((100% - 410px) / 2 - 12px));
+  inset: auto auto 8px max(6px, calc((100% - 410px) / 2 + 10px));
   width: 142px;
   height: 132px;
   transform: scale(.9);
   transform-origin: bottom left;
   pointer-events: none;
-}
-.home-surprise[data-spot="middle"] {
-  left: calc(50% - 71px);
-  bottom: 4px;
-  transform-origin: bottom center;
-}
-.home-surprise[data-spot="right"] {
-  left: auto;
-  right: max(-9px, calc((100% - 410px) / 2 - 12px));
-  bottom: 30%;
-  transform-origin: bottom right;
-}
-.home-reward:has(.home-surprise:not([hidden])) .garden-friend { visibility: hidden; }
-.home-reward:has(.home-surprise:not([hidden])) + .home-eyebrow {
-  position: relative;
-  z-index: 3;
-  text-shadow: 0 1px 4px var(--paper), 0 0 3px var(--paper);
 }
 .eplo-act { position: relative; width: 100%; height: 100%; }
 .home-surprise .buddy { margin: 0; transform: none; }
@@ -1189,7 +1173,7 @@ canvas.lunar-starfield,
 .yawn-breath { position: absolute; right: 9px; top: 21px; color: #52788b; font-weight: 800; letter-spacing: 2px; }
 .eplo-book { position: absolute; left: 29px; top: 82px; width: 84px; height: 52px; }
 @media (max-width: 360px) {
-  .home-surprise { bottom: -29px; transform: scale(.81); }
+  .home-surprise { transform: scale(.81); }
 }
 @media (prefers-reduced-motion: no-preference) {
   .reward-finished.brick-art > .brick-figure {
@@ -1257,7 +1241,8 @@ canvas.lunar-starfield,
     72% { opacity: .95; transform: translate(var(--spark-x),var(--spark-y)) rotate(30deg) scale(1.1); }
     100% { opacity: 0; transform: translate(var(--spark-x),calc(var(--spark-y) - 8px)) rotate(55deg) scale(.52); }
   }
-  .eplo-act { animation: surprise-appear .38s cubic-bezier(.22,.8,.4,1.23) both; }
+  .home-surprise:not([data-act="idle"]) .eplo-act { animation: surprise-appear .38s cubic-bezier(.22,.8,.4,1.23) both; }
+  .home-surprise[data-act="idle"] .eplo-act { animation: eplo-arrive 180ms ease-out both; }
   [data-act="juice"] .juice-glass { animation: eplo-sip 2.15s .38s ease-in-out 2; }
   [data-act="shades"] .sun-glasses { animation: eplo-shades 2.6s .35s ease-in-out 2; }
   [data-act="yawn"] .buddy-smile { animation: eplo-yawn 2.8s .55s ease-in-out both; }
@@ -1333,7 +1318,6 @@ canvas.lunar-starfield,
   pointer-events: none;
 }
 .map-eplo-overlay .eplo-note { margin: 0; padding: 6px 10px; gap: 6px; font-size: .83rem; }
-.map-eplo-overlay .eplo-avatar { width: 37px; flex-basis: 37px; }
 .map-eplo-overlay .eplo-note p { margin: 1px 0 0; }
 .completion-project .map-eplo-overlay { width: min(320px, calc(100% - 64px)); }
 @media (prefers-reduced-motion: no-preference) {
@@ -1462,3 +1446,10 @@ canvas.lunar-starfield,
 @media (pointer: coarse) {
   html, body, dialog, .task-scroll { touch-action: pan-x pan-y; }
 }
+
+/* Small local moments stay inside the map, clear of its controls. */
+.project-thoughts { position: absolute; inset: 0; overflow: hidden; pointer-events: none; border-radius: 15px; }
+.project-thoughts span { position: absolute; left: 0; top: 0; min-width: 23px; height: 27px; padding: 1px 5px;
+  color: #544573; background: #fff6dc; border: 1.5px solid #b9abcf; border-radius: 12px 12px 12px 3px;
+  font-size: 18px; font-weight: 800; line-height: 23px; text-align: center; box-shadow: 0 2px 6px #0003; }
+.project-thoughts span[hidden] { display: none; }

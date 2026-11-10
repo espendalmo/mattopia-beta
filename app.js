@@ -1,3 +1,4 @@
+import {mapCharacterInfo} from './map-life.js';
 import { VERSION, CHANNEL, ROUND_LENGTH, ROUND_LENGTHS, PROGRESSION_ROUNDS, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, advanceRound, noteHelp, roundSummary, freshState, restoreState, progressionPreview, advancePractice } from './core.js';
 import { hintFor } from './learning.js';
 import { createSoundPlayer, taskSuccessStep } from './sound.js';
@@ -437,7 +438,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
           <span class="eplo-avatar">${buddy()}</span>
           <div class="eplo-bubble"><small data-map-info-status></small><h3></h3><p data-map-info-description></p>
             <p><strong class="sr-only">Eplo</strong> <span data-map-info-story></span></p></div>
-          <button class="icon-button" type="button" data-map-info-close aria-label="Lukk bygginformasjonen">${icon('close')}</button>
+          <button class="icon-button" type="button" data-map-info-close aria-label="Lukk informasjonen">${icon('close')}</button>
         </section>`:''}
         ${demo ? mapEplo(projectCongratulations(id),true) : ''}
       </div>
@@ -449,7 +450,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
           <button class="secondary" data-project-reset>Oversikt</button>
         </div>
       </div>
-      <p id="project-instructions">${scene.world?'Dra kartet for å flytte. Trykk på et bygg for å se hva som skjer der.':'Dra for å rotere.'} Klyp<span class="project-desktop-hint"> eller bruk pluss og minus</span> for å zoome.</p>
+      <p id="project-instructions">${scene.world?'Dra kartet for å flytte. Trykk på bygg, folk og kjøretøy for å se hva som skjer.':'Dra for å rotere.'} Klyp<span class="project-desktop-hint"> eller bruk pluss og minus</span> for å zoome.</p>
       ${scene.world ? `<div class="project-atmosphere"><button class="secondary" data-project-ambience aria-pressed="false" ${state.sound ? '' : 'disabled'}>${icon('muted')} Omgivelseslyd</button>${state.sound ? '' : '<small>Lyden i appen er slått av.</small>'}</div>` : ''}
       ${!demo && !target && progress().completed ? `<div class="project-latest"><div><small>Siste byggesteg · ${progress().completed} av ${progress().total}</small>${latest()}</div><button class="secondary" data-project-latest>Vis siste steg</button></div>` : ''}
     </div>
@@ -462,12 +463,22 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
     let dispose,selection=null;
     const inspect=(index,{focus=false,playSound=false}={})=>{
       if (!card) return;
-      const site=index===null?null:scene.sites?.[index];
+      const character=mapCharacterInfo(scene,index);
+      const site=typeof index==='number'?scene.sites?.[index]:null;
       const building=site&&worldBuilding(id,index,map);
-      selection=building?index:null;
-      card.hidden=!building;
+      selection=building||character?index:null;
+      card.hidden=!building&&!character;
       selector.value=building?String(index):'';
       dispose?.inspect?.(selection,{focus});
+      if (character) {
+        if (playSound) sounds.play('select',state.sound);
+        card.querySelector('h3').textContent=character.name;
+        card.querySelector('[data-map-info-status]').textContent=character.status;
+        card.querySelector('[data-map-info-description]').textContent='';
+        card.querySelector('[data-map-info-story]').textContent=character.story;
+        card.querySelector('.eplo-avatar').innerHTML=buddy();
+        return;
+      }
       if (!building) return;
       if (playSound) {
         sounds.play('select',state.sound);
@@ -788,7 +799,6 @@ function mountHomeSurprise() {
   const stage = root.querySelector('[data-home-surprise]');
   if (!stage) return;
   const acts = Object.keys(homeSurpriseProps);
-  const spots = ['left','middle','right'];
   const pick = (options,previous) => {
     const choices = options.filter(option => option !== previous);
     return choices[Math.floor(Math.random() * choices.length)];
@@ -796,27 +806,28 @@ function mountHomeSurprise() {
   const cue = kind => {
     if (!document.hidden && !document.querySelector('dialog[open]')) sounds.play(kind,state.sound,{onlyWhileRunning:true});
   };
-  let idleTimer, sceneTimer, previous, spot;
+  let idleTimer, sceneTimer, previous;
+  const showDefault = () => {
+    stage.dataset.act = 'idle';
+    stage.innerHTML = `<div class="eplo-act">${buddy()}</div>`;
+  };
   const schedule = (delay=12000) => {
     clearTimeout(idleTimer);
     idleTimer = setTimeout(appear, delay);
   };
   const dismiss = () => {
-    if (stage.hidden || stage.dataset.act === 'puff') return;
+    if (stage.dataset.act === 'idle' || stage.dataset.act === 'puff') return;
     clearTimeout(sceneTimer);
     stage.dataset.act = 'puff';
     stage.innerHTML = homeSurpriseCloud;
     cue('eplo-puff');
-    sceneTimer = setTimeout(() => { stage.hidden = true; stage.replaceChildren(); }, 420);
+    sceneTimer = setTimeout(showDefault, 420);
   };
   function appear() {
     if (document.hidden || document.querySelector('dialog[open]')) { schedule(); return; }
     previous = pick(acts,previous);
-    spot = pick(spots,spot);
-    stage.dataset.spot = spot;
     stage.dataset.act = previous;
     stage.innerHTML = `<div class="eplo-act">${buddy(previous !== 'yawn')}${homeSurpriseProps[previous]}</div>`;
-    stage.hidden = false;
     cue(`eplo-${previous}`);
     sceneTimer = setTimeout(() => { dismiss(); schedule(20000); }, 6400);
   }
@@ -846,7 +857,7 @@ function renderHome() {
   const cta = startRoundLabel(g);
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="home">
     ${profile ? `<button class="profile-switch" data-action="show-profiles">${avatarArt(profile.avatar)}<strong>${escapeHtml(profile.name)}</strong><span>Bytt spiller</span></button>` : ''}
-    <div class="home-reward">${rewardArt(false, next)}<div class="home-surprise" data-home-surprise aria-hidden="true" hidden></div></div><p class="home-eyebrow">${g.label}</p>
+    <div class="home-reward">${rewardArt(false, next,{showBuddy:false})}<div class="home-surprise" data-home-surprise data-act="idle" aria-hidden="true"><div class="eplo-act">${buddy()}</div></div></div><p class="home-eyebrow">${g.label}</p>
     <h1 tabindex="-1">${firstBuild ? 'Klar for å komme i gang?' : total % 2 ? 'Klar for en til økt?' : 'Klar for flere oppgaver?'}</h1>
     <p class="home-description">${state.active?.tasks.length ?? state.roundLength} oppgaver venter.</p>
     <button class="primary" data-action="start">${cta}${icon('arrow')}</button>

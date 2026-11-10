@@ -62,7 +62,26 @@ const stories={
   ],
 };
 
+const moonStories={
+  gravityPark:'Plantene her lyser selv. Gartnermesteren har likevel gitt alle soppene hver sin nattlampe.',
+  moonGarden:'Romsoppene gløder langs stien. Den rosa soppen heter visst Agurk. Ingen vet hvorfor.',
+  waterSpire:'Vannet går gjennom turkise tanker. Rørleggeren insisterer på at det bare smaker litt av månen.',
+  iceVault:'Her fryser de ned is fra kratrene. Iskrem er i et helt annet fryserom. Forhåpentligvis.',
+  quantumLab:'Forskerne prøver å finne ut hvor alle sokkene blir av. De har funnet fire nye planeter på veien.',
+  signalSpire:'Sender beskjeder helt hjem til jorda. Noen har nettopp sendt «Husk melk!».',
+  satelliteHub:'Her holder de kontakt med satellittene. En av dem har ringt for å spørre hva klokka er.',
+  batteryVault:'Batteriene lades med sollys. Teknikeren må stadig forklare at man ikke kan lade en banan.',
+  solarObservatory:'Speilene vender seg mot sola. Solbriller er en del av arbeidsantrekket.',
+  lunarArcade:'Romvesenene holder rekorden i nesten alle spill. De har jo flere tomler å trykke med.',
+  prismTower:'Fra krystallspiret kan du se neste krater. Vaktmesteren har verdens lengste støvkost.',
+  novaTower:'Den store ringen er ikke en hulahoppring. Astronautene har prøvd. Det gikk ikke.',
+  haloTower:'Tallerkentakene har utsikt i alle retninger. Kjøkkenet savner fortsatt de store lokkene sine.',
+  auroraHotel:'Toppetasjen har tallerkenrestaurant. Gjestene spør alltid om hele hotellet kan fly.',
+  spaceField:'Laget Månespark trener her. En ball i hjelmen gir av og til en liten privat stjernehimmel.',
+};
+
 export function landmarkStory(theme,index,kind) {
+  if (theme==='moon'&&moonStories[kind]) return moonStories[kind];
   if (kind==='railwayStation') return 'Toget stopper på perrongen. Se om du får øye på toget igjen på den andre siden av tunnelen.';
   if (kind==='monorailStation') return 'Månetoget trenger bare én skinne. Det glir over gatene, gjennom tunnelen og tilbake til stasjonen.';
   if (kind==='tramStation') return 'Du kan ta trikken hele veien rundt og ende på samme sted. Hvor mange stopp finner du?';
