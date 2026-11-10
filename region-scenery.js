@@ -317,15 +317,16 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
     return approach?[{...approach,latest:i===developments.length-1}]:[];
   });
   const horizon=clamp((status.built-status.capacity+6)/6);
+  const sky=id==='moon'?'#000000':palette.sky;
   const tunnels=prepareRoadTunnels(layout,plan);
   const roads=regionRoads(layout,plan,isNewPlot);
   const roadBuild=roads.some(part=>part.roadBuild!==undefined);
   const parts=[
-    ...(id==='moon'&&horizon?lunarSky(map.seed,palette.sky,horizon):[]),
-    ...regionGround(layout,plan,palette.sky,status.full,horizon,season),
+    ...(id==='moon'&&horizon?lunarSky(map.seed,sky,horizon):[]),
+    ...regionGround(layout,plan,sky,status.full,horizon,season),
     ...roads,
     ...tunnels,
-    ...landscapeDetails(layout,plan,status.full,palette.sky,season),
+    ...landscapeDetails(layout,plan,status.full,sky,season),
   ];
   let latest=[],last,finished=null,latestTarget=null;
   const landmarks={},sites={},rides=[],visitors=[];
@@ -388,7 +389,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
     parts.push(...visitor.parts.map(part=>({...part,x:part.x+origin.x,y:part.y+origin.y,z:part.z+origin.z})));
   }
   return {
-    id,parts,latest,last,finished,landmarks,sites,roadBuild,latestTarget,world:true,illustrated:true,background:palette.sky,yaw:-Math.PI/4,pitch:.6155,center:1.1,closeSize:76,
+    id,parts,latest,last,finished,landmarks,sites,roadBuild,latestTarget,world:true,illustrated:true,background:sky,yaw:-Math.PI/4,pitch:.6155,center:1.1,closeSize:76,
     ...viewBounds({...plan,transit:plan.transit?.filter(point=>Math.hypot(point.x-plan.origin.x,point.z-plan.origin.z)<55)},horizon),
     soundscape:{buildings:completedPlots.length,wheel:completedPlots.some(plot=>plot.kind==='wheel'),
       hotel:id==='island'&&completedPlots.some(plot=>['hotel','resort','sunsetHotel','glassHotel','megaResort'].includes(plot.kind)),fun:completedPlots.filter(plot=>['wheel','coaster','arcade','lunarArcade','islandArcade','tropicalPools'].includes(plot.kind)).length},

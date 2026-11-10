@@ -522,7 +522,7 @@ export function mountProjectView(container, scene, interactive=false, {
   const pointers=new Map();
   const selectable=onInspect?faces.filter(face=>Number.isInteger(face.landmark)):[];
   let frame=0,width=0,height=0,fireworks,projectedView,tap,selectedFaces,glow,glowKey;
-  let lastActivity=-Infinity,audibleActors=new Set();
+  let lastActivity=-Infinity,audibleActors=new Set(),focusTravel;
   const events=new AbortController();
   const listen=(node,name,handler,options={})=>node.addEventListener(name,handler,{...options,signal:events.signal});
   const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -550,7 +550,7 @@ export function mountProjectView(container, scene, interactive=false, {
     if (!width || !height) return;
     const playing=!motion.matches && started!==null;
     const alive=!still && !motion.matches && scene.ambient?.length;
-    if ((playing||alive) && now-lastFrame<(engine||playing?32:48)) { schedule(); return; }
+    if ((playing||alive||focusTravel) && now-lastFrame<(engine||playing?32:48)) { schedule(); return; }
     lastFrame=now;
     const pixelRatio=Math.min(window.devicePixelRatio||1,2);
     const pixelsWide=Math.round(width*pixelRatio),pixelsHigh=Math.round(height*pixelRatio);
@@ -574,6 +574,15 @@ export function mountProjectView(container, scene, interactive=false, {
       }
       if (finish) canvas.style.opacity=finish.opacity.toFixed(3);
       if (stageTime>=(canCelebrate?fireworksEnd:1950)) stopTransition();
+    }
+    if (focusTravel) {
+      const progress=clamp((now-focusTravel.start)/330,0,1);
+      const eased=progress*progress*(3-2*progress);
+      for (const key of Object.keys(camera)) {
+        const from=focusTravel.from[key];
+        camera[key]=from+(focusTravel.to[key]-from)*eased;
+      }
+      if (progress===1) focusTravel=null;
     }
     const effects=buildMotion(scene.world,elapsed,low,high,marked,scene.roadBuild);
     const age=still||motion.matches?0:Math.max(0,now-mounted)/1000;
@@ -620,7 +629,7 @@ export function mountProjectView(container, scene, interactive=false, {
       });
       audibleActors=heard;
     }
-    if (started!==null || alive) schedule();
+    if (started!==null || focusTravel || alive) schedule();
   }
   function schedule() {
     if (!frame) frame=requestAnimationFrame(draw);
@@ -650,6 +659,7 @@ export function mountProjectView(container, scene, interactive=false, {
   }
   function stopTransition() {
     started=null;
+    focusTravel=null;
     canvas.style.removeProperty('opacity');
     fireworks?.dispose();
     fireworks=undefined;
@@ -661,6 +671,7 @@ export function mountProjectView(container, scene, interactive=false, {
   }
   listen(container,'click',event=>{
     if (!event.target.closest('[data-project-latest]')) return;
+    stopTransition();
     if (!interactive) canvas.scrollIntoView({block:'nearest'});
     if (completedBuild||scene.roadBuild) Object.assign(camera,context);
     from={...camera};
@@ -754,6 +765,10 @@ export function mountProjectView(container, scene, interactive=false, {
   else listen(window,'resize',schedule);
   listen(document,'visibilitychange',schedule);
   listen(motion,'change',()=>{
+    if (motion.matches && focusTravel) {
+      Object.assign(camera,focusTravel.to);
+      focusTravel=null;
+    }
     if (motion.matches && started!==null) {
       Object.assign(camera,detail);
       stopTransition();
@@ -775,7 +790,15 @@ export function mountProjectView(container, scene, interactive=false, {
     glow?.remove();
     engine?.dispose();
   };
-  dispose.inspect=index=>{
+  dispose.inspect=(index,{focus=false}={})=>{
+    const site=focus&&scene.sites?.[index];
+    if (site) {
+      stopTransition();
+      marked=false;
+      const to=projectCameras(scene,site).detail;
+      if (motion.matches) Object.assign(camera,to);
+      else focusTravel={from:{...camera},to,start:performance.now()};
+    } else if (focus) focusTravel=null;
     selectedFaces=selectable.filter(face=>face.landmark===index);
     glow?.remove();
     glow=null;

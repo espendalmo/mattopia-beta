@@ -213,9 +213,9 @@ export function lunarSky(seed,sky,amount) {
     return {shape:'terrain',outline,colors,color:sky,x,y,z,h:0,layer:-1};
   };
   const stars=Array.from({length:42},()=>{
-    const x=(rng()-.5)*187,y=(rng()-.51)*38,r=.15+rng()*.29;
-    const strength=(.31+rng()*.61)*Math.max(.09,1-(x/105)**2);
-    const color=shade(rng()<.62?[.54,.58,.73]:[1,.98,.88],strength);
+    const x=(rng()-.5)*187,y=(rng()-.51)*38,r=.2+rng()*.36;
+    const strength=(.47+rng()*.49)*Math.max(.09,1-(x/105)**2);
+    const color=shade(rng()<.62?[.7,.77,.96]:[1,.98,.88],strength);
     const [a,b,c,d]=[[x+r,y],[x,y+r],[x-r,y],[x,y-r]].map(([u,v])=>point(u,v,-8));
     return [face([a,b,c],[color,color,color]),face([a,c,d],[color,color,color])];
   }).flat();
@@ -224,9 +224,9 @@ export function lunarSky(seed,sky,amount) {
   const vertex=(r,angle)=>{
     const x=Math.cos(angle)*r,y=Math.sin(angle)*r,z=Math.sqrt(1-r*r);
     const land=Math.sin(8*x+3*y)*Math.cos(5*y-4*x)+.38*Math.sin(13*y+4*x)>.43;
-    const light=Math.max(.38,.68-.28*x+.19*y+.11*z);
-    const tint=land?[.6,.81,.65]:[.32,.68,.8];
-    const rim=r**8*.43;
+    const light=Math.min(1,Math.max(.32,.74-.3*x+.17*y+.12*z));
+    const tint=land?[.65,.86,.68]:[.29,.65,.92];
+    const rim=r**8*.3;
     return {position:point(61+x*radius,y*radius,z*radius),
       color:shade(tint.map((channel,i)=>channel*light+(background[i]-channel*light)*rim))};
   };

@@ -32,6 +32,7 @@ const lightSounds=new Set(['key','select','open','next','build','tap','back','hi
 const worlds=new Set(['city','moon','island']);
 export const AMBIENCE_LEVEL=.75;
 const floor=.0001;
+const WINDOW_FADE=.075;
 
 function playbackSession() {
   const device=globalThis.navigator;
@@ -48,14 +49,35 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     source.disconnect();
     gain.disconnect();
   }
+  function fadeVoice(voice) {
+    const {source,gain,start}=voice;
+    const now=context.currentTime;
+    if (start>now) {
+      releaseVoice(voice);
+      return;
+    }
+    try {
+      const level=gain.gain;
+      if (typeof level.cancelAndHoldAtTime==='function') level.cancelAndHoldAtTime(now);
+      else {
+        const current=level.value;
+        level.cancelScheduledValues(now);
+        level.setValueAtTime(current,now);
+      }
+      level.linearRampToValueAtTime(0,now+WINDOW_FADE);
+      source.stop(now+WINDOW_FADE+.01);
+    } catch {
+      releaseVoice(voice);
+    }
+  }
   function stopVoices() {
     generation++;
     voices.forEach(releaseVoice);
     voices=[];
   }
-  function stopBuild() {
+  function stopBuild({fade=false}={}) {
     buildGeneration++;
-    voices.filter(voice=>voice.build).forEach(releaseVoice);
+    voices.filter(voice=>voice.build).forEach(fade?fadeVoice:releaseVoice);
     voices=voices.filter(voice=>!voice.build);
   }
   function holdSession() {
@@ -87,17 +109,9 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
   function stopAmbience() {
     ambienceGeneration++;
     if (!ambience) return;
-    const {source,gain}=ambience;
+    const playing=ambience;
     ambience=null;
-    try {
-      const now=context.currentTime;
-      gain.gain.cancelScheduledValues(now);
-      gain.gain.setTargetAtTime(floor,now,.038);
-      source.stop(now+.2);
-    } catch {
-      source.disconnect();
-      gain.disconnect();
-    }
+    fadeVoice(playing);
   }
 
   async function startAmbience(scene,{delay=0,duration=Infinity}={}) {
@@ -153,7 +167,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     gain.gain.setValueAtTime(volume,time);
     source.connect(gain);
     gain.connect(destination);
-    const record={source,gain,build};
+    const record={source,gain,build,start:time};
     if (voice) voices.push(record);
     source.onended=()=>{
       if (voice) voices=voices.filter(item=>item!==record);
@@ -193,7 +207,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
       gain.gain.exponentialRampToValueAtTime(volume,start+(kind==='key'?.003:.014));
       gain.gain.exponentialRampToValueAtTime(floor,start+duration);
       source.connect(gain); gain.connect(context.destination);
-      const voice={source,gain,build};
+      const voice={source,gain,build,start};
       voices.push(voice);
       source.onended=()=>{
         voices=voices.filter(item=>item!==voice);

@@ -449,14 +449,14 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
     const selector=viewer.querySelector('[data-map-inspect]');
     const card=viewer.querySelector('[data-map-info]');
     let dispose,selection=null;
-    const inspect=index=>{
+    const inspect=(index,focus=false)=>{
       if (!card) return;
       const site=index===null?null:scene.sites?.[index];
       const building=site&&worldBuilding(id,index,map);
       selection=building?index:null;
       card.hidden=!building;
       selector.value=building?String(index):'';
-      dispose?.inspect?.(selection);
+      dispose?.inspect?.(selection,{focus});
       if (!building) return;
       card.querySelector('h3').textContent=building.name;
       card.querySelector('[data-map-info-status]').textContent=site.built?'På kartet':'Under bygging';
@@ -480,7 +480,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
     if (selector) {
       selector.addEventListener('change',()=>{
         sounds.play('select',state.sound);
-        inspect(selector.value===''?null:Number(selector.value));
+        inspect(selector.value===''?null:Number(selector.value),true);
       });
       card.querySelector('[data-map-info-close]').addEventListener('click',()=>{
         inspect(null);
@@ -572,7 +572,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
     }
     dialog.addEventListener('close', () => {
       dispose();
-      sounds.stopBuild();
+      sounds.stopBuild({fade:true});
     }, {once:true});
   });
 }
@@ -1358,7 +1358,7 @@ function updateEntry() {
 }
 
 function showDialog(content, css = '', afterOpen) {
-  sounds.stopBuild();
+  sounds.stopBuild({fade:true});
   sounds.stopAmbience();
   document.querySelector('dialog')?.close(); document.querySelector('dialog')?.remove();
   const lastFocus = document.activeElement;
