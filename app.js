@@ -344,7 +344,8 @@ function rewardArt(happy = false, reward = null, {showBuddy=true}={}) {
   const art = info.mode === 'bricks'
     ? renderBuildSvg(info.build, {animate:happy, preview:info.build.pieces === 0})
     : renderPlant(info.garden.plant, info.garden.stage);
-  return `<div class="garden-art ${info.mode === 'bricks' ? 'brick-art' : ''} ${happy ? 'garden-grown' : ''}">${showBuddy?`<div class="garden-friend">${buddy(happy)}</div>`:''}${art}</div>`;
+  const finished = happy && reward && info.full && celebrateOnRender;
+  return `<div class="garden-art ${info.mode === 'bricks' ? 'brick-art' : ''} ${happy ? 'garden-grown' : ''}${finished?' reward-finished':''}">${showBuddy?`<div class="garden-friend">${buddy(happy)}</div>`:''}${art}</div>`;
 }
 
 function mountProjectPreview(container) {
@@ -419,6 +420,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
   const milestone = () => progress().full ? 'Hele byggeprosjektet er ferdig!'
     : scene.next ? `Neste byggesteg er «${scene.next}».`
     : isRegion(map) && map.progress===0 ? 'Bygg videre for å se hva som skjuler seg i tåka.' : 'Velg neste bygg før en ny runde.';
+  const roundAction=scene.world&&!demo&&!archivedMap&&!fromCollection;
   showDialog(`<div class="dialog-header"><div><h2 id="dialog-title" tabindex="-1" autofocus>${title}</h2>
       <p data-demo-progress>${demo ? 'Byggedemo · ' : target ? project.name+' · ' : ''}${projectProgress(progress())}</p></div><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggeprosjektet">${icon('close')}</button></div>
     ${fromCollection ? `<button class="secondary project-back" data-action="collection" data-project="${id}" ${galleryMap===null?'':`data-map="${galleryMap}"`} ${place===null?'':`data-place="${place}"`}>Tilbake til samlingen</button>` : ''}
@@ -452,6 +454,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       ${!demo && !target && progress().completed ? `<div class="project-latest"><div><small>Siste byggesteg · ${progress().completed} av ${progress().total}</small>${latest()}</div><button class="secondary" data-project-latest>Vis siste steg</button></div>` : ''}
     </div>
     <p id="project-milestone" class="project-milestone">${milestone()}</p>
+    ${roundAction ? `<div class="project-round-action"><button type="button" class="primary" data-action="map-start">${startRoundLabel()}${icon('arrow')}</button></div>` : ''}
     ${trail ? '<button class="secondary demo-new-map" data-demo-new>Nytt demokart</button>' : ''}`, 'project-dialog', dialog => {
     const viewer = dialog.querySelector('.project-viewer');
     const selector=viewer.querySelector('[data-map-inspect]');
@@ -785,7 +788,15 @@ function mountHomeSurprise() {
   const stage = root.querySelector('[data-home-surprise]');
   if (!stage) return;
   const acts = Object.keys(homeSurpriseProps);
-  let idleTimer, sceneTimer, previous;
+  const spots = ['left','middle','right'];
+  const pick = (options,previous) => {
+    const choices = options.filter(option => option !== previous);
+    return choices[Math.floor(Math.random() * choices.length)];
+  };
+  const cue = kind => {
+    if (!document.hidden && !document.querySelector('dialog[open]')) sounds.play(kind,state.sound,{onlyWhileRunning:true});
+  };
+  let idleTimer, sceneTimer, previous, spot;
   const schedule = (delay=12000) => {
     clearTimeout(idleTimer);
     idleTimer = setTimeout(appear, delay);
@@ -795,15 +806,18 @@ function mountHomeSurprise() {
     clearTimeout(sceneTimer);
     stage.dataset.act = 'puff';
     stage.innerHTML = homeSurpriseCloud;
+    cue('eplo-puff');
     sceneTimer = setTimeout(() => { stage.hidden = true; stage.replaceChildren(); }, 420);
   };
   function appear() {
     if (document.hidden || document.querySelector('dialog[open]')) { schedule(); return; }
-    const choices = acts.filter(act => act !== previous);
-    previous = choices[Math.floor(Math.random() * choices.length)];
+    previous = pick(acts,previous);
+    spot = pick(spots,spot);
+    stage.dataset.spot = spot;
     stage.dataset.act = previous;
     stage.innerHTML = `<div class="eplo-act">${buddy(previous !== 'yawn')}${homeSurpriseProps[previous]}</div>`;
     stage.hidden = false;
+    cue(`eplo-${previous}`);
     sceneTimer = setTimeout(() => { dismiss(); schedule(20000); }, 6400);
   }
   const activity = () => { dismiss(); schedule(); };
@@ -829,7 +843,7 @@ function renderHome() {
   const choose = g.map && g.building === null && !g.full;
   const firstBuild = g.map && g.completed === 0;
   const archives = g.map ? (state.worlds?.[g.mode] ?? []).slice(0,-1) : [];
-  const cta = state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : choose ? firstBuild ? 'Velg første bygg' : 'Velg neste bygg' : 'Start runden';
+  const cta = startRoundLabel(g);
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="home">
     ${profile ? `<button class="profile-switch" data-action="show-profiles">${avatarArt(profile.avatar)}<strong>${escapeHtml(profile.name)}</strong><span>Bytt spiller</span></button>` : ''}
     <div class="home-reward">${rewardArt(false, next)}<div class="home-surprise" data-home-surprise aria-hidden="true" hidden></div></div><p class="home-eyebrow">${g.label}</p>
@@ -857,6 +871,13 @@ function showWorldChoices(id, choices) {
     const dispose = [...dialog.querySelectorAll('[data-world-art]')].map(canvas => mountProjectView(canvas.parentElement, worldBuildingPreview(id,Number(canvas.dataset.worldArt),map)));
     dialog.addEventListener('close', () => dispose.forEach(stop => stop()), {once:true});
   });
+}
+
+function startRoundLabel(info=rewardDetails()) {
+  if (state.active) return 'Fortsett runden';
+  if (state.focusBreakPending) return breakButtonLabel();
+  if (info.map && info.building === null && !info.full) return info.completed === 0 ? 'Velg første bygg' : 'Velg neste bygg';
+  return 'Start runden';
 }
 
 function startRound() {
@@ -1596,12 +1617,16 @@ function adultTopicSummary() {
   return `<p class="adult-section-title">Øvd på · ${LEVELS[state.level].label}</p>${topics || '<p class="history-empty">Emnene vises når dere har fullført noen oppgaver.</p>'}<p class="adult-note">Siste tolv runder på valgt nivå. En oppgavetype er ikke nødvendigvis mestret selv om svaret er riktig.</p>`;
 }
 
+function rewardThumbnail(id) {
+  return `<span class="reward-choice-icon" aria-hidden="true">${rewardIllustration(id)}</span>`;
+}
+
 function projectOptions() {
   return `<details class="project-choice-list" ${projectById(state.rewardMode) ? 'open' : ''}>
     <summary>Store byggeprosjekter</summary><p class="adult-note">Hver runde gir ett byggesteg på prosjektet du velger.</p>
     ${Object.entries(PROJECTS).map(([id,project]) => `<label class="level-option">
       <input type="radio" name="reward-mode" value="${id}" ${state.rewardMode === id ? 'checked' : ''}>
-      <span class="reward-choice-icon brick-choice" aria-hidden="true">${project.icon}</span>
+      ${rewardThumbnail(id)}
       <span><strong>${project.name}</strong><small>${project.description} ${projectProgress(rewardDetails({mode:id}))}.</small></span>
     </label>`).join('')}
   </details>`;
@@ -1665,7 +1690,7 @@ function adultView() {
       <p class="adult-note" id="round-length-note">Gjelder fra neste nye runde. En fullført runde gir én stjerne og ett steg på det du bygger eller dyrker.</p></div>
     <fieldset class="adult-group" id="practice-options">${practiceOptions()}</fieldset>
     </div></details>
-    <details class="adult-details admin-section"><summary>Bygging og belønninger</summary><div class="admin-section-body"><fieldset class="adult-group reward-options"><legend>Hva vil barnet bygge videre på?</legend><label class="level-option"><input type="radio" name="reward-mode" value="plant" ${state.rewardMode === 'plant' ? 'checked' : ''}><span class="reward-choice-icon" aria-hidden="true">${icon('sprout')}</span><span><strong>Plante</strong><small>En spire som vokser og blomstrer.</small></span></label><label class="level-option"><input type="radio" name="reward-mode" value="bricks" ${state.rewardMode === 'bricks' ? 'checked' : ''}><span class="reward-choice-icon brick-choice" aria-hidden="true">${icon('brick')}</span><span><strong>Klossebygging</strong><small>Fem store klosser blir en tilfeldig figur.</small></span></label>
+    <details class="adult-details admin-section"><summary>Bygging og belønninger</summary><div class="admin-section-body"><fieldset class="adult-group reward-options"><legend>Hva vil barnet bygge videre på?</legend><label class="level-option"><input type="radio" name="reward-mode" value="plant" ${state.rewardMode === 'plant' ? 'checked' : ''}>${rewardThumbnail('plant')}<span><strong>Plante</strong><small>En spire som vokser og blomstrer.</small></span></label><label class="level-option"><input type="radio" name="reward-mode" value="bricks" ${state.rewardMode === 'bricks' ? 'checked' : ''}>${rewardThumbnail('bricks')}<span><strong>Klossebygging</strong><small>Fem store klosser blir en tilfeldig figur.</small></span></label>
       ${projectOptions()}<p class="adult-note">Du kan bytte mellom belønningene og fortsette på hvert prosjekt senere.</p></fieldset></div></details>
     <details class="adult-details admin-section"><summary>Lyd, hjelp og pauseleker</summary><div class="admin-section-body">
     <label class="sound-setting"><input type="checkbox" id="sound-setting" ${state.sound ? 'checked' : ''}>Lyd i appen</label>
@@ -1747,7 +1772,7 @@ function submitAnswer(value) {
     const perfect = last && answered.results.every(result => result?.firstTry);
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
     save(); render();
-    feedback(`task-success-${taskSuccessStep(answered.index,answered.tasks.length)}`, 16);
+    feedback(perfect ? 'perfect' : `task-success-${taskSuccessStep(answered.index,answered.tasks.length)}`, 16);
     flashAnswer(task, value, true);
     if (perfect) {
       const companion = root.querySelector('.companion-strip');
@@ -1830,7 +1855,7 @@ function retryAnswer() {
 }
 
 const ownClickSound=new Set([
-  'start','again','welcome-start','next','help','sound','erase','submit-number','pause',
+  'start','again','welcome-start','map-start','next','help','sound','erase','submit-number','pause',
   'focus-hide','focus-answer','focus-check','focus-continue','break-slot',
   'world-choose','project-open','project-demo','gallery-map','gallery-hero','select-profile',
 ]);
@@ -1879,7 +1904,7 @@ document.addEventListener('click', e => {
     (stage.querySelector('.project-peek, canvas[tabindex], [data-action=close-dialog]')??document.querySelector('.complete h1'))?.focus({preventScroll:true});
   }
   if (action === 'start' || action === 'again') startRound();
-  if (action === 'welcome-start') {
+  if (action === 'welcome-start' || action === 'map-start') {
     closeDialog();
     if (view !== 'round') startRound();
   }
