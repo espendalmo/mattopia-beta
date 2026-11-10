@@ -314,7 +314,7 @@ export function actorPose(actor, seconds, distanceOverride) {
     return {x,y,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),
       sound:Number(seconds%21>10&&seconds%21<12)*.63};
   }
-  if (actor.kind==='plane') return planePose(actor,seconds);
+  if (actor.kind==='plane'||actor.kind==='shuttle') return planePose(actor,seconds);
   if (actor.kind==='rocket'||actor.kind==='rocket-flame') return rocketPose(actor,seconds);
   const {segments,length}=actor.route;
   const traveled=distanceOverride??seconds*actor.speed;
@@ -451,16 +451,17 @@ function rocketPose({x,y,z,yaw,kind,delay},seconds) {
   };
 }
 
-function planePose({x,y,z,yaw,delay,runway},seconds) {
+function planePose({x,y,z,yaw,delay,runway,kind},seconds) {
   const clock=Math.max(0,seconds-delay),t=clock%30;
   const reverse=Math.floor(clock/30)%2===1;
-  const end=runway*.5-1.08;
+  const shuttle=kind==='shuttle';
+  const end=runway*.5-(shuttle?1.32:1.08);
   let along=-end,altitude=0,turn=0;
   if (t>=2.4&&t<5.3) along=-end+2*end*((t-2.4)/2.9)**1.8;
   else if (t>=5.3&&t<8.8) {
     const flight=(t-5.3)/3.5;
     along=end+189*flight**1.7;
-    altitude=115*flight**1.44;
+    altitude=(shuttle?146:115)*flight**1.44;
   } else if (t>=8.8&&t<13) altitude=-540;
   else if (t>=13&&t<17.4) {
     const approach=(17.4-t)/4.4;
@@ -474,8 +475,10 @@ function planePose({x,y,z,yaw,delay,runway},seconds) {
   const direction=reverse?-1:1,heading=yaw+(reverse?Math.PI:0)+turn;
   const bend=altitude>0 ? Math.sign(along)*Math.sin(Math.min(1,altitude/125)*Math.PI)*altitude*.56 : 0;
   const roll=altitude>0?Math.sin(t*2.4)*Math.min(.12,altitude*.012):0;
+  const pitch=t>=5.05&&t<8.8?Math.min(.23,(t-5.05)*.4)
+    :t>=13&&t<17.4?-.1*Math.min(1,(17.4-t)*2.3):0;
   return {x:x+Math.sin(yaw)*along*direction+Math.cos(yaw)*bend,y:y+altitude,z:z+Math.cos(yaw)*along*direction-Math.sin(yaw)*bend,
-    cos:Math.cos(heading+roll),sin:Math.sin(heading+roll),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),
+    cos:Math.cos(heading+roll),sin:Math.sin(heading+roll),pitch,stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),
     sound:Number(clock>0&&(t>=2.42&&t<8.16||t>=15.4&&t<21.2))};
 }
 

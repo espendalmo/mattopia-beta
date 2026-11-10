@@ -375,8 +375,8 @@ export function districtTram(layout,plot,plan) {
 }
 
 export const AIRPORT_HELIPAD={x:3.63,y:.48,z:-.48};
-export function helipadParts() {
-  const {x,z}=AIRPORT_HELIPAD;
+export const REGIONAL_HELIPAD={x:.76,y:.48,z:4.15};
+export function helipadParts({x,z}=AIRPORT_HELIPAD) {
   return [
     tube(x,z,3.02,3.02,.12,'#e3c37e',.35),tube(x,z,2.82,2.82,.024,'#657d87',.458),
     ...sides.map(side=>box(x+side*.29,z,.15,.85,.018,cream,.482)),
@@ -406,7 +406,8 @@ function helicopterBody(island) {
 }
 
 export function helicopterModels(island,plot) {
-  const center=island?pointOnSite([AIRPORT_HELIPAD.x,AIRPORT_HELIPAD.y,AIRPORT_HELIPAD.z],plot):[plot.x,plot.y,plot.z];
+  const pad=plot.airfield?REGIONAL_HELIPAD:AIRPORT_HELIPAD;
+  const center=island?pointOnSite([pad.x,pad.y,pad.z],plot):[plot.x,plot.y,plot.z];
   const yaw=island?(plot.yaw??0)-Math.PI/4:0;
   const [cx,cy,cz]=center;
   function flight(seconds) {

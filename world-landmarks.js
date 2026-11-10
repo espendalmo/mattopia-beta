@@ -1,5 +1,5 @@
 import {box as b,rounded as r,dome as d,tube as t,roof,beam,worldSign,pointOnSite,placeParts,vehicle} from './scenery.js';
-import {transitStation,helipadParts} from './transport.js';
+import {transitStation,helipadParts,REGIONAL_HELIPAD} from './transport.js';
 
 const cream='#f3e5c8', stone='#c9bda6', dark='#344451', glass='#68a4ba', ice='#a1dae2';
 const brass='#e5bc68', teal='#347e81', rose='#c86173';
@@ -849,6 +849,9 @@ function tropicalPools() {
 }
 
 export function airportRunway(kind) {
+  if (kind==='shuttlePort'||kind==='majorAirport') {
+    return {x:0,y:.464,z:-1.35,yaw:Math.PI/2,length:kind==='shuttlePort'?19.4:19.8,width:3.2};
+  }
   return kind==='airstrip'
     ? {x:1.78,y:.464,z:0,yaw:0,length:10.75,width:3.16}
     : {x:.06,y:.464,z:-.07,yaw:Math.PI/4,length:12.6,width:2.36};
@@ -864,6 +867,48 @@ export function planeModel() {
       ...[-.96,-.55,-.15,.24].map(z=>b(s*.464,z,.055,.179,.18,'#77aab5',.37)),
       t(s*.37,.22,.12,.23,.22,dark,.05,'x'),
     ]),t(0,1.01,.14,.22,.22,dark,.05,'x')];
+}
+
+export function shuttleModel() {
+  const pearl='#e6e7e2', graphite='#465265', glow='#93d9df';
+  return [r(0,-.23,1.28,3.42,.66,pearl,.18),d(0,1.42,1.24,1.2,.48,pearl,.25),
+    r(0,.68,1.03,.8,.28,graphite,.67),b(0,-1.21,.16,.78,.86,'#826fa1',.72),
+    ...pair.flatMap(side=>[
+      {...b(side*.94,-.55,1.62,.86,.13,pearl,.31),angle:side*.47},
+      {...b(side*1.48,-.89,.37,.46,.13,'#a18abe',.32),angle:side*.38},
+      t(side*.35,-1.92,.49,.26,.45,graphite,.3,'z'),
+      t(side*.35,-2.05,.33,.08,.28,glow,.38,'z'),
+      t(side*.43,-.79,.12,.23,.23,graphite,.05,'x'),
+    ]), t(0,.83,.14,.21,.21,graphite,.04,'x')];
+}
+
+function regionalAirport(shuttle=false) {
+  const runway=airportRunway(shuttle?'shuttlePort':'majorAirport');
+  const strip={...runway,y:0};
+  const [x,y,z]=pointOnSite([0,0,1.32-runway.length*.5],runway);
+  const color=shuttle?'#a6a2bf':'#a3bbc0';
+  const hangar=shuttle?'#7e79a1':'#577b90';
+  const terminal=shuttle?'#658ba5':'#577e8b';
+  const marks=Array.from({length:13},(_,i)=>(i-6)*1.42);
+  return [
+    base(21.65,13.65,shuttle?'#bdb8c8':'#c9c6aa'),
+    [...placeParts([b(0,0,runway.width,runway.length,.117,'#536577',.346)],strip),
+      r(-3.7,3.9,6.8,3.22,2.13,color,.34),roof(-3.7,3.9,7.02,3.54,.83,hangar,2.47),
+      r(4.6,3.72,4.24,2.79,1.67,color,.34),r(4.6,3.72,4.45,2.98,.21,hangar,2),
+      r(7.65,2.75,1.27,1.29,3.02,color,.35),r(7.65,2.75,1.89,1.75,.86,terminal,3.34),
+      r(7.65,2.75,2.04,1.91,.18,hangar,4.18),
+      b(.17,.61,.77,1.51,.09,'#89959f',.352)],
+    [...placeParts([
+      ...marks.map(z=>b(0,z,.093,.79,.026,cream,.465)),
+      ...pair.flatMap(s=>marks.map(z=>t(s*1.48,z,.105,.105,.113,shuttle?'#84e7df':'#f5d388',.434))),
+      ...pair.flatMap(s=>[-.76,-.4,.4,.76].map(a=>b(a,s*(runway.length*.5-.36),.14,.43,.025,cream,.464))),
+    ],strip),
+    ...glazing([-5.9,-4.4,-2.9,-1.4],[1.21],5.53,{w:.93,h:.79}),
+    ...glazing([3.44,4.6,5.76],[.89],5.13,{w:.82,h:.66}),
+    ...worldSign(shuttle?'radio':'plane',-.83,2.16,5.53,terminal),
+    ...(shuttle?[]:helipadParts(REGIONAL_HELIPAD)),
+    ...placeParts(shuttle?shuttleModel():planeModel(),{x,y,z,yaw:runway.yaw}).map(part=>({...part,flight:shuttle?'shuttle':'plane'}))],
+  ];
 }
 
 function airport(tiny=false) {
@@ -960,6 +1005,36 @@ function tramDepot() {
       ...pair.map(s=>r(s*2.2,2.66,1.04,.38,.27,'#9e8e76',.52))]];
 }
 
+function lunarHighrise(variant) {
+  const palette=[
+    ['#90a8c5','#86cdd5','#ece3bf'],
+    ['#8f85ad','#a7bde2','#e0bad5'],
+    ['#9da8aa','#73c6b8','#e4d394'],
+  ][variant];
+  const [wall,glass,tint]=palette;
+  const height=[9.4,11.8,10.1][variant];
+  const tower=(x,z,w,h)=>{
+    const shell=variant===2?t:r;
+    return [
+      shell(x,z,w,w*.84,h,wall,.34),
+      ...Array.from({length:Math.floor(h/.95)},(_,i)=>shell(x,z,w+.13,w*.84+.14,.28,i%3===2?tint:glass,.82+i*.91)),
+      shell(x,z,w+.35,w*.84+.33,.24,wall,h+.31),
+      ...(variant===0?[b(x-w*.32,z+w*.422,.19,.1,h*.91,tint,.48),
+        b(x+w*.32,z+w*.422,.19,.1,h*.91,tint,.48)]:[]),
+    ];
+  };
+  return [
+    base(10.1,9.3,'#b8b6c7'),
+    [...tower(-1.48,-.49,3.6,height),...tower(2.39,.12,variant===1?2.4:2.82,height*(variant===1?.56:.71))],
+    [r(.57,-.12,3.73,1.33,.92,glass,height*.48),
+      ...pair.map(side=>b(.58,side*.67-.12,3.8,.07,.11,tint,height*.48+.74)),
+      d(-1.48,-.49,3.85,3.22,.92,tint,height+.54),
+      ...(variant===1?[t(-1.48,-.49,.15,.15,1.73,wall,height+1.26),d(-1.48,-.49,.47,.47,.29,glass,height+2.89)]
+        :[d(2.39,.12,2.9,2.42,.6,glass,height*.71+.54)]),
+      ...worldSign('sun',-1.48,2.11,1.13,glass)],
+  ];
+}
+
 const art={
   hotel:()=>grandHotel(false),resort:()=>grandHotel(true),hall:()=>civic(false),bank:()=>civic(true),cinema,prison,
   restaurant:theme=>dining(theme==='island'),garden:theme=>gardens(theme==='island'),bandstand:theme=>gardens(theme==='island',true),
@@ -973,11 +1048,12 @@ const art={
   ringHabitat,lunarArcade:arcade,moonGarden:greatPark,auroraHotel:()=>glassTower('auroraHotel'),
   solarGarden,lunarRadio:()=>radioTower(true),dustCafe:()=>snackHouse('dustCafe'),cargoDepot:()=>moonWorks('cargoDepot'),
   roverGarage:()=>moonWorks('roverGarage'),moonWorkshop:()=>moonWorks('moonWorkshop'),moonCargo:()=>moonWorks('moonCargo'),
-  tikiBar:()=>snackHouse('tikiBar'),airport:()=>airport(),islandArcade:arcade,megaResort,glassHotel:()=>glassTower('glassHotel'),
+  tikiBar:()=>snackHouse('tikiBar'),airport:(theme,site)=>theme==='city'&&(!site||site.airfield)?regionalAirport():airport(),shuttlePort:()=>regionalAirport(true),islandArcade:arcade,megaResort,glassHotel:()=>glassTower('glassHotel'),
   beachCamp:camping,tropicalMarket:market,coralCafe:()=>snackHouse('coralCafe'),
   islandTower:()=>glassTower('lookout'),palmGarden:greatPark,airstrip:()=>airport(true),tropicalPools,
   railwayStation:()=>transitStation(false),monorailStation:()=>transitStation(true),
   tramStation:tramDepot,lighthouse:theme=>lighthouse(theme==='island'),hangar,casino,needleTower,telescopeArray,
+  prismTower:()=>lunarHighrise(0),novaTower:()=>lunarHighrise(1),haloTower:()=>lunarHighrise(2),
 };
 
 export const RAIL_LANDMARKS={
@@ -1099,6 +1175,10 @@ export const GRAND_LANDMARKS={
     41:['Orbital panorama','Et utsiktshotell over månebasen.','auroraHotel'],
     42:['Islaboratoriet','Her undersøkes is fra kratrene.','craterLab'],
     43:['Måneåkeren','Drivhus og grønne vekster under glass.','biodome'],
+    44:['Måneflyplassen','Se romferga ta av fra den opplyste rullebanen og lande igjen.','shuttlePort','flight'],
+    45:['Prismetårnet','To glasstårn med en lysbro mellom etasjene.','prismTower'],
+    46:['Novaspiret','En høy boligblokk med en lysende antenne.','novaTower'],
+    47:['Halotårnene','To futuristiske tårn med grønt glass og runde tak.','haloTower'],
   },
   island:{
     37:['Korallfyret','Et korallrødt fyr viser vei mellom revene.','lighthouse'],

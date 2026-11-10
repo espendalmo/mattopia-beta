@@ -453,9 +453,10 @@ export function worldBuildingOptions(id,map) {
     available.splice(available.indexOf(RAIL_PLACE),1);
     available.unshift(RAIL_PLACE);
   }
-  if (id==='city' && grandCatalog(map) && worldStatus(map).built%7===3 && available.includes(37)) {
-    available.splice(available.indexOf(37),1);
-    available.unshift(37);
+  const airport=id==='city'?37:id==='moon'?44:null;
+  if (worldStatus(map).built%7===3 && available.includes(airport)) {
+    available.splice(available.indexOf(airport),1);
+    available.unshift(airport);
   }
   const types=new Set();
   const varied=[];
@@ -497,7 +498,7 @@ export function worldBuildingPreview(id,index,map=null) {
   const staged=isRegion(map)?regionLandmarkParts(id,index,null,map).flat():landmark(id,index,PLACES[id][index],[0,0]).flatMap(step=>step.parts);
   const vehicle=transitVehiclePreview(info.kind);
   const parts=vehicle?[...staged.filter(part=>!part.transitPreview),...vehicle]
-    :staged.map(part=>part.flight==='plane'?{...part,x:part.x-.9,y:part.y+1.3,z:part.z+3.25}:part);
+    :staged.map(part=>['plane','shuttle'].includes(part.flight)?{...part,x:part.x-.9,y:part.y+1.3,z:part.z+3.25}:part);
   const height=Math.max(...parts.map(part=>part.y+part.h));
   const span=Math.max(...parts.map(part=>Math.hypot(2*Math.abs(part.x)+(part.w??0),2*Math.abs(part.z)+(part.d??0))));
   return {parts,background:THEMES[id].sky,yaw:-.52,pitch:.47,center:height*.44,size:Math.max(9.7,height*1.55,span*.95),latest:[]};

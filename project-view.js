@@ -479,7 +479,7 @@ export function finishTransition(elapsed) {
   return {travel: t*t*(3-2*t),opacity:1-.31*Math.sin(Math.PI*t)};
 }
 
-const nearbySounds={road:'traffic',bus:'traffic',jetski:'traffic',hover:'rover','offroad-rover':'rover',
+const nearbySounds={shuttle:'rocket',road:'traffic',bus:'traffic',jetski:'traffic',hover:'rover','offroad-rover':'rover',
   wheel:'ride-cheer',coaster:'ride-cheer',tram:'train'};
 const aircraft=new Set(['plane','helicopter','rocket']);
 

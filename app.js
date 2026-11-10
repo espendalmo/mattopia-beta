@@ -1,6 +1,6 @@
 import { VERSION, CHANNEL, ROUND_LENGTH, ROUND_LENGTHS, PROGRESSION_ROUNDS, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, advanceRound, noteHelp, roundSummary, freshState, restoreState, progressionPreview, advancePractice } from './core.js';
 import { hintFor } from './learning.js';
-import { createSoundPlayer } from './sound.js';
+import { createSoundPlayer, taskSuccessStep } from './sound.js';
 import { createUpdater, readPublishedVersion, PRODUCTION_PATH } from './update.js';
 import { modelById, selectRewardMode, prepareReward, awardPractice, upcomingBuild, renderBuildSvg, puzzleBrickLayout, renderPuzzleBrick } from './rewards.js';
 import { plantById, renderPlant } from './plants.js';
@@ -37,6 +37,13 @@ let disposeProjectPreview;
 let setup = null;
 let ui = makeUI();
 const sounds = createSoundPlayer();
+
+// Safari may report pinch gestures separately from the map's pointer events.
+for (const name of ['gesturestart','gesturechange']) {
+  document.addEventListener(name,event=>{
+    if (matchMedia('(pointer: coarse)').matches) event.preventDefault();
+  },{passive:false});
+}
 const AWAY_KEY = `${STORAGE_KEY}-away`;
 const WELCOME_AFTER = 15 * 60 * 1000;
 const TEST_BREAK_LINKS = { memory:'#pauselek=kims-lek', build:'#pauselek=klossebygget', floor:'#pauselek=klossegulvet' };
@@ -1673,7 +1680,7 @@ function submitAnswer(value) {
   const task = answered.tasks[answered.index];
   if (answered.solved) {
     save(); render();
-    feedback(answered.attempts[answered.index] === 1 ? 'success' : 'recover', 16);
+    feedback(`task-success-${taskSuccessStep(answered.index,answered.tasks.length)}`, 16);
     flashAnswer(task, value, true);
     say(`Riktig. ${equationText(task)} Neste oppgave er klar.`);
     root.querySelector('[data-action="next"]')?.focus({ preventScroll: true });

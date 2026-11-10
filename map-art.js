@@ -1,6 +1,6 @@
 import {box,rounded,tube,dome,beam,placeParts,pointOnSite,actor,coasterActor,visitor,swimmer} from './scenery.js';
 import {regionSurface} from './regions.js';
-import {airportRunway,COASTER_TRACK,planeModel,ROCKET_PAD,WHEEL_HUB} from './world-landmarks.js';
+import {airportRunway,COASTER_TRACK,planeModel,shuttleModel,ROCKET_PAD,WHEEL_HUB} from './world-landmarks.js';
 import {randomGenerator} from './worlds.js';
 
 const paint='#e3ae55';
@@ -116,10 +116,10 @@ export function rideModels(plot,stages) {
   if (model.length) {
     const kind=model[0].flight;
     const delay=(plot.index*11%7)*.28;
-    if (kind==='plane') {
-      const runway=airportRunway(plot.kind);
+    if (kind==='plane'||kind==='shuttle') {
+      const runway=airportRunway(plot.airfield&&plot.kind==='airport'?'majorAirport':plot.kind);
       const [x,y,z]=pointOnSite([runway.x,runway.y,runway.z],plot);
-      return [{kind,x,y,z,yaw:plot.yaw+runway.yaw,runway:runway.length,delay,parts:planeModel()}];
+      return [{kind,x,y,z,yaw:plot.yaw+runway.yaw,runway:runway.length,delay,parts:kind==='shuttle'?shuttleModel():planeModel()}];
     }
     const [x,y,z]=pointOnSite(ROCKET_PAD,plot);
     const parts=placeParts(model,{x:-ROCKET_PAD[0],y:-ROCKET_PAD[1],z:-ROCKET_PAD[2]});

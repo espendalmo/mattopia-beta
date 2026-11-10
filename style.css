@@ -1194,3 +1194,8 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 }
 .map-info-card .eplo-bubble { pointer-events: auto; }
 .map-info-card [data-map-info-close] { position: absolute; top: 0; right: 0; pointer-events: auto; }
+
+/* Let the game handle pinches on the map, while touch scrolling still works elsewhere. */
+@media (pointer: coarse) {
+  html, body, dialog, .task-scroll { touch-action: pan-x pan-y; }
+}

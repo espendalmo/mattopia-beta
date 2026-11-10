@@ -14,13 +14,13 @@ const oval=Array.from({length:16},(_,i)=>{
 const curved=new Set(['park','garden','greatPark','bandstand','palmGarden','moonGarden','biodome','habitat','ringHabitat',
   'moonHotel','spaceField','rocketPort','orbitalPort','telescope','tropicalPools','beachClub','coaster']);
 const square=new Set(['school','sawmill','factory','airstrip','solar','solarGarden','prison','field']);
-const paved=new Set(['busStation','airport','airstrip','factory','sawmill','hoverDealer','roverGarage','moonWorkshop','moonCargo','cargoDepot',
+const paved=new Set(['busStation','airport','airstrip','shuttlePort','factory','sawmill','hoverDealer','roverGarage','moonWorkshop','moonCargo','cargoDepot',
   'railwayStation','monorailStation']);
 
 export function shapeLandmarkGround(stages,kind) {
   const foundation=stages[0].find(part=>part.support);
   if (!foundation) return stages;
-  const profile=kind==='airport'?runway:curved.has(kind)?oval:square.has(kind)?rectangle:
+  const profile=kind==='shuttlePort'||kind==='airport'&&foundation.w>15?rectangle:kind==='airport'?runway:curved.has(kind)?oval:square.has(kind)?rectangle:
     ['hall','bank','arcade','nightCinema','market','tropicalMarket','square'].includes(kind)?plaza:clipped;
   const cap=foundation.y+foundation.h;
   return stages.map(parts=>parts.map(part=>{

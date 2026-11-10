@@ -6,7 +6,6 @@ export const SOUND_PATTERNS={success:[[76,0,.16,.065],[79,.078,.17,.065],[84,.15
 SOUND_PATTERNS.key=[[86,0,.035,.018]];
 // Soft pitch glides give the companion a small, voice-like reaction.
 SOUND_PATTERNS.retry=[[78,0,.14,.045,74],[90,0,.13,.012,86],[75,.105,.19,.043,81]];
-SOUND_PATTERNS.recover=[[74,0,.13,.045,81],[86,0,.13,.012,93],[81,.10,.27,.05,86]];
 SOUND_PATTERNS.memory=[[72,0,.13,.05],[76,.09,.14,.05],[79,.18,.16,.055],[84,.29,.34,.055],[76,.29,.34,.028]];
 SOUND_PATTERNS.select=[[79,0,.075,.013]];
 SOUND_PATTERNS.open=[[69,0,.095,.014],[76,.049,.13,.012]];
@@ -19,10 +18,16 @@ SOUND_PATTERNS.back=[[72,0,.082,.013,68]];
 SOUND_PATTERNS.hint=[[72,0,.11,.023],[81,.075,.17,.025,83]];
 SOUND_PATTERNS.finale=[[60,.45,.18,.043],[67,.55,.19,.045],[72,.72,.23,.055],[76,.91,.27,.054],
   [79,1.09,.28,.049],[84,1.29,.67,.06],[79,1.29,.64,.036],[76,1.29,.65,.029],[60,1.29,.65,.032]];
-SOUND_PATTERNS.success2=[[72,0,.18,.062],[77,.087,.19,.063],[81,.177,.33,.062],[77,.177,.3,.028]];
-SOUND_PATTERNS.success3=[[74,0,.17,.062],[78,.083,.18,.058],[81,.16,.17,.061],[86,.25,.3,.065]];
-SOUND_PATTERNS.success4=[[79,0,.13,.055],[83,.081,.17,.058],[86,.158,.34,.066],[79,.158,.28,.028]];
-const successPhrases=['success','success2','success3','success4'];
+const successRoots=[65,67,69,70,72,74,76,77];
+export function taskSuccessStep(index,length) {
+  return Math.max(0,Math.min(7,Math.round(index*7/Math.max(1,length-1))));
+}
+for (const [i,root] of successRoots.entries()) {
+  SOUND_PATTERNS[`task-success-${i}`]=[
+    [root+4,0,.15,.059],[root+7,.078,.17,.059],[root+12,.156,i===7?.34:.285,.064],
+    [root,.156,.25,.022],
+  ];
+}
 const lightSounds=new Set(['key','select','open','next','build','tap','back','hint']);
 const worlds=new Set(['city','moon','island']);
 export const AMBIENCE_LEVEL=.75;
@@ -37,7 +42,6 @@ function playbackSession() {
 export function createSoundPlayer(getContext=()=>new(window.AudioContext||window.webkitAudioContext)(), getSession=playbackSession) {
   let context,voices=[],generation=0,buildGeneration=0,ambience,ambienceGeneration=0,session,carrier;
   const beds=new Map(),clips=new Map();
-  let successPhrase=0;
 
   function releaseVoice({source,gain}) {
     try { source.stop(); } catch {}
@@ -216,8 +220,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     unlock().then(()=>{
       if (!context||token!==generation) return;
       const now=context.currentTime+(kind==='key'?0:.015);
-      const phrase=kind==='success'?successPhrases[successPhrase++%successPhrases.length]:kind;
-      melody(phrase,now);
+      melody(kind,now);
     }).catch(()=>{});
   }
 
