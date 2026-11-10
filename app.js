@@ -5,7 +5,8 @@ import { createUpdater, readPublishedVersion, PRODUCTION_PATH } from './update.j
 import { modelById, selectRewardMode, prepareReward, awardPractice, upcomingBuild, renderBuildSvg, puzzleBrickLayout, renderPuzzleBrick } from './rewards.js';
 import { plantById, renderPlant } from './plants.js';
 import { BREAK_ATTEMPTS, BREAK_INTERVAL, BREAK_TITLES, BRICK_COLORS, breakKind, createBreakGame, placeBreakBrick, retryBreak, scoreBreak } from './breaks.js';
-import { AVATARS, GRADES, NAME_LIMIT, profileDetails, readProfiles, saveProfile } from './profiles.js';
+import { AVATARS, AVATAR_GROUPS, GRADES, NAME_LIMIT, profileDetails, readProfiles, saveProfile } from './profiles.js';
+import { rewardIllustration } from './illustrations.js';
 import { curriculumTopic, levelForGrade, levelsForGrade, nextLevelForGrade } from './curriculum.js';
 import { PROJECTS, projectById, projectScene, worldBuilding, worldBuildingOptions, worldBuildingPreview } from './projects.js';
 import { isWorld, isRegion, currentWorld, worldStatus, worldCompletedPlaces, worldSelect, worldAdvance, freshWorld, replaceCurrentWorld, startNewWorld, WORLD_IDS, REGION_PLACES } from './worlds.js';
@@ -143,9 +144,13 @@ function alignPracticeLevel(grade) {
 function profileFields(person) {
   return `<label class="profile-field"><span>Fornavn eller kallenavn</span><input type="text" name="name" maxlength="${NAME_LIMIT}" value="${escapeHtml(person.name)}" autocomplete="off" placeholder="Valgfritt"></label>
     <label class="profile-field"><span>Klassetrinn</span><select name="grade">${gradeOptions(person.grade)}</select></label>
-    <fieldset class="avatar-options"><legend>Velg en avatar</legend><div>${Object.entries(AVATARS).map(([key, avatar]) => `<label class="avatar-option">
-      <input class="sr-only" type="radio" name="avatar" value="${key}" ${key === person.avatar ? 'checked' : ''}>
-      ${avatarArt(key)}<span class="avatar-name">${avatar.label}</span></label>`).join('')}</div></fieldset>`;
+    <fieldset class="avatar-options"><legend>Velg en avatar</legend>
+      ${AVATAR_GROUPS.map(({label,avatars})=>`<div class="avatar-group">
+        <p>${label}</p><div class="avatar-grid">${Object.entries(avatars).map(([key,name])=>`<label class="avatar-option">
+          <input class="sr-only" type="radio" name="avatar" value="${key}" ${key === person.avatar ? 'checked' : ''}>
+          ${avatarArt(key)}<span class="avatar-name">${name}</span></label>`).join('')}</div>
+      </div>`).join('')}
+    </fieldset>`;
 }
 
 const SETUP_TITLES = ['Hvem skal øve?', 'Hvordan vil du øve?', 'Hva vil du bygge eller dyrke?'];
@@ -162,9 +167,9 @@ function setupForm(draft) {
     ['grade','Fri blanding på trinnet','Bland oppgaver fra alle øvingsområdene på trinnet.'],
     ['all','Fri blanding fra 3.–10. trinn','Prøv oppgaver fra flere klassetrinn i samme runde.']];
   const rewards = [
-    ['plant','Plante','Så et frø og se det vokse.',icon('sprout')],
-    ['bricks','Klossebygging','Samle små figurer.',icon('brick')],
-    ...Object.entries(PROJECTS).map(([id,project])=>[id,project.name,project.description,project.icon]),
+    ['plant','Plante','Så et frø og se det vokse.'],
+    ['bricks','Klossebygging','Samle små figurer.'],
+    ...Object.entries(PROJECTS).map(([id,project])=>[id,project.name,project.description]),
   ];
   const fields = [
     () => profileFields(person),
@@ -174,9 +179,10 @@ function setupForm(draft) {
     </label>`).join('')}</fieldset>
     <label class="profile-field"><span>Startspor (for spor og progresjon)</span><select name="level">${levelsForGrade(person.grade).map(id=>`<option value="${id}" ${id === levelForGrade(person.grade,draft.level) ? 'selected' : ''}>${LEVELS[id].label}</option>`).join('')}</select></label>
     <label class="profile-field"><span>Oppgaver per runde</span><select name="length">${ROUND_LENGTHS.map(length=>`<option value="${length}" ${length === roundLength ? 'selected' : ''}>${length} oppgaver</option>`).join('')}</select></label>`,
-    () => `<fieldset class="setup-rewards"><legend class="sr-only">Velg belønning</legend><div>${rewards.map(([id,label,note,art])=>`<label class="setup-reward">
+    () => `<fieldset class="setup-rewards"><legend class="sr-only">Velg belønning</legend><div>${rewards.map(([id,label,note])=>`<label class="setup-reward">
       <input type="radio" name="reward" value="${id}" class="sr-only" ${id === rewardMode ? 'checked' : ''}>
-      <span class="setup-reward-card"><span class="reward-choice-icon" aria-hidden="true">${art}</span><strong>${label}</strong><small>${note}</small></span>
+      <span class="setup-reward-card"><span class="setup-reward-art" aria-hidden="true">${rewardIllustration(id)}<span class="setup-reward-check">${icon('check')}</span></span>
+        <strong>${label}</strong><small>${note}</small></span>
     </label>`).join('')}</div></fieldset><p class="adult-note">Du kan endre valgene under «For voksne».</p>`,
   ];
   return `<form class="profile-form setup-form" data-setup-form>
@@ -229,7 +235,7 @@ function renderOnboarding() {
   const carry = state.roundsCompleted || state.active;
   root.innerHTML = `<div class="app-shell">${header(CHANNEL === 'preview', false)}${updateBanner()}<main class="onboarding">
     <p class="home-eyebrow">Hei fra Mattopia!</p><h1 tabindex="-1">${SETUP_TITLES[setup.step]}</h1>
-    ${setup.step === 0 ? `<p>${carry ? 'Øvingen du har fra før, følger med denne profilen.' : 'Lag en spiller og velg en figur som kan heie på deg.'}</p>` : ''}
+    ${setup.step === 0 ? `<p>${carry ? 'Øvingen du har fra før, følger med denne profilen.' : 'Lag en spiller og velg et bilde til profilen din.'}</p>` : ''}
     ${setupForm(setup)}<p class="adult-note">Profilen lagres på denne enheten.</p>
     ${!storageWorks ? '<p class="storage-warning">Framgangen kan forsvinne hvis nettleseren blokkerer lagring.</p>' : ''}
   </main></div>`;
@@ -1301,7 +1307,8 @@ function renderRound() {
     feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${messages[r.index % messages.length]}</p><p class="feedback-detail">${escapeHtml(equationText(t))}</p></div></div><button class="primary" data-action="next">${r.index === length - 1 ? 'Fullfør runden' : 'Neste'}${icon('arrow')}</button>`;
   } else feedback = '<p class="idle-note">Ta den tiden du trenger.</p>';
   root.innerHTML = `<div class="round-shell"><header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>${CHANNEL === 'preview' ? betaMark() : 'Din lille runde'}</span><strong>Oppgave ${r.index + 1} av ${length}</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="${length}" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
-    <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-buddy">${buddy(r.solved, ui.retry)}</div><p>${r.solved ? 'Se hva du fikk til!' : r.attempts[r.index] ? 'Vi prøver igjen sammen.' : 'Vi finner det ut.'}</p></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
+    <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-buddy">${buddy(r.solved, ui.retry)}</div>
+    <p><span class="companion-message">${r.solved ? 'Se hva du fikk til!' : r.attempts[r.index] ? 'Vi prøver igjen sammen.' : 'Vi finner det ut.'}</span><span class="companion-sparks" aria-hidden="true"></span></p></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
     ${equation(t, r.solved)}${renderVisual(t, r.solved)}
     ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 ? 'disabled' : ''}>${icon('help')}${stage === 3 ? 'Vi ser sammen' : stage ? 'Et hint til' : 'Vis meg'}</button>` : ''}
     ${stage && !r.solved ? `<div class="hint" id="hint-panel"><span class="eplo-hint-name">Eplo</span>${escapeHtml(hintText(t))}</div>` : ''}
@@ -1731,9 +1738,17 @@ function submitAnswer(value) {
     feedback(`task-success-${taskSuccessStep(answered.index,answered.tasks.length)}`, 16);
     flashAnswer(task, value, true);
     if (perfect) {
-      root.insertAdjacentHTML('beforeend', `<aside class="perfect-round-toast" aria-hidden="true">${eploNote('Perfekt runde!',true)}</aside>`);
-      const toast = root.querySelector('.perfect-round-toast');
-      setTimeout(()=>toast?.remove(),3500);
+      const companion = root.querySelector('.companion-strip');
+      const message = companion?.querySelector('.companion-message');
+      if (message) {
+        const previous = message.textContent;
+        message.textContent = 'Perfekt runde!';
+        companion.classList.add('perfect-round');
+        setTimeout(() => {
+          message.textContent = previous;
+          companion.classList.remove('perfect-round');
+        }, 3500);
+      }
     }
     say(`Riktig. ${equationText(task)} ${perfect ? 'Eplo sier: Perfekt runde!' : last ? 'Runden er klar til å fullføres.' : 'Neste oppgave er klar.'}`);
     root.querySelector('[data-action="next"]')?.focus({ preventScroll: true });

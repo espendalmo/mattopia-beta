@@ -175,6 +175,36 @@ function triangleGradient(context,points,colors,solid,paintColor) {
   return gradient;
 }
 
+export function rasterizeLunarTerrain(image,triangles,sx,sy) {
+  const {data,width,height}=image;
+  for (const {points,colors,opacity} of triangles) {
+    const [[ax,ay],[bx,by],[cx,cy]]=points.map(([x,y])=>[x*sx,y*sy]);
+    const area=(by-cy)*(ax-cx)+(cx-bx)*(ay-cy);
+    if (Math.abs(area)<1e-8) continue;
+    const left=Math.max(0,Math.floor(Math.min(ax,bx,cx)));
+    const right=Math.min(width-1,Math.ceil(Math.max(ax,bx,cx)));
+    const top=Math.max(0,Math.floor(Math.min(ay,by,cy)));
+    const bottom=Math.min(height-1,Math.ceil(Math.max(ay,by,cy)));
+    const [a,b,c]=colors;
+    for (let y=top;y<=bottom;y++) {
+      const row=y+.5-cy;
+      for (let x=left;x<=right;x++) {
+        const column=x+.5-cx;
+        const u=((by-cy)*column+(cx-bx)*row)/area;
+        const v=((cy-ay)*column+(ax-cx)*row)/area;
+        const w=1-u-v;
+        if (u< -1e-8||v< -1e-8||w< -1e-8) continue;
+        const alpha=u*opacity[0]+v*opacity[1]+w*opacity[2];
+        const offset=(y*width+x)*4;
+        data[offset+3]=alpha*255;
+        // The mesh stores premultiplied colors. ImageData uses straight alpha.
+        const gain=alpha>0?255/alpha:0;
+        for (let channel=0;channel<3;channel++) data[offset+channel]=(u*a[channel]+v*b[channel]+w*c[channel])*gain;
+      }
+    }
+  }
+}
+
 function splitWideFace(face) {
   const points=face.points;
   if (Number.isFinite(face.layer)||face.group>=2||face.vertexColors||points.length<3) return [face];
@@ -199,15 +229,9 @@ function splitWideFace(face) {
 function canvasPainter(canvas, faces, background, stars) {
   const context=canvas.getContext('2d');
   if (!context) return null;
-  // Lunar terrain colors are premultiplied against black. Canvas CSS colors use straight alpha.
-  const paintColor=([r,g,b,alpha=1])=>`rgba(${[r,g,b].map(channel=>Math.round(channel*255/(alpha||1))).join(',')},${alpha})`;
+  const paintColor=color=>`rgb(${color.map(channel=>Math.round(channel*255)).join(',')})`;
   // Smaller surfaces keep thin signs, roofs and ride tracks sorted correctly in Canvas.
-  const flat=faces.flatMap(splitWideFace).map(face=>{
-    const {opacity,vertexColors,color}=face;
-    if (!opacity) return {...face,paint:paintColor(color)};
-    return {...face,paint:paintColor([...color,(opacity[0]+opacity[1]+opacity[2])/3]),
-      vertexColors:vertexColors.map((value,i)=>[...value,opacity[i]])};
-  });
+  const flat=faces.flatMap(splitWideFace).map(face=>({...face,paint:paintColor(face.color)}));
   const terrain=flat.filter(face=>Number.isFinite(face.layer));
   const objects=flat.filter(face=>!Number.isFinite(face.layer));
   const terrainChanges=terrain.some(face=>face.group===1||face.group<0);
@@ -216,6 +240,7 @@ function canvasPainter(canvas, faces, background, stars) {
   let viewKey;
 
   return (width,height,camera,scale,center,effects)=>{
+    const sx=canvas.width/width,sy=canvas.height/height;
     const cos=Math.cos(camera.yaw), sin=Math.sin(camera.yaw);
     const rise=Math.sin(camera.pitch), slope=Math.cos(camera.pitch);
     const facing=[sin*slope,rise,cos*slope];
@@ -265,20 +290,30 @@ function canvasPainter(canvas, faces, background, stars) {
         const highlight=face.group===1?Math.min(.58,effects.highlight+shimmer):0;
         const paint=highlight ? paintColor(face.color.map((value,i)=>
           value+([1,.86,.46][i]-value)*highlight)) : face.paint;
-        polygons.push({points,depth:depth/points.length,paint,layer:face.layer,colors:face.smooth?face.vertexColors:null,transparent:face.opacity?.some(alpha=>alpha<1)});
+        polygons.push({points,depth:depth/points.length,paint,layer:face.layer,colors:face.smooth?face.vertexColors:null,opacity:face.opacity});
       }
       polygons.sort((a,b)=>(a.layer-b.layer)||a.depth-b.depth);
-      for (const {points,paint,colors,transparent} of polygons) {
+      const lunarGround=stars?polygons.filter(face=>face.opacity):[];
+      if (lunarGround.length) {
+        // A shared pixel grid avoids antialiasing the internal triangle edges separately.
+        const image=surface.createImageData(surface.canvas.width,surface.canvas.height);
+        rasterizeLunarTerrain(image,lunarGround,sx,sy);
+        surface.putImageData(image,0,0);
+      }
+      for (const {points,paint,colors,opacity,layer} of polygons) {
+        if (opacity) continue;
+        // The lunar horizon sits behind the already painted terrain.
+        if (lunarGround.length) surface.globalCompositeOperation=layer<0?'destination-over':'source-over';
         surface.beginPath();
         points.forEach(([x,y],i)=>i?surface.lineTo(x,y):surface.moveTo(x,y));
         surface.closePath();
         surface.fillStyle=surface.strokeStyle=colors?triangleGradient(surface,points,colors,paint,paintColor):paint;
         surface.lineWidth=.65;
         surface.fill();
-        if (!transparent) surface.stroke();
+        surface.stroke();
       }
+      if (lunarGround.length) surface.globalCompositeOperation='source-over';
     }
-    const sx=canvas.width/width,sy=canvas.height/height;
     context.setTransform(sx,0,0,sy,0,0);
     if (stars) context.clearRect(0,0,width,height);
     if (groundContext) {

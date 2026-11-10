@@ -230,6 +230,15 @@ export function visitor(kind,coat,skin,seated=false,scale=.83) {
   return model.map(part=>({...part,x:part.x*scale,y:part.y*scale,z:part.z*scale,w:part.w*scale,d:part.d*scale,h:part.h*scale}));
 }
 
+function occupiedHovercar(passenger=false) {
+  return [
+    ...vehicle('hover','#b982ac'),
+    ...at(visitor('astronaut','#e7e1d6',undefined,true,.46),-.23,.60,-.19),
+    tube(-.23,.25,.21,.065,.21,'#465463',.84,'z'),
+    ...(passenger?at(visitor('alien','#5aa69b',undefined,true,.43),.24,.58,-.27):[]),
+  ];
+}
+
 function route(points, corner) {
   const path=points.flatMap(([x,z],i)=>{
     const approach=points.at(i-1), exit=points[(i+1)%points.length];
@@ -267,7 +276,7 @@ export function worldActors(theme) {
   ];
   if (theme==='moon') return [
     actor(vehicle('rover','#d5b38e'),[[-15,-13],[-15,11],[15,11],[15,-13]],{kind:'road',ground:.085,speed:2.35,phase:.018,corner:1.25,roads:[-13,-.75,11],roadRise:.102}),
-    actor(vehicle('hover','#b982ac'),[[-15,-13],[-15,11],[15,11],[15,-13]],{kind:'hover',ground:.27,speed:3.15,phase:.47,corner:1.25,roads:[-13,-.75,11],roadRise:.102}),
+    actor(occupiedHovercar(),[[-15,-13],[-15,11],[15,11],[15,-13]],{kind:'hover',ground:.27,speed:3.15,phase:.47,corner:1.25,roads:[-13,-.75,11],roadRise:.102}),
     actor(walker('astronaut','#ebe9e0'),[[-18,-19],[-17.9,-9],[-18.9,-9],[-19,-19]],{kind:'walk',ground:.045,speed:.9,phase:.14}),
     actor(walker('alien','#79b88d'),[[8,-12],[14,-12],[14,-10.8],[8,-10.8]],{kind:'walk',ground:.047,speed:1.1,phase:.24}),
   ];
@@ -294,7 +303,7 @@ export function districtActors(theme,lots) {
   ];
   if (theme==='moon') return [
     actor(vehicle('rover','#d5b38e'),circuit,{kind:'road',ground:.10,speed:2.25,phase:.19,corner:1.15}),
-    actor(vehicle('hover','#b982ac'),circuit,{kind:'hover',ground:.27,speed:3.15,phase:.48,corner:1.15}),
+    actor(occupiedHovercar(true),circuit,{kind:'hover',ground:.27,speed:3.15,phase:.48,corner:1.15}),
     actor(walker('astronaut','#ebe9e0'),path,{kind:'walk',ground:.04,speed:.95,phase:.21}),
     actor(walker('alien','#79b88d'),side,{kind:'walk',ground:.04,speed:1.08,phase:.59}),
   ];
@@ -647,7 +656,7 @@ export function regionActors(theme,layout,plan,completed) {
     if (circuits.length||paths.length) {
       const circuit=circuits[1]??circuits[0];
       const points=circuit?lane(circuit):laneLoop(paths.at(-1),.78);
-      actors.push({...actor(vehicle('hover','#b982ac'),points,{kind:'hover',speed:3.15,phase:.38,corner:STREET_TURN_RADIUS,
+      actors.push({...actor(occupiedHovercar(layout.seed%2===1),points,{kind:'hover',speed:3.15,phase:.38,corner:STREET_TURN_RADIUS,
         elevation:(x,z)=>elevation(x,z)+.17}),...(circuit&&{alternatives})});
     }
   }
