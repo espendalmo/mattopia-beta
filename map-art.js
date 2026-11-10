@@ -1,7 +1,6 @@
 import {box,rounded,tube,dome,beam,placeParts,pointOnSite,actor,coasterActor,visitor,swimmer} from './scenery.js';
 import {regionSurface} from './regions.js';
 import {airportRunway,COASTER_TRACK,planeModel,shuttleModel,ROCKET_PAD,WHEEL_HUB} from './world-landmarks.js';
-import {randomGenerator} from './worlds.js';
 
 const paint='#e3ae55';
 const rust='#bf8651';
@@ -199,8 +198,7 @@ export function landmarkVisitors(theme,plot) {
   return placeParts(people,plot);
 }
 
-export function lunarSky(seed,sky,amount) {
-  const rng=randomGenerator(seed^0x5fa849b1);
+export function lunarEarth(sky,amount) {
   const right=[Math.SQRT1_2,0,Math.SQRT1_2];
   const up=[1/Math.sqrt(6),Math.sqrt(2/3),-1/Math.sqrt(6)];
   const front=[-1,1,1].map(axis=>axis/Math.sqrt(3));
@@ -212,14 +210,6 @@ export function lunarSky(seed,sky,amount) {
     const [x,y,z]=outline[0];
     return {shape:'terrain',outline,colors,color:sky,x,y,z,h:0,layer:-1};
   };
-  const stars=Array.from({length:42},()=>{
-    const x=(rng()-.5)*187,y=(rng()-.51)*38,r=.2+rng()*.36;
-    const strength=(.47+rng()*.49)*Math.max(.09,1-(x/105)**2);
-    const color=shade(rng()<.62?[.7,.77,.96]:[1,.98,.88],strength);
-    const [a,b,c,d]=[[x+r,y],[x,y+r],[x-r,y],[x,y-r]].map(([u,v])=>point(u,v,-8));
-    return [face([a,b,c],[color,color,color]),face([a,c,d],[color,color,color])];
-  }).flat();
-
   const radius=8.2,steps=28;
   const vertex=(r,angle)=>{
     const x=Math.cos(angle)*r,y=Math.sin(angle)*r,z=Math.sqrt(1-r*r);
@@ -233,12 +223,11 @@ export function lunarSky(seed,sky,amount) {
   const triangle=(...points)=>face(points.map(vertex=>vertex.position),points.map(vertex=>vertex.color));
   const rings=[.22,.46,.68,.84,1].map(r=>Array.from({length:steps},(_,i)=>vertex(r,i*2*Math.PI/steps)));
   const center=vertex(0,0);
-  const planet=rings.flatMap((ring,index)=>ring.flatMap((vertex,i)=>{
+  return rings.flatMap((ring,index)=>ring.flatMap((vertex,i)=>{
     const next=(i+1)%steps;
     if (!index) return [triangle(center,vertex,ring[next])];
     const inner=rings[index-1];
     return [triangle(inner[i],vertex,ring[next]),triangle(inner[i],ring[next],inner[next])];
   }));
-  return [...stars,...planet];
 }
 

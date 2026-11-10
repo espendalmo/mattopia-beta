@@ -147,7 +147,7 @@ export function projectFaces(scene) {
       const fade=color=>color.map((value,i)=>value+(haze[i]-value)*(piece.fog??0));
       const vertexColors=piece.colors??(piece.shape==='dome'&&faceIndex>0 ? points.map(point=>fade(shaded(domeNormal(piece,point)))) : null);
       const color=landscape ? fade(rgb) : vertexColors ? rgb.map((_,i)=>vertexColors.reduce((sum,vertex)=>sum+vertex[i],0)/points.length) : fade(shaded(unit));
-      return {points,normal:unit,color,vertexColors,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,landmark:part.landmark,foundation:Boolean(part.support||part.foundation),
+      return {points,normal:unit,color,vertexColors,opacity:piece.opacity,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,landmark:part.landmark,foundation:Boolean(part.support||part.foundation),
         origin:landscape||piece.radial ? [piece.x,piece.y,piece.z] : null,
         group:layerIndex?layerIndex+1:part.roadBuild!==undefined?-Math.max(.001,part.roadBuild):latest.has(part)?1:0,stride:part.stride??0};
     });
@@ -196,12 +196,18 @@ function splitWideFace(face) {
   return points.map((point,i)=>({...face,points:[center,point,points[(i+1)%points.length]]}));
 }
 
-function canvasPainter(canvas, faces, background) {
+function canvasPainter(canvas, faces, background, stars) {
   const context=canvas.getContext('2d');
   if (!context) return null;
-  const paintColor=color=>`rgb(${color.map(channel=>Math.round(channel*255)).join(',')})`;
+  // Lunar terrain colors are premultiplied against black. Canvas CSS colors use straight alpha.
+  const paintColor=([r,g,b,alpha=1])=>`rgba(${[r,g,b].map(channel=>Math.round(channel*255/(alpha||1))).join(',')},${alpha})`;
   // Smaller surfaces keep thin signs, roofs and ride tracks sorted correctly in Canvas.
-  const flat=faces.flatMap(splitWideFace).map(face=>({...face,paint:paintColor(face.color)}));
+  const flat=faces.flatMap(splitWideFace).map(face=>{
+    const {opacity,vertexColors,color}=face;
+    if (!opacity) return {...face,paint:paintColor(color)};
+    return {...face,paint:paintColor([...color,(opacity[0]+opacity[1]+opacity[2])/3]),
+      vertexColors:vertexColors.map((value,i)=>[...value,opacity[i]])};
+  });
   const terrain=flat.filter(face=>Number.isFinite(face.layer));
   const objects=flat.filter(face=>!Number.isFinite(face.layer));
   const terrainChanges=terrain.some(face=>face.group===1||face.group<0);
@@ -259,21 +265,22 @@ function canvasPainter(canvas, faces, background) {
         const highlight=face.group===1?Math.min(.58,effects.highlight+shimmer):0;
         const paint=highlight ? paintColor(face.color.map((value,i)=>
           value+([1,.86,.46][i]-value)*highlight)) : face.paint;
-        polygons.push({points,depth:depth/points.length,paint,layer:face.layer,colors:face.smooth?face.vertexColors:null});
+        polygons.push({points,depth:depth/points.length,paint,layer:face.layer,colors:face.smooth?face.vertexColors:null,transparent:face.opacity?.some(alpha=>alpha<1)});
       }
       polygons.sort((a,b)=>(a.layer-b.layer)||a.depth-b.depth);
-      for (const {points,paint,colors} of polygons) {
+      for (const {points,paint,colors,transparent} of polygons) {
         surface.beginPath();
         points.forEach(([x,y],i)=>i?surface.lineTo(x,y):surface.moveTo(x,y));
         surface.closePath();
         surface.fillStyle=surface.strokeStyle=colors?triangleGradient(surface,points,colors,paint,paintColor):paint;
         surface.lineWidth=.65;
         surface.fill();
-        surface.stroke();
+        if (!transparent) surface.stroke();
       }
     }
     const sx=canvas.width/width,sy=canvas.height/height;
     context.setTransform(sx,0,0,sy,0,0);
+    if (stars) context.clearRect(0,0,width,height);
     if (groundContext) {
       // Actors can move while the same projected landscape is reused.
       const key=[canvas.width,canvas.height,width,height,camera.yaw,camera.pitch,camera.x,camera.y,scale,center,
@@ -283,8 +290,11 @@ function canvasPainter(canvas, faces, background) {
           backing.width=canvas.width; backing.height=canvas.height;
         }
         groundContext.setTransform(sx,0,0,sy,0,0);
-        groundContext.fillStyle=background;
-        groundContext.fillRect(0,0,width,height);
+        if (stars) groundContext.clearRect(0,0,width,height);
+        else {
+          groundContext.fillStyle=background;
+          groundContext.fillRect(0,0,width,height);
+        }
         drawFaces(groundContext,terrain);
         viewKey=key;
       }
@@ -298,8 +308,8 @@ function canvasPainter(canvas, faces, background) {
   };
 }
 
-function webGLPainter(canvas, faces, background, illustrated) {
-  const gl=canvas.getContext('webgl',{alpha:false,antialias:true});
+function webGLPainter(canvas, faces, background, illustrated, stars) {
+  const gl=canvas.getContext('webgl',{alpha:stars,antialias:true});
   if (!gl) return null;
   const shader=(kind,source)=>{
     const result=gl.createShader(kind);
@@ -309,7 +319,7 @@ function webGLPainter(canvas, faces, background, illustrated) {
   };
   const vertex=shader(gl.VERTEX_SHADER,`
     attribute vec3 position;
-    attribute vec3 color;
+    attribute vec4 color;
     attribute float group;
     attribute float stride;
     attribute vec3 hinge;
@@ -322,7 +332,7 @@ function webGLPainter(canvas, faces, background, illustrated) {
     uniform vec4 actorPose[${MAX_ACTORS}];
     uniform vec2 actorTilt[${MAX_ACTORS}];
     uniform vec4 actorMotion[${MAX_ACTORS}];
-    varying mediump vec3 shade;
+    varying mediump vec4 shade;
     varying mediump float modelHeight;
     varying mediump float latest;
     void main() {
@@ -357,15 +367,15 @@ function webGLPainter(canvas, faces, background, illustrated) {
   `);
   const fragment=shader(gl.FRAGMENT_SHADER,`
     precision mediump float;
-    varying mediump vec3 shade;
+    varying mediump vec4 shade;
     varying mediump float modelHeight;
     varying mediump float latest;
     uniform vec2 shine;
     void main() {
       float sweep = max(0.0,1.0-abs(modelHeight-shine.y)/.7)*.36;
-      vec3 color = mix(shade,vec3(1.0,.86,.46),latest*min(.58,shine.x+sweep));
-      ${illustrated?'color += (fract(52.9829 * fract(dot(gl_FragCoord.xy,vec2(.06711,.00583))))-.5)*.022;':''}
-      gl_FragColor = vec4(color,1.0);
+      vec3 color = mix(shade.rgb,vec3(1.0,.86,.46),latest*min(.58,shine.x+sweep));
+      ${illustrated?'color += (fract(52.9829 * fract(dot(gl_FragCoord.xy,vec2(.06711,.00583))))-.5)*.022*shade.a;':''}
+      gl_FragColor = vec4(color,shade.a);
     }
   `);
   const program=gl.createProgram();
@@ -377,22 +387,22 @@ function webGLPainter(canvas, faces, background, illustrated) {
   gl.deleteShader(vertex);
   gl.deleteShader(fragment);
   const data=[];
-  for (const {points,color,vertexColors,group,origin,stride,hinge} of faces) {
+  for (const {points,color,vertexColors,opacity,group,origin,stride,hinge} of faces) {
     const pivot=hinge?[...hinge,1]:[0,0,0];
     for (let i=origin?0:1;i<(origin?points.length:points.length-1);i++) {
       const next=(i+1)%points.length;
-      data.push(...(origin??points[0]),...(vertexColors?.[0]??color),group,stride,...pivot,
-        ...points[i],...(vertexColors?.[i]??color),group,stride,...pivot,
-        ...points[next],...(vertexColors?.[next]??color),group,stride,...pivot);
+      data.push(...(origin??points[0]),...(vertexColors?.[0]??color),opacity?.[0]??1,group,stride,...pivot,
+        ...points[i],...(vertexColors?.[i]??color),opacity?.[i]??1,group,stride,...pivot,
+        ...points[next],...(vertexColors?.[next]??color),opacity?.[next]??1,group,stride,...pivot);
     }
   }
   const buffer=gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
   gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);
-  for (const [name,size,offset] of [['position',3,0],['color',3,12],['group',1,24],['stride',1,28],['hinge',3,32]]) {
+  for (const [name,size,offset] of [['position',3,0],['color',4,12],['group',1,28],['stride',1,32],['hinge',3,36]]) {
     const location=gl.getAttribLocation(program,name);
     gl.enableVertexAttribArray(location);
-    gl.vertexAttribPointer(location,size,gl.FLOAT,false,44,offset);
+    gl.vertexAttribPointer(location,size,gl.FLOAT,false,48,offset);
   }
   const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','reveal','shine','actorPose[0]','actorMotion[0]','actorTilt[0]']
     .map(name=>[name,gl.getUniformLocation(program,name)]));
@@ -400,7 +410,11 @@ function webGLPainter(canvas, faces, background, illustrated) {
   const actorSlopes=new Float32Array(MAX_ACTORS*2);
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
-  gl.clearColor(...backgroundRGB(background),1);
+  gl.clearColor(...backgroundRGB(background),stars?0:1);
+  if (stars) {
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+  }
   return {
     draw(width,height,camera,scale,center,effects) {
       gl.viewport(0,0,canvas.width,canvas.height);
@@ -420,7 +434,7 @@ function webGLPainter(canvas, faces, background, illustrated) {
       gl.uniform4fv(uniforms['actorPose[0]'],actorPositions);
       gl.uniform4fv(uniforms['actorMotion[0]'],actorMovement);
       gl.uniform2fv(uniforms['actorTilt[0]'],actorSlopes);
-      gl.drawArrays(gl.TRIANGLES,0,data.length/11);
+      gl.drawArrays(gl.TRIANGLES,0,data.length/12);
     },
     dispose() {
       gl.deleteBuffer(buffer);
@@ -502,16 +516,18 @@ export function mountProjectView(container, scene, interactive=false, {
 }={}) {
   let canvas=container.querySelector('canvas');
   const faces=projectFaces(scene);
+  const stars=scene.id==='moon'&&scene.illustrated;
+  if (stars) canvas.classList.add('lunar-starfield');
   let engine;
   if (interactive || scene.world && !still) {
-    try { engine=webGLPainter(canvas,faces,scene.background,scene.illustrated); }
+    try { engine=webGLPainter(canvas,faces,scene.background,scene.illustrated,stars); }
     catch {
       const fallback=canvas.cloneNode();
       canvas.replaceWith(fallback);
       canvas=fallback;
     }
   }
-  const paint=engine?.draw || canvasPainter(canvas,faces,scene.background);
+  const paint=engine?.draw || canvasPainter(canvas,faces,scene.background,stars);
   if (!paint) return ()=>{};
   const {initial,maxZoom,context,detail}=projectCameras(scene,target,focusLatest);
   const latest=scene.latest ?? [];

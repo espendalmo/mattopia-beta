@@ -449,7 +449,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
     const selector=viewer.querySelector('[data-map-inspect]');
     const card=viewer.querySelector('[data-map-info]');
     let dispose,selection=null;
-    const inspect=(index,focus=false)=>{
+    const inspect=(index,{focus=false,playSound=false}={})=>{
       if (!card) return;
       const site=index===null?null:scene.sites?.[index];
       const building=site&&worldBuilding(id,index,map);
@@ -458,6 +458,10 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       selector.value=building?String(index):'';
       dispose?.inspect?.(selection,{focus});
       if (!building) return;
+      if (playSound) {
+        sounds.play('select',state.sound);
+        sounds.playBuilding(id,index,building.kind,state.sound);
+      }
       card.querySelector('h3').textContent=building.name;
       card.querySelector('[data-map-info-status]').textContent=site.built?'På kartet':'Under bygging';
       card.querySelector('[data-map-info-description]').textContent=building.story?building.description:'';
@@ -479,8 +483,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
     };
     if (selector) {
       selector.addEventListener('change',()=>{
-        sounds.play('select',state.sound);
-        inspect(selector.value===''?null:Number(selector.value),true);
+        inspect(selector.value===''?null:Number(selector.value),{focus:true,playSound:true});
       });
       card.querySelector('[data-map-info-close]').addEventListener('click',()=>{
         inspect(null);
@@ -494,10 +497,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         closeUp:!fromCollection && Boolean(progress().completed), reveal, demo, target, finale:progress().full,
         focusLatest:!demo&&!archivedMap&&!fromCollection&&(view==='complete'||Boolean(state.active)),
         onActivity:scene.world?sounds.activity:undefined,
-        onInspect:selector?index=>{
-          if (index!==null) sounds.play('select',state.sound);
-          inspect(index);
-        }:undefined,
+        onInspect:selector?index=>inspect(index,{playSound:true}):undefined,
       });
       if (selection!==null) dispose.inspect?.(selection);
     };
@@ -1281,7 +1281,8 @@ function renderComplete() {
   const stage = g.added ? projectScene(g.mode, g.map || g.completed) : null;
   const projectStep = stage?.last;
   const finishedProject = g.project && g.full && g.added;
-  const length = state.history.at(-1)?.length ?? ROUND_LENGTH;
+  const summary = state.history.at(-1);
+  const length = summary?.length ?? ROUND_LENGTH;
   const message = g.project
     ? `${g.label}${g.full ? ' er ferdig!' : ''}<br>${projectProgress(g)}.`
     : g.mode === 'bricks' ? g.full ? `${g.model.done}<br>Fem klosser, ett flott bygg!` : `En ny kloss på plass!<br>${g.build.pieces} av ${g.model.pieces.length} klosser.` : `${g.label}<br>${g.garden.stage} av 5 vekststeg.`;
@@ -1299,6 +1300,12 @@ function renderComplete() {
   const again = newMap ? 'Start et nytt kart' : state.focusBreakPending ? breakButtonLabel() : 'En runde til';
   const headline=finishedProject?`${g.label} er ferdig!`:'Du klarte runden!';
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}${finishedProject&&g.map?mapEplo(projectCongratulations(g.mode)):''}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">${headline}</h1>${finishedProject&&!g.map?projectCongratulations(g.mode):''}${latest}${(!projectStep || g.full&&!finishedProject) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="primary" data-action="${newMap ? 'world-new' : 'again'}">${again}${icon('again')}</button><button class="secondary secondary-cta" data-action="home">Ferdig for nå${icon('check')}</button>${gallery}</main></div>${party}`;
+  if (celebrateOnRender && summary?.firstTry === length) {
+    root.insertAdjacentHTML('beforeend', `<aside class="perfect-round-toast" aria-hidden="true">${eploNote('Perfekt runde!',true)}</aside>`);
+    const toast = root.querySelector('.perfect-round-toast');
+    setTimeout(()=>toast?.remove(),3500);
+    say('Eplo sier: Perfekt runde!');
+  }
   celebrateOnRender = false;
 }
 

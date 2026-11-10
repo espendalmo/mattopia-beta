@@ -3,7 +3,7 @@ import {regionLayout,planRegion,regionVisibility,regionSurface} from './regions.
 import {REGION_PLACES,WORLD_BUILD_STEPS,grandCatalog,hasExpandedCatalog,randomGenerator,worldStatus} from './worlds.js';
 import {planStreetRegion} from './street-grid.js';
 import {prepareRoadTunnels,regionRoads} from './region-roads.js';
-import {constructionYard,landmarkVisitors,lunarSky,rideModels} from './map-art.js';
+import {constructionYard,landmarkVisitors,lunarEarth,rideModels} from './map-art.js';
 import {plotAccess,terrainFoundation} from './landmark-ground.js';
 import {districtRail,districtTram,helicopterModels} from './transport.js';
 
@@ -130,7 +130,9 @@ function regionGround(layout,plan,sky,full,horizon,season) {
     const [a,b,c,d]=[grid[i],grid[i+1],grid[i+row],grid[i+row+1]];
     if (Math.max(a.visibility,b.visibility,c.visibility,d.visibility)<.008) continue;
     for (const triangle of [[a,c,b],[b,c,d]]) {
-      ground.push(face(triangle.map(v=>v.point),sky,0,triangle.map(v=>v.color)));
+      const part=face(triangle.map(v=>v.point),sky,0,triangle.map(v=>v.color));
+      if (layout.theme==='moon') part.opacity=triangle.map(v=>v.visibility);
+      ground.push(part);
     }
   }
   return ground;
@@ -322,7 +324,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const roads=regionRoads(layout,plan,isNewPlot);
   const roadBuild=roads.some(part=>part.roadBuild!==undefined);
   const parts=[
-    ...(id==='moon'&&horizon?lunarSky(map.seed,sky,horizon):[]),
+    ...(id==='moon'&&horizon?lunarEarth(sky,horizon):[]),
     ...regionGround(layout,plan,sky,status.full,horizon,season),
     ...roads,
     ...tunnels,

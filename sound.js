@@ -1,4 +1,4 @@
-import {ambienceBuffer,ACTIVITY_SOUNDS,soundClip} from './sound-art.js';
+import {ambienceBuffer,ACTIVITY_SOUNDS,buildingClip,soundClip} from './sound-art.js';
 import {fireworkBursts} from './project-fireworks.js';
 
 // Original, local melodies: [MIDI pitch, start, duration, gain].
@@ -41,8 +41,8 @@ function playbackSession() {
 }
 
 export function createSoundPlayer(getContext=()=>new(window.AudioContext||window.webkitAudioContext)(), getSession=playbackSession) {
-  let context,voices=[],generation=0,buildGeneration=0,ambience,ambienceGeneration=0,session,carrier;
-  const beds=new Map(),clips=new Map();
+  let context,voices=[],generation=0,buildGeneration=0,buildingGeneration=0,ambience,ambienceGeneration=0,session,carrier;
+  const beds=new Map(),clips=new Map(),buildingClips=new Map();
 
   function releaseVoice({source,gain}) {
     try { source.stop(); } catch {}
@@ -77,8 +77,14 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
   }
   function stopBuild({fade=false}={}) {
     buildGeneration++;
+    stopBuilding(fade);
     voices.filter(voice=>voice.build).forEach(fade?fadeVoice:releaseVoice);
     voices=voices.filter(voice=>!voice.build);
+  }
+  function stopBuilding(fade) {
+    buildingGeneration++;
+    voices.filter(voice=>voice.building).forEach(fade?fadeVoice:releaseVoice);
+    voices=voices.filter(voice=>!voice.building);
   }
   function holdSession() {
     if (!session||carrier) return;
@@ -158,16 +164,19 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     } catch { return false; }
   }
 
-  function sample(kind,time,volume,{destination=context.destination,voice=true,build=false,length,rate=1}={}) {
+  function sample(kind,time,volume,{destination=context.destination,voice=true,build=false,building=false,buffer,length,rate=1}={}) {
     if (!context.createBufferSource) return;
-    if (!clips.has(kind)) clips.set(kind,soundClip(context,kind));
+    if (!buffer) {
+      if (!clips.has(kind)) clips.set(kind,soundClip(context,kind));
+      buffer=clips.get(kind);
+    }
     const source=context.createBufferSource(),gain=context.createGain();
-    source.buffer=clips.get(kind);
+    source.buffer=buffer;
     if (rate!==1) source.playbackRate.setValueAtTime(rate,time);
     gain.gain.setValueAtTime(volume,time);
     source.connect(gain);
     gain.connect(destination);
-    const record={source,gain,build,start:time};
+    const record={source,gain,build,building,start:time};
     if (voice) voices.push(record);
     source.onended=()=>{
       if (voice) voices=voices.filter(item=>item!==record);
@@ -238,6 +247,21 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     }).catch(()=>{});
   }
 
+  function playBuilding(world,index,kind,enabled=true) {
+    if (!enabled||!worlds.has(world)) return;
+    stopBuilding(true);
+    const token=generation,building=buildingGeneration;
+    unlock().then(()=>{
+      if (!context||token!==generation||building!==buildingGeneration) return;
+      const key=`${world}:${index}:${kind}`;
+      if (!buildingClips.has(key)) {
+        buildingClips.set(key,buildingClip(context,world,index,kind));
+        if (buildingClips.size>48) buildingClips.delete(buildingClips.keys().next().value);
+      }
+      sample(kind,context.currentTime+.075,.16,{building:true,buffer:buildingClips.get(key)});
+    }).catch(()=>{});
+  }
+
   function playBuild(scene,enabled=true,{finale=false,tail=true}={}) {
     if (!enabled) return;
     stopVoices();
@@ -262,5 +286,5 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     if (tail&&scene?.world) startAmbience(scene,{delay:finished?2.08:workStart+3.38,duration:5.4});
   }
 
-  return {play,stop,resume,startAmbience,stopAmbience,activity,playBuild,stopBuild};
+  return {play,stop,resume,startAmbience,stopAmbience,activity,playBuilding,playBuild,stopBuild};
 }
