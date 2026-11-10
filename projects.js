@@ -1,3 +1,4 @@
+import {transitVehiclePreview} from './transport.js';
 import {box,tube,roof,rounded,dome,at,worldSign,vehicle,worldActors,districtActors} from './scenery.js';
 import {isWorld,isRegion,hasExpandedCatalog,grandCatalog,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,RAIL_PLACE,randomGenerator} from './worlds.js';
 import {expandedWorldScene} from './region-scenery.js';
@@ -481,7 +482,7 @@ function regionLandmarkParts(id,index,site,map) {
       [...steps[2],...steps[3]], [...steps[4],...steps[5]],
     ];
   }
-  if (site?.waterfront) return stages;
+  if (site?.waterfront&&custom?.[2]!=='lighthouse') return stages;
   stages=shapeLandmarkGround(stages,custom?.[2]??PLACES[id][index][1]);
   // Broad, thin surfaces stay in elevation order in the Canvas painter.
   return stages.map(parts=>parts.map(part=>{
@@ -493,7 +494,10 @@ function regionLandmarkParts(id,index,site,map) {
 export function worldBuildingPreview(id,index,map=null) {
   const info=worldBuilding(id,index,map);
   if (!info) return null;
-  const parts=isRegion(map)?regionLandmarkParts(id,index,null,map).flat():landmark(id,index,PLACES[id][index],[0,0]).flatMap(step=>step.parts);
+  const staged=isRegion(map)?regionLandmarkParts(id,index,null,map).flat():landmark(id,index,PLACES[id][index],[0,0]).flatMap(step=>step.parts);
+  const vehicle=transitVehiclePreview(info.kind);
+  const parts=vehicle?[...staged.filter(part=>!part.transitPreview),...vehicle]
+    :staged.map(part=>part.flight==='plane'?{...part,x:part.x-.9,y:part.y+1.3,z:part.z+3.25}:part);
   const height=Math.max(...parts.map(part=>part.y+part.h));
   const span=Math.max(...parts.map(part=>Math.hypot(2*Math.abs(part.x)+(part.w??0),2*Math.abs(part.z)+(part.d??0))));
   return {parts,background:THEMES[id].sky,yaw:-.52,pitch:.47,center:height*.44,size:Math.max(9.7,height*1.55,span*.95),latest:[]};

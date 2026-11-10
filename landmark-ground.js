@@ -22,10 +22,12 @@ export function shapeLandmarkGround(stages,kind) {
   if (!foundation) return stages;
   const profile=kind==='airport'?runway:curved.has(kind)?oval:square.has(kind)?rectangle:
     ['hall','bank','arcade','nightCinema','market','tropicalMarket','square'].includes(kind)?plaza:clipped;
-  if (profile===rectangle) return stages;
+  const cap=foundation.y+foundation.h;
   return stages.map(parts=>parts.map(part=>{
-    const slab=part.support||part.y+part.h<.4&&Math.abs(part.x-foundation.x)<.16&&Math.abs(part.z-foundation.z)<.16&&
-      part.w>=foundation.w*.87&&part.d>=foundation.d*.87;
+    const slab=part.support||['box','rounded','tube','support'].includes(part.shape)
+      &&part.y>=cap-.12&&part.y<=cap+.51&&part.h<=.52
+      &&Math.abs(part.x-foundation.x)<.21&&Math.abs(part.z-foundation.z)<.21
+      &&part.w>=foundation.w*.87&&part.d>=foundation.d*.87;
     if (!slab) return part;
     const outline=profile.map(([x,z])=>[part.x+x*part.w,part.y,part.z+z*part.d]);
     return {...part,shape:'support',outline};

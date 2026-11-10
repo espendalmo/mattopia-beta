@@ -153,13 +153,15 @@ function railLoop(points) {
   return {distances,length,wrap,sample};
 }
 
-function regionalRailPath(layout,plot,obstacles) {
+function regionalRailPath(layout,plot,obstacles,count) {
   const span=plot.streetSpan??13.4;
   const level=deckHeight(plot.kind==='monorailStation');
   const candidates=[];
+  const growth=Math.min(10,Math.max(0,count-3)*.76);
   for (const side of sides) {
-    for (const [reach,depth] of [[36,28],[42,36],[33,40],[29,24]]) {
-      const rear=side*depth;
+    for (const [width,depth] of [[37,30],[43,37],[34,41],[31,26]]) {
+      const reach=width+growth;
+      const rear=side*(depth+growth*.62);
       const curve=side*3.6;
       const turn=Math.min(span*1.6,reach-7);
       const local=[[0,railZ],[6.2,railZ],[span*.91,railZ-curve],[turn,railZ-curve],
@@ -194,7 +196,7 @@ function railTunnel(layout,plan,route,obstacles) {
     const start=center-half,end=center+half;
     const a=sample(start),m=sample(center),b=sample(end);
     const span=Math.hypot(b[0]-a[0],b[2]-a[2]);
-    if (span<2*half-.12||Math.abs(a[1]-b[1])>.85||Math.abs(m[1]-(a[1]+b[1])*.5)>.34) continue;
+    if (span<2*half-.56||Math.abs(a[1]-b[1])>1.38||Math.abs(m[1]-(a[1]+b[1])*.5)>.61) continue;
     const bearings=Array.from({length:7},(_,i)=>sample(start+(end-start)*i/6));
     const land=bearings.every(([x,,z])=>!regionSurface(layout,x,z).water);
     if (!land) continue;
@@ -210,7 +212,7 @@ function railTunnel(layout,plan,route,obstacles) {
 export function districtRail(layout,plot,plan) {
   const moon=plot.kind==='monorailStation';
   const obstacles=[...Object.values(layout.berths),...plan.plots];
-  const points=regionalRailPath(layout,plot,obstacles);
+  const points=regionalRailPath(layout,plot,obstacles,plan.plots.length);
   const route=railLoop(points);
   const {sample,distances,length,wrap}=route;
   const tunnel=railTunnel(layout,plan,route,obstacles);
@@ -221,14 +223,9 @@ export function districtRail(layout,plot,plan) {
   }):[];
   // Clip the middle of the tunnel out of the exposed track, while keeping the route continuous.
   const parts=railTrack(points,moon,i=>inside((distances[i-1]+distances[i])*.5,1.15));
-  for (const portal of portals) {
-    parts.push(...tunnelLandform(portal,layout.theme,{width:1.08,height:1.85,depth:6.25}).map(part=>({...part,tunnel:true})));
-    for (const side of sides) {
-      const [x,,z]=pointOnSite([side*2.24,0,-2.85],portal);
-      const ground=regionSurface(layout,x,z).y;
-      parts.push({...dome(x,z,4.38,7.2,Math.max(1.1,portal.y-ground+1.36),
-        moon?'#9390aa':'#949e74',ground-.25,-portal.yaw),tunnel:true});
-    }
+  if (tunnel) {
+    const path=Array.from({length:16},(_,i)=>sample(tunnel.start+(tunnel.end-tunnel.start)*i/15));
+    parts.push(...tunnelLandform(path,layout,{width:1.08,height:1.85}).map(part=>({...part,tunnel:true})));
   }
   for (let distance=4.85;distance<length-4.3;distance+=4.65) {
     const [x,y,z]=sample(distance);
@@ -268,11 +265,12 @@ export function districtRail(layout,plot,plan) {
     period=entry.arrive;
     return entry;
   });
-  const actors=[false,true].map(carriage=>({
+  const departures=plan.plots.length>=10&&length>=230?[0,period*.5]:[0];
+  const actors=departures.flatMap(offset=>[false,true].map(carriage=>({
     kind:carriage?'train-car':moon?'monorail':'train',
     parts:trainModel(moon,carriage),
     pose(seconds) {
-      const t=seconds%period;
+      const t=(seconds+offset)%period;
       const leg=timetable.find(entry=>t<entry.arrive)??timetable.at(-1);
       const progress=clamp((t-leg.depart)/leg.travel);
       const ease=progress-.12*Math.sin(2*Math.PI*progress);
@@ -283,7 +281,7 @@ export function districtRail(layout,plot,plan) {
       return pose(x,visible?y:-540,z,Math.atan2(c-a,d-b),!carriage&&visible&&progress>0,
         Math.atan2(cy-ay,Math.hypot(c-a,d-b)));
     },
-  }));
+  })));
   return {parts,portals,points:points.map(([x,y,z])=>({x,y,z})),actors};
 }
 
@@ -318,6 +316,17 @@ function cableCar() {
   ];
 }
 
+export function transitVehiclePreview(kind) {
+  if (!['tramStation','railwayStation','monorailStation'].includes(kind)) return null;
+  const moon=kind==='monorailStation',tram=kind==='tramStation';
+  const x=tram?1.05:1.7,y=.85,z=tram?4.24:5.2;
+  const model=tram?cableCar():trainModel(moon);
+  return [
+    ...railTrack([[-2.25,y,z],[4.15,y,z]],moon),
+    ...placeParts(model,{x,y,z,yaw:Math.PI/2}).map(part=>({...part,vehiclePreview:true})),
+  ];
+}
+
 export function districtTram(layout,plot,plan) {
   const circuits=plan.circuits??[];
   const access=plot.entries?.[0]??plot;
@@ -346,10 +355,11 @@ export function districtTram(layout,plot,plan) {
     parts.push(tube(a,b,.47,.47,Math.max(.1,y-base-.22),'#b5a389',base),beam([a,y-.26,b],[x,y-.26,z],.22,'#b5a389'));
   }
   const speed=4.2,dwell=2,period=length/speed+stops.length*dwell;
-  return {parts,points:points.map(([x,y,z])=>({x,y,z})),actors:[{
+  const departures=length>=126?[0,period*.5]:[0];
+  return {parts,points:points.map(([x,y,z])=>({x,y,z})),actors:departures.map(offset=>({
     kind:'tram',parts:cableCar(),
     pose(seconds) {
-      const t=seconds%period;
+      const t=(seconds+offset)%period;
       let distance=t*speed,departing=false;
       for (let i=0;i<stops.length;i++) {
         if (distance<stops[i]) break;
@@ -361,7 +371,7 @@ export function districtTram(layout,plot,plan) {
       const model=pose(x,y,z,Math.atan2(c-a,d-b),departing,Math.atan2(cy-ay,Math.hypot(c-a,d-b)));
       return departing?{...model,cue:'tram-bell'}:model;
     },
-  }]};
+  }))};
 }
 
 export const AIRPORT_HELIPAD={x:3.63,y:.48,z:-.48};

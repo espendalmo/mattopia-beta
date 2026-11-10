@@ -267,19 +267,19 @@ export function planRegion(layout,buildings) {
 export function regionVisibility(plan,x,z,full=false) {
   if (full) return clamp((EDGE-Math.max(Math.abs(x),Math.abs(z)))/10,0,1);
   const distanceTo=(point)=>Math.hypot(point.x-x,point.z-z);
-  let reach=Math.max(0,1-(distanceTo(plan.origin)-13)/15);
-  for (const plot of plan.plots) reach=Math.max(reach,1-(distanceTo(plot)-12)/17);
+  let reach=Math.max(0,1-(distanceTo(plan.origin)-14)/19);
+  for (const plot of plan.plots) reach=Math.max(reach,1-(distanceTo(plot)-13)/22);
   for (const path of plan.paths) {
-    for (let i=1;i<path.length;i+=4) reach=Math.max(reach,1-(distanceTo(path[i])-4.8)/13);
+    for (let i=1;i<path.length;i+=4) reach=Math.max(reach,1-(distanceTo(path[i])-5.5)/17);
   }
   if (plan.transit) {
     for (let i=0;i<plan.transit.length;i+=5) {
-      reach=Math.max(reach,1-(distanceTo(plan.transit[i])-3.1)/9);
+      reach=Math.max(reach,1-(distanceTo(plan.transit[i])-3.7)/12);
     }
   }
   for (const portal of plan.transitPortals??[]) reach=Math.max(reach,1-(distanceTo(portal)-7)/9);
   reach=clamp(reach,0,1);
-  return reach*reach*(3-2*reach);
+  return .8*reach*reach*(3-2*reach)+.2*reach;
 }
 
 export function roadElevation(layout,x,z) {

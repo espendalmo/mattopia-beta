@@ -101,7 +101,7 @@ function distantRelief(layout) {
 function regionGround(layout,plan,sky,full,horizon,season) {
   const background=rgb(sky);
   const inner=Math.sqrt(layout.grid.length);
-  const extension=[3,7,12,18,25];
+  const extension=[3,7,12,18,25,33];
   const extra=extension.length,row=inner+2*extra;
   const edge=layout.grid[inner-1].x;
   const coords=[...extension.map(distance=>-edge-distance).reverse(),...layout.grid.slice(0,inner).map(tile=>tile.x),
@@ -114,7 +114,7 @@ function regionGround(layout,plan,sky,full,horizon,season) {
       ?layout.grid[(line-extra)*inner+col-extra]:regionSurface(layout,x,z);
     const distance=Math.max(Math.max(Math.abs(x),Math.abs(z))/103,Math.hypot(x,z)/127);
     const rim=horizon**2*smooth((1-distance)/.24);
-    const edgeFade=smooth((edge+25-Math.max(Math.abs(x),Math.abs(z)))/17);
+    const edgeFade=smooth((edge+33-Math.max(Math.abs(x),Math.abs(z)))/19);
     const visibility=edgeFade*Math.max(rim,regionVisibility(plan,x,z,full));
     const base=surfaceColor(tile,layout,season);
     const distant=relief?.(x,z,tile);

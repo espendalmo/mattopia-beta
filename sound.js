@@ -2,7 +2,7 @@ import {ambienceBuffer,ACTIVITY_SOUNDS,soundClip} from './sound-art.js';
 import {fireworkBursts} from './project-fireworks.js';
 
 // Original, local melodies: [MIDI pitch, start, duration, gain].
-export const SOUND_PATTERNS={success:[[76,0,.23,.065],[79,.10,.25,.065],[84,.22,.42,.07],[72,.22,.40,.025]],finish:[[60,0,.18,.045],[64,.12,.20,.045],[67,.24,.22,.05],[72,.38,.27,.06],[76,.56,.25,.05],[79,.70,.28,.055],[84,.9,.72,.055],[79,.9,.72,.035],[76,.9,.72,.035],[72,.9,.72,.03],[60,.9,.72,.025]]};
+export const SOUND_PATTERNS={success:[[76,0,.16,.065],[79,.078,.17,.065],[84,.159,.32,.07],[72,.159,.29,.025]],finish:[[60,0,.18,.045],[64,.12,.20,.045],[67,.24,.22,.05],[72,.38,.27,.06],[76,.56,.25,.05],[79,.70,.28,.055],[84,.9,.72,.055],[79,.9,.72,.035],[76,.9,.72,.035],[72,.9,.72,.03],[60,.9,.72,.025]]};
 SOUND_PATTERNS.key=[[86,0,.035,.018]];
 // Soft pitch glides give the companion a small, voice-like reaction.
 SOUND_PATTERNS.retry=[[78,0,.14,.045,74],[90,0,.13,.012,86],[75,.105,.19,.043,81]];

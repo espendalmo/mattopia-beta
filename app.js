@@ -89,7 +89,7 @@ function buddy(happy = false, surprised = false) {
 }
 function eploNote(message,celebration=false) {
   return `<div class="eplo-note${celebration?' eplo-finale':''}"><div class="eplo-avatar">${buddy(celebration)}</div>
-    <div><strong>Eplo</strong><p>${escapeHtml(message)}</p></div></div>`;
+    <div class="eplo-bubble"><strong>Eplo</strong><p>${escapeHtml(message)}</p></div></div>`;
 }
 function mapEplo(note, demo=false, standalone=false) {
   return `<div class="map-eplo-overlay${standalone?' map-eplo-standalone':''}" ${demo?'data-demo-finale hidden':''}>${note}<button type="button" class="icon-button map-eplo-close" data-action="dismiss-eplo" aria-label="Lukk meldingen fra Eplo">${icon('close')}</button></div>`;
@@ -317,7 +317,7 @@ function rewardDetails(reward = null) {
   const label = full ? model.done : build.pieces ? `Vi bygger ${model.name}!` : 'Neste bygg';
   return {mode,build,model,full,label};
 }
-function rewardArt(happy = false, reward = null) {
+function rewardArt(happy = false, reward = null, {showBuddy=true}={}) {
   const info = rewardDetails(reward);
   if (info.project) {
     const world = isWorld(info.mode);
@@ -329,7 +329,7 @@ function rewardArt(happy = false, reward = null) {
   const art = info.mode === 'bricks'
     ? renderBuildSvg(info.build, {animate:happy, preview:info.build.pieces === 0})
     : renderPlant(info.garden.plant, info.garden.stage);
-  return `<div class="garden-art ${info.mode === 'bricks' ? 'brick-art' : ''} ${happy ? 'garden-grown' : ''}"><div class="garden-friend">${buddy(happy)}</div>${art}</div>`;
+  return `<div class="garden-art ${info.mode === 'bricks' ? 'brick-art' : ''} ${happy ? 'garden-grown' : ''}">${showBuddy?`<div class="garden-friend">${buddy(happy)}</div>`:''}${art}</div>`;
 }
 
 function mountProjectPreview(container) {
@@ -417,7 +417,9 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       <div class="project-map-stage">
         <canvas tabindex="0" role="img" aria-label="${scene.world ? 'Kart: '+title : title+' i 3D'}" aria-describedby="project-instructions project-milestone"></canvas>
         ${scene.world?`<section class="map-info-card" data-map-info hidden aria-live="polite">
-          <div><small data-map-info-status></small><h3></h3><p data-map-info-description></p><div class="map-story"><span class="eplo-avatar">${buddy()}</span><p><strong class="sr-only">Eplo</strong><span data-map-info-story></span></p></div></div>
+          <span class="eplo-avatar">${buddy()}</span>
+          <div class="eplo-bubble"><small data-map-info-status></small><h3></h3><p data-map-info-description></p>
+            <p><strong class="sr-only">Eplo</strong> <span data-map-info-story></span></p></div>
           <button class="icon-button" type="button" data-map-info-close aria-label="Lukk bygginformasjonen">${icon('close')}</button>
         </section>`:''}
         ${demo ? mapEplo(projectCongratulations(id),true) : ''}
@@ -454,7 +456,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       card.querySelector('[data-map-info-description]').textContent=building.story?building.description:'';
       const story=card.querySelector('[data-map-info-story]');
       story.textContent=building.story||building.description;
-      const avatar=card.querySelector('.map-story .eplo-avatar');
+      const avatar=card.querySelector('.eplo-avatar');
       avatar.innerHTML=buddy();
     };
     const updateBuildingList=()=>{
@@ -1399,12 +1401,15 @@ function pauseProgress(info) {
     `Planten din er på vekststeg ${info.garden.stage} av 5.`;
 }
 
+function eploGreeting(name=profile?.name) {
+  return name&&!/^Spiller(?: \d+)?$/u.test(name)?`Hei igjen, ${name}!`:'Hei igjen!';
+}
+
 function showPause() {
   sounds.play('open', state.sound);
   const info=rewardDetails();
   const preview=info.project&&info.completed>0?rewardArt():'';
-  const name=profile?.name;
-  const hello=name&&!/^Spiller(?: \d+)?$/u.test(name)?`Hei igjen, ${name}!`:'Hei igjen!';
+  const hello=eploGreeting();
   const encouragement=pauseEncouragements[pauseVisits++%pauseEncouragements.length];
   const note=eploNote(`${hello} ${pauseProgress(info)} ${encouragement}`);
   showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>En liten pause?</h2>
@@ -1480,7 +1485,12 @@ function welcomeBack() {
     : g.full ? 'Neste runde får du et nytt frø!'
     : g.mode === 'bricks' ? 'Én runde gir deg neste kloss.' : 'Én runde gir planten litt mer vekst.';
   const cta = state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : 'Ta en runde';
-  showDialog(`<button class="icon-button welcome-close" data-action="close-dialog" aria-label="Lukk velkomsten">${icon('close')}</button>${rewardArt(false, next)}<h2 id="dialog-title" tabindex="-1" autofocus>Hei igjen!</h2><p class="welcome-reward">${g.label}</p><p>${note}</p><button class="primary" data-action="welcome-start">${cta} ${icon('arrow')}</button>`, 'welcome-dialog', g.project ? mountDialogProjectPreview : undefined);
+  const art=rewardArt(false,next,{showBuddy:false});
+  const greeting=eploNote(`${eploGreeting()} ${note}`);
+  const welcomeArt=isWorld(g.mode)
+    ? `<div class="project-map-stage welcome-map-stage">${art}${mapEplo(greeting)}</div>`
+    : `${art}${greeting}`;
+  showDialog(`<button class="icon-button welcome-close" data-action="close-dialog" aria-label="Lukk velkomsten">${icon('close')}</button><h2 id="dialog-title" tabindex="-1" autofocus>Velkommen tilbake</h2>${welcomeArt}<p class="welcome-reward">${g.label}</p><button class="primary" data-action="welcome-start">${cta} ${icon('arrow')}</button>`, 'welcome-dialog', g.project ? mountDialogProjectPreview : undefined);
 }
 
 function progressionNote() {
@@ -1577,15 +1587,16 @@ function adultView() {
     <button class="secondary" data-action="show-profiles">Bytt eller legg til spiller</button>
   </section>` : '';
   showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>For voksne</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk voksenvisningen">${icon('close')}</button></div><p class="adult-intro">Ingen tidsfrist, liv eller poengtrekk. En stjerne betyr at barnet har øvd.</p>
-    ${release}${testLinks}${demos}${testActions}
     ${!storageWorks ? '<p class="storage-warning">Nettleseren tillater ikke lagring akkurat nå. Appen virker, men framgangen kan forsvinne når siden lukkes.</p>' : ''}
-    ${playerSettings}
+    <details class="adult-details admin-section"><summary>Spiller og øving</summary><div class="admin-section-body">${playerSettings}
     <div class="round-length-setting"><label class="profile-field"><span>Oppgaver per runde</span>
       <select id="round-length" aria-describedby="round-length-note">${ROUND_LENGTHS.map(length => `<option value="${length}" ${state.roundLength === length ? 'selected' : ''}>${length} oppgaver</option>`).join('')}</select></label>
       <p class="adult-note" id="round-length-note">Gjelder fra neste nye runde. En fullført runde gir én stjerne og ett steg på det du bygger eller dyrker.</p></div>
     <fieldset class="adult-group" id="practice-options">${practiceOptions()}</fieldset>
-    <fieldset class="adult-group reward-options"><legend>Hva vil barnet bygge videre på?</legend><label class="level-option"><input type="radio" name="reward-mode" value="plant" ${state.rewardMode === 'plant' ? 'checked' : ''}><span class="reward-choice-icon" aria-hidden="true">${icon('sprout')}</span><span><strong>Plante</strong><small>En spire som vokser og blomstrer.</small></span></label><label class="level-option"><input type="radio" name="reward-mode" value="bricks" ${state.rewardMode === 'bricks' ? 'checked' : ''}><span class="reward-choice-icon brick-choice" aria-hidden="true">${icon('brick')}</span><span><strong>Klossebygging</strong><small>Fem store klosser blir en tilfeldig figur.</small></span></label>
-      ${projectOptions()}<p class="adult-note">Du kan bytte mellom belønningene og fortsette på hvert prosjekt senere.</p></fieldset>
+    </div></details>
+    <details class="adult-details admin-section"><summary>Bygging og belønninger</summary><div class="admin-section-body"><fieldset class="adult-group reward-options"><legend>Hva vil barnet bygge videre på?</legend><label class="level-option"><input type="radio" name="reward-mode" value="plant" ${state.rewardMode === 'plant' ? 'checked' : ''}><span class="reward-choice-icon" aria-hidden="true">${icon('sprout')}</span><span><strong>Plante</strong><small>En spire som vokser og blomstrer.</small></span></label><label class="level-option"><input type="radio" name="reward-mode" value="bricks" ${state.rewardMode === 'bricks' ? 'checked' : ''}><span class="reward-choice-icon brick-choice" aria-hidden="true">${icon('brick')}</span><span><strong>Klossebygging</strong><small>Fem store klosser blir en tilfeldig figur.</small></span></label>
+      ${projectOptions()}<p class="adult-note">Du kan bytte mellom belønningene og fortsette på hvert prosjekt senere.</p></fieldset></div></details>
+    <details class="adult-details admin-section"><summary>Lyd, hjelp og pauseleker</summary><div class="admin-section-body">
     <label class="sound-setting"><input type="checkbox" id="sound-setting" ${state.sound ? 'checked' : ''}>Lyd i appen</label>
     ${typeof navigator.vibrate === 'function' ? `<label class="sound-setting"><input type="checkbox" id="haptics-setting" ${state.haptics ? 'checked' : ''}>Vibrasjon ved svar og fullføring</label>` : ''}
     <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="visual-setting" aria-describedby="visual-setting-note" ${state.alwaysShowVisuals ? 'checked' : ''}>Vis alltid brikker og figurer</label>
@@ -1593,13 +1604,16 @@ function adultView() {
     <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="focus-break-setting" aria-describedby="focus-break-note" ${state.focusBreaks ? 'checked' : ''}>Pauseleker mellom øvingsrundene</label>
     <p class="adult-note" id="focus-break-note">En kort lek etter hver tredje runde. Appen veksler mellom Kims lek, klossebygging etter hukommelsen og å telle klosser til et gulv.</p></div>
     <p class="adult-note adaptation-note">Oppgaver som trengte hjelp får litt mer plass. Etter flere trygge runder kan én eller to oppgaver få talltastatur.</p>
-    <div class="adult-stats"><div class="stat"><strong>${state.roundsCompleted}</strong><span>fullførte runder</span></div><div class="stat"><strong>${days}</strong><span>${days === 1 ? 'øvingsdag' : 'øvingsdager'} i siste historikk</span></div></div>
+    </div></details>
+    <details class="adult-details admin-section"><summary>Øvingshistorikk</summary><div class="admin-section-body"><div class="adult-stats"><div class="stat"><strong>${state.roundsCompleted}</strong><span>fullførte runder</span></div><div class="stat"><strong>${days}</strong><span>${days === 1 ? 'øvingsdag' : 'øvingsdager'} i siste historikk</span></div></div>
     <div id="adult-topic-summary">${adultTopicSummary()}</div>
     <p class="adult-section-title history-title">Siste runder</p>${history}<p class="adult-note">Tallene beskriver øvingen, ikke barnets samlede forståelse. Hjelp kan også åpnes automatisk etter et feil svar. Snakk gjerne om hvordan barnet tenkte.</p>
-    <div class="update-section"><p class="adult-section-title">Appversjon ${VERSION}</p><p class="adult-note" data-update-status role="status">${updateStatus.message}</p><div class="update-actions"><button class="secondary" data-action="check-update" ${updateStatus.checking || updateStatus.applying ? 'disabled' : ''}>Se etter oppdatering</button><button class="secondary update-apply" data-action="apply-update" ${updateStatus.ready ? '' : 'hidden'} ${updateStatus.applying ? 'disabled' : ''}>${updateStatus.applying ? 'Oppdaterer …' : 'Oppdater nå'}</button></div></div>
+    </div></details>
+    ${CHANNEL === 'preview' ? `<details class="adult-details admin-section"><summary>Testverktøy i Beta</summary><div class="admin-section-body">${release}${testLinks}${demos}${testActions}</div></details>` : ''}
+    <details class="adult-details admin-section"><summary>App og lagring</summary><div class="admin-section-body"><div class="update-section"><p class="adult-section-title">Appversjon ${VERSION}</p><p class="adult-note" data-update-status role="status">${updateStatus.message}</p><div class="update-actions"><button class="secondary" data-action="check-update" ${updateStatus.checking || updateStatus.applying ? 'disabled' : ''}>Se etter oppdatering</button><button class="secondary update-apply" data-action="apply-update" ${updateStatus.ready ? '' : 'hidden'} ${updateStatus.applying ? 'disabled' : ''}>${updateStatus.applying ? 'Oppdaterer …' : 'Oppdater nå'}</button></div></div>
     <details class="adult-details"><summary>Tips til en god økt</summary><p>La barnet tenke ferdig. Spør av og til «Hvordan fant du det ut?». Bruk gjerne klosser ved siden av. Avslutt når overskuddet er brukt opp; en halv runde kan fortsettes senere.</p><p>Appen gir øving og erstatter ikke lærerens kartlegging eller oppfølging.</p></details>
     <details class="adult-details"><summary>Legg appen på hjemskjermen</summary><p>På iPad og iPhone: åpne adressen i Safari, velg Del og «Legg til på Hjem-skjerm». Åpne appen på nett én gang før dere bruker den uten nett.</p><p>Profiler og framgang lagres lokalt i denne nettleseren eller i den installerte appen. Safari og hjemskjermappen kan ha hver sine profiler. Det er ingen konto, sporing eller eksterne ressurser.</p></details>
-    <button class="delete-button" data-action="reset">${profile ? 'Slett denne spillerens øvingshistorikk' : 'Slett øvingshistorikken'}</button><button class="primary" data-action="close-dialog">Ferdig</button><p class="version">Mattopia ${VERSION}</p>`, '', d => {
+    <button class="delete-button" data-action="reset">${profile ? 'Slett denne spillerens øvingshistorikk' : 'Slett øvingshistorikken'}</button></div></details><button class="primary" data-action="close-dialog">Ferdig</button><p class="version">Mattopia ${VERSION}</p>`, 'adult-dialog', d => {
       if (CHANNEL === 'preview') checkPublishedRelease(d);
       d.addEventListener('change', e => {
         if (e.target.name === 'level') {

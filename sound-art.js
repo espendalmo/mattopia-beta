@@ -162,9 +162,10 @@ export function soundClip(context,kind) {
           (low*.72+mid*.82+wave(age,moon?134:212)*.37+wave(age,347)*.16);
       }
       const work=unit((t-.63)*14)*unit((1.48-t)*10)+unit((t-2.08)*11)*unit((2.87-t)*9);
+      const stroke=.38+.62*Math.max(0,wave(t-.67,1.75))**1.55;
       const tool=moon
         ? (wave(t,480+t*68)+.5*wave(t,1040-t*97))*(.53+.38*wave(t,29))*.31
-        : (.62+.34*wave(t,7.4))*(mid*.87+noise*.28+wave(t,176)*.11);
+        : stroke*(mid*.43+noise*.13+low*.32);
       return knocks*.89+work*tool;
     });
   }
