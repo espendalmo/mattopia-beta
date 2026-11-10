@@ -420,14 +420,15 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
   .retry-sheet, .retry-sheet::backdrop { animation: none; }
 }
 
-.welcome-dialog { max-width: 400px; text-align: center; }
-.welcome-close { position: absolute; top: 12px; right: 12px; z-index: 3; background: var(--paper); }
-.welcome-dialog .map-eplo-close { background: var(--paper); }
-.welcome-dialog .garden-art { margin: 0 auto 12px; width: min(100%, 245px); }
-.welcome-dialog h2 { margin-bottom: 12px; font-size: clamp(1.8rem, 7vw, 2.4rem); }
-.welcome-dialog p { color: var(--muted); line-height: 1.5; }
-.welcome-dialog .welcome-reward { color: var(--green); font-weight: 700; }
-.welcome-dialog .primary { margin-top: 18px; }
+.welcome-dialog { max-width: 400px; padding: clamp(14px, 5vw, 24px); text-align: left; }
+.welcome-dialog .dialog-header { gap: 10px; margin-bottom: 12px; }
+.welcome-dialog h2 { font-size: clamp(1.3rem, 6vw, 1.85rem); line-height: 1.16; }
+.welcome-close { width: 44px; height: 44px; background: var(--paper); }
+.welcome-preview { margin: 12px 0 0; }
+.welcome-dialog .welcome-reward { margin-bottom: 6px; color: var(--green); font-size: .9rem; font-weight: 750; }
+.welcome-preview .garden-art { display: grid; place-items: center; height: auto; width: 100%; }
+.welcome-preview :is(.growing-plant, .brick-figure) { position: static; width: auto; max-width: 100%; height: min(122px, 24svh); }
+.welcome-dialog .primary { margin: 14px auto 3px; min-height: 54px; padding-block: 10px; }
 
 .missing-part {
   min-width: 50px;
@@ -680,7 +681,8 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
   font-weight: 750;
 }
 .project-peek svg { width: 15px; height: 15px; }
-.welcome-dialog .project-peek { margin-top: 24px; }
+.welcome-preview .project-peek { width: 100%; margin: 0; }
+.welcome-preview .project-peek canvas { height: clamp(112px, 23svh, 156px); }
 .pause-dialog .project-peek canvas { height: clamp(130px, 30dvh, 180px); }
 .completion-garden.completion-project { width: min(100%, 410px); height: auto; margin-bottom: 18px; }
 .completion-project .earned-star svg { fill: none; stroke: #8b6825; stroke-width: 1.8; }
@@ -1070,18 +1072,22 @@ canvas.lunar-starfield,
 .eplo-avatar .buddy { position: absolute; inset: 0 auto auto 0; margin: 0; scale: .4; transform-origin: top left; }
 .eplo-note strong, .eplo-hint-name { color: var(--green); font-weight: 800; }
 .eplo-note p, .complete .eplo-note p { margin: 3px 0 0; color: var(--ink); font-size: .91rem; line-height: 1.46; }
+.welcome-dialog .eplo-note { gap: 8px; padding: 7px 10px; }
+.welcome-dialog .eplo-bubble { min-width: 0; overflow-wrap: anywhere; }
+.welcome-dialog .eplo-note p { font-size: .86rem; line-height: 1.4; }
 .pause-dialog .eplo-note { margin: 14px 0; }
 .pause-dialog .eplo-note p { margin: 3px 0 0; }
 .pause-dialog .pause-context { margin: 14px 0; }
 .eplo-finale { margin: 13px auto; border-color: #e6d6a5; background: linear-gradient(115deg,#edf5e5,#fff5d8); }
 .companion-stage { display: flex; align-items: center; justify-content: center; gap: 10px; }
-.companion-strip.perfect-round {
+.companion-strip:is(.perfect-round, .companion-returned) {
   position: sticky;
   top: 0;
   z-index: 3;
   flex-shrink: 0;
   pointer-events: none;
 }
+.companion-strip.companion-returned { border-radius: 18px; background: var(--paper); }
 .perfect-round .companion-stage {
   position: absolute;
   inset: clamp(22px, 8dvh, 58px) 0 auto;
@@ -1165,6 +1171,7 @@ canvas.lunar-starfield,
   .home-surprise { bottom: -29px; transform: scale(.75); }
 }
 @media (prefers-reduced-motion: no-preference) {
+  .companion-returned .companion-stage { animation: eplo-arrive 260ms ease-out both; }
   .perfect-round .companion-stage { animation: perfect-stage 3.5s ease both; }
   .perfect-round .companion-buddy { animation: perfect-bounce .82s .13s ease-out both; }
   .perfect-round p { animation: perfect-bubble .52s .16s ease-out both; }
@@ -1389,9 +1396,6 @@ canvas.lunar-starfield,
 }
 .map-eplo-overlay:not(.map-eplo-standalone) .map-eplo-close { top: 0; right: 0; }
 .map-eplo-overlay:not(.map-eplo-standalone) .eplo-note p { font-size: .82rem; line-height: 1.35; }
-.welcome-map-stage { margin: 12px 0; }
-.welcome-map-stage .project-peek { margin: 0; }
-.welcome-dialog > .eplo-note { margin: 10px 0; }
 .adult-dialog .adult-intro { margin-bottom: 15px; }
 .adult-dialog .admin-section { padding: 7px 0; }
 .adult-dialog .admin-section-body { padding: 8px 0 12px; }

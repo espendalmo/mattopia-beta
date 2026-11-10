@@ -1551,10 +1551,17 @@ function welcomeBack() {
   const cta = state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : 'Ta en runde';
   const art=rewardArt(false,next,{showBuddy:false});
   const greeting=eploNote(`${eploGreeting()} ${note}`);
-  const welcomeArt=isWorld(g.mode)
-    ? `<div class="project-map-stage welcome-map-stage">${art}${mapEplo(greeting)}</div>`
-    : `${art}${greeting}`;
-  showDialog(`<button class="icon-button welcome-close" data-action="close-dialog" aria-label="Lukk velkomsten">${icon('close')}</button><h2 id="dialog-title" tabindex="-1" autofocus>Velkommen tilbake</h2>${welcomeArt}<p class="welcome-reward">${g.label}</p><button class="primary" data-action="welcome-start">${cta} ${icon('arrow')}</button>`, 'welcome-dialog', g.project ? mountDialogProjectPreview : undefined);
+  showDialog(`<div class="dialog-header">
+      <h2 id="dialog-title" tabindex="-1" autofocus>Velkommen tilbake</h2>
+      <button type="button" class="icon-button welcome-close" data-action="close-dialog" aria-label="Lukk velkomsten">${icon('close')}</button>
+    </div>
+    ${greeting}
+    <figure class="welcome-preview">
+      <figcaption class="welcome-reward">${escapeHtml(g.label)}</figcaption>
+      ${art}
+    </figure>
+    <button class="primary" data-action="welcome-start">${cta} ${icon('arrow')}</button>`,
+    'welcome-dialog', g.project ? mountDialogProjectPreview : undefined);
 }
 
 function progressionNote() {
@@ -1757,7 +1764,7 @@ function submitAnswer(value) {
         }
         setTimeout(() => {
           message.textContent = previous;
-          companion.classList.remove('perfect-round');
+          companion.classList.replace('perfect-round','companion-returned');
           sparks?.replaceChildren();
         }, 3500);
       }
