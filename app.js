@@ -168,8 +168,9 @@ function setupForm(draft) {
     ['all','Fri blanding fra 3.–10. trinn','Prøv oppgaver fra flere klassetrinn i samme runde.']];
   const rewards = [
     ['plant','Plante','Så et frø og se det vokse.'],
-    ['bricks','Klossebygging','Samle små figurer.'],
-    ...Object.entries(PROJECTS).map(([id,project])=>[id,project.name,project.description]),
+    ['bricks','Klossebygging','Bygg små figurer og samle dem.'],
+    ...Object.entries(PROJECTS).map(([id,{name,description}])=>
+      [id,name,`Bygg ${description[0].toLowerCase()}${description.slice(1)}`]),
   ];
   const fields = [
     () => profileFields(person),
@@ -774,6 +775,9 @@ const homeSurpriseProps = {
   juice: '<svg class="juice-glass" viewBox="0 0 46 68"><path d="m16 34 6-26 16-5" fill="none" stroke="#f4c6a0" stroke-width="4" stroke-linecap="round"/><path d="M5 27h35l-5 34q-1 4-5 4H15q-4 0-5-4Z" fill="#fff6dc" stroke="#385854" stroke-width="2"/><path d="M9 40q14-5 27 0l-3 20H13Z" fill="#eea744"/><path d="m13 33 3 22" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="36" cy="29" r="7" fill="#ffd474" stroke="#c77a43" stroke-width="2"/><path d="M36 25v8m-4-4h8" stroke="#fff0af" stroke-width="1.5"/></svg>',
   shades: '<svg class="sun-glasses" viewBox="0 0 71 31"><path d="M2 8h23q6 0 7 5h7q1-5 7-5h23v6l-3 2-2 8q-2 4-7 4h-8q-6 0-8-6l-3-6h-5l-3 6q-2 6-8 6h-8q-5 0-7-4l-2-8-3-2Z" fill="#213d41" stroke="#f8d671" stroke-width="2.6" stroke-linejoin="round"/><path d="m10 17 8-5m29 5 8-5" stroke="#8dbbc3" stroke-width="2.5" stroke-linecap="round"/></svg>',
   stars: `<div class="juggle-stars">${icon('star')}${icon('star')}${icon('star')}</div>`,
+  winter: '<svg class="winter-gear" viewBox="0 0 142 132" stroke="#714752" stroke-width="2.4" stroke-linejoin="round"><path d="M28 42Q22 12 51 6c23-5 43 6 56 29l-12 10Z" fill="#bc6474"/><circle cx="51" cy="6" r="7.4" fill="#f5d9ac"/><path d="M31 28q30-17 60-11m-46 7 2-9m14 5 3-8m11 8 3-5" fill="none" stroke="#f1adab"/><path d="M28 34q42-11 77-8l4 13q-39-2-79 10Z" fill="#f5d9ac"/><path d="m37 35 2 9m9-12 2 9m10-12 2 9m10-11 2 9m9-10 2 9m9-10 2 9" stroke="#c79a7f"/><path d="M31 105q34 11 75-3l2 13q-45 15-78 2Z" fill="#bc6474"/><path d="M94 109q13 2 18 21l-14 1q-2-11-8-16Z" fill="#cf7884"/><path d="M98 124l11-1m-72-14 1 9m11-6 1 9m12-8 1 9" fill="none" stroke="#f5d9ac"/></svg>',
+  yawn: '<span class="yawn-breath">zzz</span>',
+  book: '<svg class="eplo-book" viewBox="0 0 84 52" stroke="#385854" stroke-width="2.4" stroke-linejoin="round"><path d="M4 10q19-6 38 5 19-11 38-5v35q-21-5-38 4-17-9-38-4Z" fill="#659b9b"/><path d="M7 6q20-6 35 7 15-13 35-7v33q-19-4-35 6-16-10-35-6Z" fill="#fff1cb"/><path d="M42 14v31m-27-27q9-1 20 5m-20 3q9-1 20 5m14-8q10-6 20-5m-20 13q10-6 20-5" fill="none"/></svg>',
 };
 const homeSurpriseCloud = '<svg class="eplo-puff" viewBox="0 0 142 132"><path d="M38 91a19 19 0 0 1-4-37 25 25 0 0 1 45-17 22 22 0 0 1 29 17 18 18 0 0 1-3 36Z" fill="#f3f1e8" stroke="#b5c4bc" stroke-width="2"/><path d="M46 66q3-11 14-11m20-4q11 0 14 10" fill="none" stroke="#d5ded3" stroke-width="3" stroke-linecap="round"/><circle cx="19" cy="42" r="6" fill="#e0e7dc"/><circle cx="122" cy="39" r="5" fill="#f3f1e8"/><circle cx="124" cy="99" r="7" fill="#e0e7dc"/></svg>';
 
@@ -798,7 +802,7 @@ function mountHomeSurprise() {
     const choices = acts.filter(act => act !== previous);
     previous = choices[Math.floor(Math.random() * choices.length)];
     stage.dataset.act = previous;
-    stage.innerHTML = `<div class="eplo-act">${buddy(true)}${homeSurpriseProps[previous]}</div>`;
+    stage.innerHTML = `<div class="eplo-act">${buddy(previous !== 'yawn')}${homeSurpriseProps[previous]}</div>`;
     stage.hidden = false;
     sceneTimer = setTimeout(() => { dismiss(); schedule(20000); }, 6400);
   }
@@ -1307,8 +1311,8 @@ function renderRound() {
     feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${messages[r.index % messages.length]}</p><p class="feedback-detail">${escapeHtml(equationText(t))}</p></div></div><button class="primary" data-action="next">${r.index === length - 1 ? 'Fullfør runden' : 'Neste'}${icon('arrow')}</button>`;
   } else feedback = '<p class="idle-note">Ta den tiden du trenger.</p>';
   root.innerHTML = `<div class="round-shell"><header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>${CHANNEL === 'preview' ? betaMark() : 'Din lille runde'}</span><strong>Oppgave ${r.index + 1} av ${length}</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="${length}" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
-    <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-buddy">${buddy(r.solved, ui.retry)}</div>
-    <p><span class="companion-message">${r.solved ? 'Se hva du fikk til!' : r.attempts[r.index] ? 'Vi prøver igjen sammen.' : 'Vi finner det ut.'}</span><span class="companion-sparks" aria-hidden="true"></span></p></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
+    <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-stage"><div class="companion-buddy">${buddy(r.solved, ui.retry)}</div>
+    <p><span class="companion-message">${r.solved ? 'Se hva du fikk til!' : r.attempts[r.index] ? 'Vi prøver igjen sammen.' : 'Vi finner det ut.'}</span></p><span class="companion-sparks" aria-hidden="true"></span></div></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
     ${equation(t, r.solved)}${renderVisual(t, r.solved)}
     ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 ? 'disabled' : ''}>${icon('help')}${stage === 3 ? 'Vi ser sammen' : stage ? 'Et hint til' : 'Vis meg'}</button>` : ''}
     ${stage && !r.solved ? `<div class="hint" id="hint-panel"><span class="eplo-hint-name">Eplo</span>${escapeHtml(hintText(t))}</div>` : ''}
@@ -1734,6 +1738,7 @@ function submitAnswer(value) {
   if (answered.solved) {
     const last = answered.index === answered.tasks.length - 1;
     const perfect = last && answered.results.every(result => result?.firstTry);
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
     save(); render();
     feedback(`task-success-${taskSuccessStep(answered.index,answered.tasks.length)}`, 16);
     flashAnswer(task, value, true);
@@ -1744,15 +1749,22 @@ function submitAnswer(value) {
         const previous = message.textContent;
         message.textContent = 'Perfekt runde!';
         companion.classList.add('perfect-round');
+        const sparks = companion.querySelector('.companion-sparks');
+        if (sparks && !reducedMotion) {
+          const offsets = [[-94,-51],[-53,-68],[-17,-49],[28,-60],[79,-48],[100,-16],[84,47],[42,59],[-21,54],[-84,43]];
+          sparks.innerHTML = offsets.map(([x,y],i) =>
+            `<i style="--spark-x:${x}px;--spark-y:${y}px;--spark-delay:${220+i%4*85}ms">${i%3===1?'✦':icon('star')}</i>`).join('');
+        }
         setTimeout(() => {
           message.textContent = previous;
           companion.classList.remove('perfect-round');
+          sparks?.replaceChildren();
         }, 3500);
       }
     }
     say(`Riktig. ${equationText(task)} ${perfect ? 'Eplo sier: Perfekt runde!' : last ? 'Runden er klar til å fullføres.' : 'Neste oppgave er klar.'}`);
     root.querySelector('[data-action="next"]')?.focus({ preventScroll: true });
-    root.querySelector('.feedback-area')?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+    root.querySelector('.feedback-area')?.scrollIntoView({ block: 'nearest', behavior: reducedMotion ? 'instant' : 'smooth' });
     return;
   }
   ui.wrong.push(value);

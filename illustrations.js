@@ -119,17 +119,18 @@ export function illustration(key) {
   return `<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false" fill="none" stroke="#273e42" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">${art[key]}</svg>`;
 }
 
-const heroFrame = (background,halo,body,edge) => rect(0,0,160,88,background)
+const rewardBackdrop = color => `<rect width="160" height="88" fill="${color}" stroke="none"/>`;
+const heroFrame = (background,halo,body,edge) => rewardBackdrop(background)
   +circle(80,47,37,halo)+path('M0 82h160v6H0Z',edge)
   +path('M36 88V72l12-12 20-4h24l20 4 12 12v16Z',body)
   +path('M48 61v13m64-13v13M65 56l5 9h20l5-9');
 
 const rewardArt = {
-  plant:rect(0,0,160,88,'#e4efdb')+circle(80,40,29,'#f1f4cf')
+  plant:rewardBackdrop('#e4efdb')+circle(80,40,29,'#f1f4cf')
     +ellipse(80,79,38,5,'#c0d3b6')+path('M80 56V25m0 18c-17 0-28-8-28-22 18 0 28 8 28 22Zm0-11c0-16 11-25 28-25 0 15-11 25-28 25Z','#75a86b')
     +path('m56 54 6 25h36l6-25Z','#b96f56')+rect(54,51,52,9,'#e5a67b',4)
     +path('M68 67l2 8m46-46h8m-4-4v8m-75 6h7m-3.5-3.5v7'),
-  bricks:rect(0,0,160,88,'#e3eaf5')+ellipse(80,76,56,8,'#c6d1e7')
+  bricks:rewardBackdrop('#e3eaf5')+ellipse(80,76,56,8,'#c6d1e7')
     +path('M28 56l38-16 43 12-36 18Z','#8dc9ba')+path('m28 56 45 14v12L28 69Z','#62a394')
     +path('m73 70 36-18v13L73 82Z','#438275')+ellipse(46,55,6,3,'#b7ded4')+ellipse(64,62,6,3,'#b7ded4')
     +path('m56 39 34-14 42 11-33 17Z','#efab91')+path('m56 39 43 14v16L56 55Z','#d87867')
@@ -154,7 +155,7 @@ const rewardArt = {
     +path('m75 28 5-9 5 9m-8-3h6', '#fcf2d7')
     +circle(108,67,18,'#c3525c')+circle(108,67,13.8,'#f5e8cf')
     +circle(108,67,9.2,'#427fae')+path('m108 60 2 5 5 .5-4 3 1 5-4-3-4 3 1-5-4-3 5-.5Z','#f5e8cf'),
-  city:rect(0,0,160,88,'#e1f0e9')+circle(120,17,10,'#f2d697')
+  city:rewardBackdrop('#e1f0e9')+circle(120,17,10,'#f2d697')
     +path('M0 43q25-9 51-4t47 0 62-4v53H0Z','#a8c79c')
     +path('M100 41h20q-17 14-7 20 8 4 47 9v18H98Q66 72 78 62Z','#61a9c4')
     +path('M105 48q-17 13-13 18m21 9 20 4m-16 3 13 3')
@@ -164,7 +165,7 @@ const rewardArt = {
     +rect(123,39,23,24,'#e9c48e',1)+path('m120 40 15-11 13 11Z','#ad7164')
     +path('M62 71h70v7h-13q-3-8-10-8t-12 8H62Z','#d6a278')
     +path('M62 70h70v4H62Z','#f1d9a8')+circle(11,59,6,'#649773')+circle(150,56,5,'#7fa46b'),
-  moon:rect(0,0,160,88,'#232b49')+circle(130,20,12,'#7eb7cb')
+  moon:rewardBackdrop('#232b49')+circle(130,20,12,'#7eb7cb')
     +path('M121 12q13-9 19 4l-9 2-3 7-6-3Z','#95c6a5')
     +`<g stroke="#f8eccf">${path('M17 13h6m-3-3v6M45 25h.1m12-16h.1m36 22h.1m15-17h.1m39 24h.1')}</g>`
     +path('M0 68q36-17 75-9t85-1v30H0Z','#9896b5')+ellipse(127,74,13,4,'#777b9b')+ellipse(16,76,9,3,'#777b9b')
@@ -173,7 +174,7 @@ const rewardArt = {
     +path('M91 52q-8 2-11 14l13-5m14-9q8 2 11 14l-13-5Z','#c96e75')
     +path('M91 52q-4-20 8-33 12 13 8 33l-3 10H94Z','#f6e7d9')
     +circle(99,40,4.5,'#7ab4c6')+path('M94 63h10l-5 10Z','#f5c781'),
-  island:rect(0,0,160,88,'#9edfe0')+path('M0 31q28-7 55-3t49-3 56-3v10q-32 5-57 4t-46 3-57 2Z','#78cbd4')
+  island:rewardBackdrop('#9edfe0')+path('M0 31q28-7 55-3t49-3 56-3v10q-32 5-57 4t-46 3-57 2Z','#78cbd4')
     +path('M0 66q13 2 21-2m111 4q14 3 28-2M7 80q13 2 25-1m101 4 14-1')
     +path('M19 64q17-20 49-20 49-7 76 17-8 15-42 18-60 6-83-15Z','#eed19a')
     +path('M32 57q31-17 65-10 25 3 36 13-20 9-53 8-32 2-48-11Z','#a7c98d')
