@@ -1453,3 +1453,78 @@ canvas.lunar-starfield,
   color: #544573; background: #fff6dc; border: 1.5px solid #b9abcf; border-radius: 12px 12px 12px 3px;
   font-size: 18px; font-weight: 800; line-height: 23px; text-align: center; box-shadow: 0 2px 6px #0003; }
 .project-thoughts span[hidden] { display: none; }
+
+.map-stage-actions {
+  position: absolute;
+  z-index: 5;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 8px;
+}
+.map-stage-actions .icon-button {
+  width: 46px;
+  height: 46px;
+  color: var(--ink);
+  border: 1px solid #d4e0d6;
+  background: #fcfdf8;
+  box-shadow: 0 2px 8px #14282322;
+}
+.map-stage-actions .map-full-start { display: none; }
+.project-dialog.project-fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+}
+.project-fullscreen > :not(.project-viewer),
+.project-fullscreen .project-viewer > :not(.project-map-stage) { display: none; }
+.project-fullscreen .project-viewer,
+.project-fullscreen .project-map-stage { width: 100%; height: 100%; }
+.project-fullscreen .project-map-stage > canvas:not(.project-fireworks) { height: 100%; border: 0; border-radius: 0; }
+.project-fullscreen .map-stage-actions {
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+}
+.project-fullscreen .map-stage-actions .map-full-start { display: inline-grid; color: #fff; background: var(--green); border-color: var(--green); }
+.project-fullscreen .map-info-card {
+  left: max(10px, env(safe-area-inset-left));
+  bottom: max(10px, env(safe-area-inset-bottom));
+}
+.result-latest > div { flex: 1 1 205px; min-width: 0; }
+.complete .result-latest .build-story { margin: 5px 0 0; font-size: .88rem; line-height: 1.4; }
+
+.money-visual, .money-pile, .money-exchange {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.money-visual { min-height: 76px; gap: 13px; }
+.money-piece {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 3px;
+  color: #443824;
+  border: 2px solid #b79654;
+  background: #f6e3ad;
+  box-shadow: inset 0 0 0 3px #fff5d1;
+}
+.money-piece strong { font-size: 1.38rem; line-height: 1; }
+.money-piece small { font-size: .72rem; }
+.money-coin { width: 54px; height: 54px; align-items: center; border-radius: 50%; }
+.money-note { min-width: 91px; min-height: 47px; align-items: center; padding: 7px 11px; border-radius: 8px; }
+.money-note[data-money-value="50"] { color: #24574d; border-color: #7aa998; background: #d4e8cb; box-shadow: inset 0 0 0 3px #e9f4df; }
+.money-note[data-money-value="100"] { color: #244d6a; border-color: #7a9fae; background: #cce5ed; box-shadow: inset 0 0 0 3px #e5f3f8; }
+.money-note[data-money-value="200"], .money-note[data-money-value="500"] { color: #604676; border-color: #a78ab8; background: #e8d9ef; box-shadow: inset 0 0 0 3px #f6ebf8; }
+.money-exchange svg { width: 23px; height: 23px; color: var(--green); }
+.money-exchange > strong { font-size: 1.16rem; }

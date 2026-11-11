@@ -435,12 +435,12 @@ export function worldBuilding(id,index,map=null) {
   const custom=catalogBuilding(id,index,map);
   if (custom) {
     const [name,description,kind,family=kind]=custom;
-    return {name,description,kind,family,story:landmarkStory(id,index,kind)};
+    return {name,description,kind,family,story:landmarkStory(id,index,kind,map?.seed)};
   }
   const definition=PLACES[id]?.[index];
   if (!definition) return null;
   const [name,kind]=definition;
-  return {name,description:DETAILS[id][index],kind,story:landmarkStory(id,index,kind)};
+  return {name,description:DETAILS[id][index],kind,story:landmarkStory(id,index,kind,map?.seed)};
 }
 
 export function worldBuildingOptions(id,map) {

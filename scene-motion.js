@@ -1,7 +1,7 @@
 // Shared by the Canvas renderer, WebGL shader and hit testing. Resident visitors
 // animate independently without using a moving-vehicle slot for every person.
 export function residentPoint([x,y,z],life,stride,seconds=0) {
-  if (!life) return [x,y,z];
+  if (!life || life[3]<=0) return [x,y,z];
   const [px,py,pz,phase]=life;
   const t=seconds*1.7+phase;
   const angle=Math.sin(t)*.032,c=Math.cos(angle),s=Math.sin(angle);
@@ -11,9 +11,15 @@ export function residentPoint([x,y,z],life,stride,seconds=0) {
 }
 
 export function residentNormal([x,y,z],life,seconds=0) {
-  if (!life) return [x,y,z];
+  if (!life || life[3]<=0) return [x,y,z];
   const angle=Math.sin(seconds*1.7+life[3])*.032,c=Math.cos(angle),s=Math.sin(angle);
   return [x*c-y*s,x*s+y*c,z];
+}
+
+export function lightPulse(phase,seconds=0) {
+  if (phase===-1) return .28+.16*Math.sin(seconds*23);
+  if (phase<0) return .73*Math.max(0,Math.cos(seconds*2.6+phase))**12;
+  return 0;
 }
 
 export function walkingClock(seconds,phase=0) {

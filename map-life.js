@@ -1,65 +1,48 @@
+import {mapStorySeed,personStories,vehicleStories} from './map-stories.js';
 import {visitor,dome,tube,pointOnSite} from './scenery.js';
 
 const modulo=(value,n)=>{const remainder=value%n;return remainder<0?remainder+n:remainder;};
-const names={
-  astronaut:['Luna Luring','Kaptein Knekkebrød','Nova Nysgjerrig','Astro Aksel','Stella Stjernestøv','Professor Plutselig'],
-  alien:['Bip Bop','Ziggi Zagg','Frøken Fnis','Plupp','Zorb Zokk','Snurr Snabel'],
-  human:['Ada Appelsin','Mio Makrell','Sofie Sving','Leo Luring','Frida Fart','Jonas Jordbær'],
-};
-const errands={
-  astronaut:['Skal hente matpakken. Den flyter visst rundt i feil romskip.','Leter etter en sokk som tok et lite månehopp.',
-    'Øver på månevitsen sin: Den er visst helt ute i verdensrommet.','Har telt 17 kratere, men ett av dem var kaffekoppen.',
-    'Tester om kakao smaker bedre med utsikt til jorda.','Har fått i oppdrag å vanne en veldig tørst romagurk.'],
-  alien:['Er på vei til lunsj. Har bestilt en pizza med ekstra måneost.','Lurer på hvorfor jordboere bare har to øyne.',
-    'Leter etter solbrillene sine. Trenger tre par.','Skal kjøpe iskrem med smaken «lilla torsdag».',
-    'Har lært å si hei. Øver nå på «brunost».','Prøver å huske hvor romskipet står parkert.'],
-  human:['Skal kjøpe en is. Har brukt hele turen på å velge smak.','Har med matpakke til en venn. Håper vennen liker brokkoli.',
-    'Er på vei til fotball. Ballen kom visst fram først.','Leter etter biblioteket og et veldig morsomt vitseleksikon.',
-    'Teller trær på turen. Må starte på nytt hver gang en fugl sier pip.','Har god tid. En liten oppdagelsestur er også en plan.'],
-};
-
-// Stable nicknames are derived from the map and actor, never from profile data.
+// Names and voices stay consistent while a child explores the map.
 export function mapCharacterInfo(scene,key) {
   if (typeof key!=='string') return null;
+  if (scene.discoveries?.[key]) return scene.discoveries[key];
   const index=Number(key.split(':')[1]);
   const actor=key.startsWith('actor:')?scene.ambient?.[index]:null;
   const part=actor?.parts.find(piece=>piece.characterKind)??scene.parts.find(piece=>piece.entity===key);
   if (!actor&&!part) return null;
-  const seed=modulo(Math.trunc(scene.seed??0)+index*13+(Number(key.split(':')[2])||0)*7,997);
-  if (actor?.parts.some(piece=>piece.animalKind==='dog')) return {name:'Voffert',status:'Byens turkamerat',story:'Leter etter en pinne. Har glemt at pinnen allerede er hjemme.'};
-  const person=actor?.kind==='walk'||key.startsWith('resident:')||actor?.footballPlayer;
-  if (person) {
-    const kind=part?.characterKind??(scene.id==='moon'?'astronaut':'human');
-    const pool=names[kind]??names.human,stories=errands[kind]??errands.human;
-    return {name:pool[seed%pool.length],status:kind==='alien'?'En venn fra verdensrommet':kind==='astronaut'?'På månebesøk':'På oppdagelsestur',
-      story:actor?.footballPlayer?(scene.id==='moon'?'Spiller på laget Månespark. Hjelmen tåler både lange pasninger og dårlige fotballvitser.':'Spiller på laget Elvespark. Trener på pasninger og på å feire et mål uten å snuble.'):stories[seed%stories.length]};
-  }
+  const seed=mapStorySeed(scene.seed,key);
   const lunar=scene.id==='moon';
-  const vehicles={
-    bus:actor?.lunarBus?['Kraterbussen','Neste stopp: Moon Burger! Sjåføren Bip lover å stoppe ved alle holdeplasser. Nesten alle.']
-      :['Buss '+(seed%9+1),'Sjåføren har med niste og en hemmelig spilleliste. Neste stopp kan lukte vafler.'],
-    road:lunar?['Rover Rulle','Har seks hjul og én veldig viktig jobb: finne den rundeste månesteinen.']
-      :['Den lille bybilen','Er ute på en omvei. Sjåføren er sikker på at dette er en snarvei.'],
-    hover:['Svevebil ZOOM-'+(seed%90+10),'Sjåføren er på vei til iskrembaren. Passasjeren håper at «veiarbeid» ikke finnes i lufta.'],
-    'offroad-rover':['Krater-Knut','Utforsker kratere og samler stein. Har gitt den fineste steinen navnet «Steinar».'],
-    train:['Elveby-ekspressen','Konduktøren teller billetter. Toget teller tunneler. Begge to liker å telle.'],
-    monorail:['Måneglideren','Glir mellom stasjonene med astronauter, romvesener og minst én gjenglemt matpakke.'],
-    tram:['Palmetrikk nummer '+(seed%5+1),'Ding ding! Her er det lov å ha sand mellom tærne. Kokosnøtter må ha egen billett.'],
-    plane:['Flykaptein Sky','Øver på myke landinger. Skyene gir foreløpig terningkast seks.'],
-    shuttle:['Romferga Stjerneskudd','Leverer romturister og forsyninger. Piloten har husket tannbørsten denne gangen.'],
-    rocket:['Raketten Hoppetussa','Neste stopp: veldig høyt oppe! Mannskapet har sjekket at matboksen er spent fast.'],
-    helicopter:['Helikopteret Virvel','Piloten sjekker at alle tak ligger der de skal. Ingen tak har stukket av i dag.'],
-    swimmer:['Badegjesten Plask','Prøver å svømme helt uten å bli våt på håret. Det går sånn passe.'],
-    jetski:['Vannscooteren Sprut','Er på en liten rundtur. Prøver å tegne en banan i vannet.'],
-    boat:['Kaptein Kringle','Speider etter havna. Og etter en kiosk med boller. Helst begge deler.'],
-    bird:lunar?['Kartroboten Pip','Fotograferer månen ovenfra. Har tatt 42 bilder av sin egen antenne.']
-      :['Fuglen Pip','Leter etter verdens beste sted å sitte. Kanskje taket på det neste bygget?'],
-    'football-ball':['Måneballen','Spretter litt høyere enn en vanlig ball. Prøver sitt beste å treffe målet.'],
-    coaster:['Berg-og-dal-vognen','Alle om bord har lovet å holde armene inne. Hylene får være utenfor.'],
-  };
-  const kind=actor?.kind==='train-car'?(lunar?'monorail':'train'):actor?.kind==='helicopter-rotor'?'helicopter':actor?.kind;
-  const info=vehicles[kind];
-  return info?{name:info[0],status:lunar?'Liv i månebasen':'Liv på kartet',story:info[1]}:null;
+  const dog=actor?.parts.some(piece=>piece.animalKind==='dog');
+  if (!dog&&(actor?.kind==='walk'||key.startsWith('resident:')||actor?.footballPlayer)) {
+    const kind=part?.characterKind??(lunar?'astronaut':'human');
+    const {first,last,stories}=personStories[kind]??personStories.human;
+    const name=`${first[seed%first.length]} ${last[(seed>>>8)%last.length]}`;
+    const status=kind==='alien'?'En venn fra verdensrommet':kind==='astronaut'?'På månebesøk':'På oppdagelsestur';
+    let story=stories[(seed>>>16)%stories.length];
+    if (actor?.peeking) story='Leker gjemsel bak steinen. Har blitt veldig flink til å gjemme alt unntatt antennene.';
+    if (actor?.footballPlayer) {
+      const team=lunar?'Månespark':'Elvespark';
+      const play=['Øver på pasninger. Ballen øver på å treffe alt mulig annet.',
+        'Har avtalt å feire hvert mål med en dans. Må bare score først.',
+        'Trener på langskudd. Håper å treffe målet før det blir matpause.',
+        'Liker korte pasninger og lange fotballvitser.'][seed%4];
+      story=`Spiller på laget ${team}. ${play}`;
+    }
+    return {name,status,story,sound:kind,voice:seed%24};
+  }
+  let kind=actor?.kind;
+  if (dog) kind='dog';
+  if (actor?.lunarBus) kind='rover-bus';
+  if (kind==='road'&&lunar) kind='rover';
+  if (kind==='road'&&scene.id==='island') kind='island-cart';
+  if (kind==='bird'&&lunar) kind='drone';
+  if (kind==='train-car') kind=lunar?'monorail':'train';
+  if (kind==='helicopter-rotor') kind='helicopter';
+  const pool=vehicleStories[kind];
+  if (!pool) return null;
+  const [names,stories]=pool;
+  return {name:names[seed%names.length],status:lunar?'Liv i månebasen':'Liv på kartet',
+    story:stories[(seed>>>12)%stories.length],sound:['dog','bird'].includes(kind)?'animal':kind==='swimmer'?'human':'vehicle',voice:seed%24};
 }
 
 export function footballMoment(seconds) {

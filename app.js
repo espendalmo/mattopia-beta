@@ -1,3 +1,4 @@
+import {constructionStory} from './landmark-stories.js';
 import {mapCharacterInfo} from './map-life.js';
 import { VERSION, CHANNEL, ROUND_LENGTH, ROUND_LENGTHS, PROGRESSION_ROUNDS, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, advanceRound, noteHelp, roundSummary, freshState, restoreState, progressionPreview, advancePractice } from './core.js';
 import { hintFor } from './learning.js';
@@ -79,6 +80,9 @@ save();
 function icon(name, css = '') {
   const paths = {
     arrow: '<path d="M5 12h14m-6-6 6 6-6 6"/>',
+    expand: '<path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/>',
+    collapse: '<path d="M4 9h5V4m6 0v5h5M9 20v-5H4m11 5v-5h5"/>',
+    play: '<path d="M8 5.5 19 12 8 18.5Z" fill="currentColor"/>',
     close: '<path d="m6 6 12 12M18 6 6 18"/>',
     check: '<path d="m5 12 4 4L19 6"/>',
     help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 2-2.5 2-2.5 4M12 17h.01"/>',
@@ -440,6 +444,10 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
             <p><strong class="sr-only">Eplo</strong> <span data-map-info-story></span></p></div>
           <button class="icon-button" type="button" data-map-info-close aria-label="Lukk informasjonen">${icon('close')}</button>
         </section>`:''}
+        ${scene.world ? `<div class="map-stage-actions">
+          ${roundAction ? `<button type="button" class="icon-button map-full-start" data-action="map-start" aria-label="${startRoundLabel()}" title="${startRoundLabel()}">${icon('play')}</button>` : ''}
+          <button type="button" class="icon-button" data-map-expand aria-label="Vis kartet i fullskjerm" aria-pressed="false" title="Fullskjerm">${icon('expand')}</button>
+        </div>` : ''}
         ${demo ? mapEplo(projectCongratulations(id),true) : ''}
       </div>
       <div class="project-controls">
@@ -450,7 +458,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
           <button class="secondary" data-project-reset>Oversikt</button>
         </div>
       </div>
-      <p id="project-instructions">${scene.world?'Dra kartet for å flytte. Trykk på bygg, folk og kjøretøy for å se hva som skjer.':'Dra for å rotere.'} Klyp<span class="project-desktop-hint"> eller bruk pluss og minus</span> for å zoome.</p>
+      <p id="project-instructions">${scene.world?'Dra kartet for å flytte. Trykk på bygg, folk, kjøretøy og kartfunn.':'Dra for å rotere.'} Klyp<span class="project-desktop-hint"> eller bruk pluss og minus</span> for å zoome.</p>
       ${scene.world ? `<div class="project-atmosphere"><button class="secondary" data-project-ambience aria-pressed="false" ${state.sound ? '' : 'disabled'}>${icon('muted')} Omgivelseslyd</button>${state.sound ? '' : '<small>Lyden i appen er slått av.</small>'}</div>` : ''}
       ${!demo && !target && progress().completed ? `<div class="project-latest"><div><small>Siste byggesteg · ${progress().completed} av ${progress().total}</small>${latest()}</div><button class="secondary" data-project-latest>Vis siste steg</button></div>` : ''}
     </div>
@@ -460,6 +468,29 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
     const viewer = dialog.querySelector('.project-viewer');
     const selector=viewer.querySelector('[data-map-inspect]');
     const card=viewer.querySelector('[data-map-info]');
+    const expand=viewer.querySelector('[data-map-expand]');
+    if (expand) {
+      let fullScreen=false;
+      let previousScroll=0;
+      const showFullScreen=enabled=>{
+        fullScreen=enabled;
+        if (enabled) previousScroll=dialog.scrollTop;
+        dialog.classList.toggle('project-fullscreen',enabled);
+        expand.innerHTML=icon(enabled?'collapse':'expand');
+        expand.setAttribute('aria-pressed',String(enabled));
+        expand.setAttribute('aria-label',enabled?'Avslutt fullskjerm':'Vis kartet i fullskjerm');
+        expand.title=enabled?'Avslutt fullskjerm':'Fullskjerm';
+        dialog.scrollTop=enabled?0:previousScroll;
+        expand.focus({preventScroll:true});
+      };
+      expand.addEventListener('click',()=>showFullScreen(!fullScreen));
+      dialog.addEventListener('cancel',event=>{
+        if (!fullScreen) return;
+        event.preventDefault();
+        showFullScreen(false);
+      });
+    }
+
     let dispose,selection=null;
     const inspect=(index,{focus=false,playSound=false}={})=>{
       if (!card) return;
@@ -471,7 +502,10 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       selector.value=building?String(index):'';
       dispose?.inspect?.(selection,{focus});
       if (character) {
-        if (playSound) sounds.play('select',state.sound);
+        if (playSound) {
+          sounds.play('select',state.sound);
+          sounds.playCharacter(character.sound,character.voice,state.sound);
+        }
         card.querySelector('h3').textContent=character.name;
         card.querySelector('[data-map-info-status]').textContent=character.status;
         card.querySelector('[data-map-info-description]').textContent='';
@@ -1256,6 +1290,15 @@ function hintStage() { return state.active?.hintStages?.[state.active.index] || 
 function hintText(t) { return hintFor(t, hintStage() || 1); }
 
 function curriculumVisual(model) {
+  if (model.kind==='money') {
+    const piece=(value,extra='')=>`<span class="money-piece ${value>=50?'money-note':'money-coin'} ${extra}" data-money-value="${value}"><strong>${value}</strong><small>kr</small></span>`;
+    const label=model.pieces.map(value=>`${value} kroner`).join(', ');
+    const exchange=model.exchange?` Veksles til ${model.exchange}-kroner.`:'';
+    return `<div class="money-visual" role="img" aria-label="${label}.${exchange}">
+      <span class="money-pile" aria-hidden="true">${model.pieces.map(value=>piece(value)).join('')}</span>
+      ${model.exchange?`<span class="money-exchange" aria-hidden="true">${icon('arrow')}${piece(model.exchange)}<strong>× ?</strong></span>`:''}
+    </div>`;
+  }
   if (model.kind === 'grid') {
     const total = model.columns * model.rows;
     const label = model.split ? `${model.split} grønne og ${model.filled-model.split} gule brikker` : model.style === 'dots' ? `${model.filled} brikker`
@@ -1339,8 +1382,10 @@ function renderRound() {
   const progress = Array.from({ length }, (_, i) => `<span class="step ${i < done ? 'done' : i === done ? 'current' : ''}"></span>`).join('');
   let feedback;
   if (r.solved) {
-    const messages = ['Der satt den!', 'Godt tenkt!', 'Du fant det!', 'Fint jobbet!'];
-    feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${messages[r.index % messages.length]}</p><p class="feedback-detail">${escapeHtml(equationText(t))}</p></div></div><button class="primary" data-action="next">${r.index === length - 1 ? 'Fullfør runden' : 'Neste'}${icon('arrow')}</button>`;
+    const messages = ['Bra, fortsett slik!', 'Du er flink!', 'Godt tenkt!', 'Bra jobba!',
+      'Så bra!', 'Du fikk det til!', 'Kjempebra!', 'Fint regnet!', 'Heia deg!', 'Det klarte du!', 'Godt jobba!', 'Veldig bra!'];
+    const message=messages[(state.roundsCompleted*5+r.index)%messages.length];
+    feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${message}</p><p class="feedback-detail">${escapeHtml(equationText(t))}</p></div></div><button class="primary" data-action="next">${r.index === length - 1 ? 'Fullfør runden' : 'Neste'}${icon('arrow')}</button>`;
   } else feedback = '<p class="idle-note">Ta den tiden du trenger.</p>';
   root.innerHTML = `<div class="round-shell"><header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>${CHANNEL === 'preview' ? betaMark() : 'Din lille runde'}</span><strong>Oppgave ${r.index + 1} av ${length}</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="${length}" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
     <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-stage"><div class="companion-buddy">${buddy(r.solved, ui.retry)}</div>
@@ -1367,6 +1412,7 @@ function renderComplete() {
   const g = rewardDetails(completedReward);
   const stage = g.added ? projectScene(g.mode, g.map || g.completed) : null;
   const projectStep = stage?.last;
+  const buildStory=g.map&&projectStep ? constructionStory(g.mode,stage.latestTarget?.kind,stage.finished?3:g.phase||1,g.map.seed,g.completed) : '';
   const finishedProject = g.project && g.full && g.added;
   const length = state.history.at(-1)?.length ?? ROUND_LENGTH;
   const message = g.project
@@ -1378,7 +1424,7 @@ function renderComplete() {
   const badge = newBadge ? `<div class="new-badge">${badgeArt(newBadge)}<span>Ny utmerkelse <strong>${newBadge.name}</strong></span></div>` : '';
   const next = g.mode === 'bricks' && upcomingBuild(g.build);
   const preview = next ? `<div class="next-build-card">${renderBuildSvg(next, {mini:true, preview:true})}<div>Neste bygg<strong>Hva tror du det blir?</strong></div></div>` : '';
-  const latest = projectStep ? `<div class="project-latest result-latest${stage.finished ? ' landmark-complete' : ''}"><div><small>${stage.finished&&g.map ? 'Ferdig på kartet' : finishedProject ? 'Bygget er fullført' : 'Nytt byggesteg'} · ${g.completed} av ${g.total}</small><strong>${escapeHtml(g.map&&stage.finished ? stage.finished+' er på plass!' : projectStep)}</strong></div><button class="secondary" data-project-latest>Vis igjen</button></div>` : '';
+  const latest = projectStep ? `<div class="project-latest result-latest${stage.finished ? ' landmark-complete' : ''}"><div><small>${stage.finished&&g.map ? 'Ferdig på kartet' : finishedProject ? 'Bygget er fullført' : 'Nytt byggesteg'} · ${g.completed} av ${g.total}</small><strong>${escapeHtml(g.map&&stage.finished ? stage.finished+' er på plass!' : projectStep)}</strong>${buildStory ? `<p class="build-story">${escapeHtml(buildStory)}</p>` : ''}</div><button class="secondary" data-project-latest>Vis igjen</button></div>` : '';
   const mapIndex=g.map?playerMaps(g.mode).length-1:null;
   const inCollection=g.project&&(g.full||g.map&&stage?.finished);
   const gallery=inCollection ? `<button class="secondary result-gallery" data-action="collection" data-project="${g.mode}" ${g.map?`data-map="${mapIndex}"`:''}>${finishedProject?'Se '+(g.map?'kartet':'superhelten')+' i samlingen':'Se i samlingen'}${finishedProject?icon('arrow'):''}</button>` : '';

@@ -1,7 +1,7 @@
 import {createTraffic,MAX_ACTORS} from './scenery.js';
 import {createFireworks,FIREWORKS_START,FIREWORKS_END,FINALE_FIREWORKS_END} from './project-fireworks.js';
 import {entityAt,landmarkSilhouette} from './project-picking.js';
-import {residentPoint,residentNormal,lunarSkyCamera} from './scene-motion.js';
+import {residentPoint,residentNormal,lunarSkyCamera,lightPulse} from './scene-motion.js';
 
 const clamp = (value,min,max) => Math.max(min,Math.min(value,max));
 const cross = ([ax,ay,az],[bx,by,bz]) => [ay*bz-az*by,az*bx-ax*bz,ax*by-ay*bx];
@@ -151,7 +151,10 @@ export function projectFaces(scene) {
       const fade=color=>color.map((value,i)=>value+(haze[i]-value)*(piece.fog??0));
       const vertexColors=piece.colors??(piece.shape==='dome'&&faceIndex>0 ? points.map(point=>fade(shaded(domeNormal(piece,point)))) : null);
       const color=landscape ? fade(rgb) : vertexColors ? rgb.map((_,i)=>vertexColors.reduce((sum,vertex)=>sum+vertex[i],0)/points.length) : fade(shaded(unit));
-      return {points,normal:unit,color,vertexColors,opacity:piece.opacity,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,life:piece.life,entity:part.entity??(layerIndex&&!Number.isInteger(part.landmark)&&!['rocket-flame','football-stars','observation'].includes(scene.ambient[layerIndex-1]?.kind)?`actor:${layerIndex-1}`:null),landmark:part.landmark,foundation:Boolean(part.support||part.foundation),
+      const actorKind=scene.ambient?.[layerIndex-1]?.kind;
+      const actorEntity=layerIndex&&!Number.isInteger(part.landmark)&&piece.life?.[3]!==-1
+        &&!['rocket-flame','football-stars','observation'].includes(actorKind);
+      return {points,normal:unit,color,vertexColors,opacity:piece.opacity,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,life:piece.life,entity:part.entity??(actorEntity?`actor:${layerIndex-1}`:null),landmark:part.landmark,foundation:Boolean(part.support||part.foundation),
         origin:landscape||piece.radial ? [piece.x,piece.y,piece.z] : null,
         group:layerIndex?layerIndex+1:part.roadBuild!==undefined?-Math.max(.001,part.roadBuild):latest.has(part)?1:0,stride:part.stride??0};
     });
@@ -253,6 +256,8 @@ function canvasPainter(canvas, faces, background, stars) {
       for (const face of list) {
         if (face.group<0&&-face.group>effects.road||face.group===1&&effects.growth===0) continue;
         const actor=face.group>=2?effects.actors[face.group-2]:null;
+        const light=face.life?.[3];
+        if (light===-1&&!actor?.thrust) continue;
         let [nx,ny,nz]=residentNormal(face.normal,face.life,effects.age);
         if (actor&&!face.hinge&&(actor.rollCos!==1||actor.rollSin)) {
           [nx,ny]=[nx*actor.rollCos-ny*actor.rollSin,nx*actor.rollSin+ny*actor.rollCos];
@@ -293,8 +298,9 @@ function canvasPainter(canvas, faces, background, stars) {
             points.every(([,y])=>y<0) || points.every(([,y])=>y>height)) continue;
         const shimmer=Math.max(0,1-Math.abs(modelY/points.length-effects.sweep)/.7)*.36;
         const highlight=face.group===1?Math.min(.58,effects.highlight+shimmer):0;
-        const paint=highlight ? paintColor(face.color.map((value,i)=>
-          value+([1,.86,.46][i]-value)*highlight)) : face.paint;
+        const emission=lightPulse(light,effects.age);
+        const paint=highlight||emission ? paintColor(face.color.map((value,i)=>
+          value+([1,.91,.69][i]-value)*Math.max(highlight,emission))) : face.paint;
         polygons.push({points,depth:depth/points.length,paint,layer:face.layer,colors:face.smooth?face.vertexColors:null,opacity:face.opacity});
       }
       polygons.sort((a,b)=>(a.layer-b.layer)||a.depth-b.depth);
@@ -373,7 +379,7 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
     uniform float center;
     uniform vec4 reveal;
     uniform vec4 actorPose[${MAX_ACTORS}];
-    uniform vec2 actorTilt[${MAX_ACTORS}];
+    uniform vec3 actorTilt[${MAX_ACTORS}];
     uniform vec4 actorMotion[${MAX_ACTORS}];
     varying mediump vec4 shade;
     varying mediump float modelHeight;
@@ -391,6 +397,10 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
       latest = group == 1.0 ? 1.0 : 0.0;
       modelHeight = pos.y;
       shade = color;
+      if (life.w < 0.0) {
+        float pulse = life.w == -1.0 ? .28+.16*sin(age*23.0) : .73*pow(max(0.0,cos(age*2.6+life.w)),12.0);
+        shade.rgb = mix(shade.rgb,vec3(1.0,.91,.69),pulse);
+      }
       if ((group < 0.0 && -group > reveal.w) || (latest == 1.0 && reveal.y == 0.0)) {
         gl_Position = vec4(2.0,2.0,2.0,1.0);
         return;
@@ -402,7 +412,11 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
           vec4 motion = actorMotion[i];
           vec2 pivot = hinge.z > .5 ? hinge.xy : pos.xy;
           pos.xy += vec2(pivot.x*motion.z-pivot.y*motion.w,pivot.x*motion.w+pivot.y*motion.z)-pivot;
-          vec2 slope = actorTilt[i];
+          vec3 slope = actorTilt[i];
+          if (life.w == -1.0 && slope.z < .5) {
+            gl_Position = vec4(2.0,2.0,2.0,1.0);
+            return;
+          }
           pos.yz = vec2(pos.y*slope.x+pos.z*slope.y,pos.z*slope.x-pos.y*slope.y);
           float step = stride*motion.y;
           float z = pos.z+step;
@@ -458,7 +472,7 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
   const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','reveal','shine','age','actorPose[0]','actorMotion[0]','actorTilt[0]']
     .map(name=>[name,gl.getUniformLocation(program,name)]));
   const actorPositions=new Float32Array(MAX_ACTORS*4),actorMovement=new Float32Array(MAX_ACTORS*4);
-  const actorSlopes=new Float32Array(MAX_ACTORS*2);
+  const actorSlopes=new Float32Array(MAX_ACTORS*3);
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
   gl.clearColor(...backgroundRGB(background),stars?0:1);
@@ -478,14 +492,14 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
       gl.uniform1f(uniforms.center,center);
       gl.uniform4f(uniforms.reveal,effects.lift,effects.growth,effects.ground,effects.road);
       gl.uniform2f(uniforms.shine,effects.highlight,effects.sweep);
-      effects.actors.forEach(({x,y,z,cos,sin,stride,rollCos,rollSin,pitch=0},i)=>{
+      effects.actors.forEach(({x,y,z,cos,sin,stride,rollCos,rollSin,pitch=0,thrust=0},i)=>{
         actorPositions.set([x,y,z,cos],i*4);
         actorMovement.set([sin,stride,rollCos,rollSin],i*4);
-        actorSlopes.set([Math.cos(pitch),Math.sin(pitch)],i*2);
+        actorSlopes.set([Math.cos(pitch),Math.sin(pitch),thrust],i*3);
       });
       gl.uniform4fv(uniforms['actorPose[0]'],actorPositions);
       gl.uniform4fv(uniforms['actorMotion[0]'],actorMovement);
-      gl.uniform2fv(uniforms['actorTilt[0]'],actorSlopes);
+      gl.uniform3fv(uniforms['actorTilt[0]'],actorSlopes);
       gl.drawArrays(gl.TRIANGLES,0,data.length/vertexFloats);
     },
     dispose() {
@@ -607,7 +621,7 @@ export function mountProjectView(container, scene, interactive=false, {
     : {x:0,y:Math.max(...scene.parts.map(part=>part.y+part.h)),z:0});
   const fireworkY=fireworkTarget.y+(fireworkTarget.height??0)+1.4;
   const mounted=performance.now();
-  const moveActors=createTraffic(scene.ambient??[]);
+  const moveActors=createTraffic(scene.ambient??[],scene.junctions);
   if (target || closeUp && (!reveal || motion.matches || demo&&!scene.world || focusLatest&&!completedBuild&&!scene.roadBuild)) Object.assign(camera,detail);
   else if (reveal&&scene.world) Object.assign(camera,context);
   from={...camera};

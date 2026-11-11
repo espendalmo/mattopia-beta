@@ -1,4 +1,4 @@
-import {ambienceBuffer,ACTIVITY_SOUNDS,buildingClip,soundClip} from './sound-art.js';
+import {ambienceBuffer,ACTIVITY_SOUNDS,buildingClip,characterClip,soundClip} from './sound-art.js';
 import {fireworkBursts} from './project-fireworks.js';
 
 // Original, local melodies: [MIDI pitch, start, duration, gain].
@@ -259,19 +259,28 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     }).catch(()=>{});
   }
 
-  function playBuilding(world,index,kind,enabled=true) {
-    if (!enabled||!worlds.has(world)) return;
+  function playInspection(key,kind,makeClip,enabled,volume) {
+    if (!enabled) return;
     stopBuilding(true);
     const token=generation,building=buildingGeneration;
     unlock().then(()=>{
       if (!context||token!==generation||building!==buildingGeneration) return;
-      const key=`${world}:${index}:${kind}`;
       if (!buildingClips.has(key)) {
-        buildingClips.set(key,buildingClip(context,world,index,kind));
+        buildingClips.set(key,makeClip(context));
         if (buildingClips.size>48) buildingClips.delete(buildingClips.keys().next().value);
       }
-      sample(kind,context.currentTime+.075,.16,{building:true,buffer:buildingClips.get(key)});
+      sample(kind,context.currentTime+.075,volume,{building:true,buffer:buildingClips.get(key)});
     }).catch(()=>{});
+  }
+
+  function playBuilding(world,index,kind,enabled=true) {
+    if (worlds.has(world)) playInspection(`${world}:${index}:${kind}`,kind,
+      audio=>buildingClip(audio,world,index,kind),enabled,.16);
+  }
+
+  function playCharacter(kind,voice,enabled=true) {
+    const variant=Math.max(0,Math.trunc(voice)||0)%24;
+    playInspection(`character:${kind}:${variant}`,kind,audio=>characterClip(audio,kind,variant),enabled,.135);
   }
 
   function playBuild(scene,enabled=true,{finale=false,tail=true}={}) {
@@ -298,5 +307,5 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     if (tail&&scene?.world) startAmbience(scene,{delay:finished?2.08:workStart+3.38,duration:5.4});
   }
 
-  return {play,stop,resume,startAmbience,stopAmbience,activity,playBuilding,playBuild,stopBuild};
+  return {play,stop,resume,startAmbience,stopAmbience,activity,playBuilding,playCharacter,playBuild,stopBuild};
 }
