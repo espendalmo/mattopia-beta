@@ -138,23 +138,29 @@ function roadSeed(layout,road) {
 function streetFurniture(layout,plan,road,width,seed) {
   const total=road.at(-1).distance, parts=[];
   const theme=layout.theme;
+  const avenue=plan.plots.length>=6&&total>9&&plan.plots.filter(p=>Math.hypot(p.x-road[0].x,p.z-road[0].z)<23).length>=4;
   for (let distance=4.15+(seed%4)*.62,i=0;distance<total-2.9;distance+=7.7,i++) {
     const side=(seed+i)%2===0?1:-1;
     const center=roadPoint(road,distance);
     const {x,z}=offsetPoint(center,side*(width+.83));
     const ground=regionSurface(layout,x,z),y=ground.y;
     if (ground.water||ground.bank<.58||plan.inRoadTunnel?.(x,z)||plan.plots.some(site=>Math.hypot(x-site.x,z-site.z)<5.96)) continue;
-    if (theme!=='moon'&&(seed+i*5)%4===1) {
+    if (avenue&&theme==='moon') {
+      parts.push(tube(x,z,.47,.45,.23,'#8b8aa4',y),tube(x,z,.21,.22,1.69,'#a2a5c1',y+.17),
+        {...dome(x,z,.44,.42,.63,'#95d4dc',y+1.48),life:[0,0,0,-2-i*.66]});
+    } else if (theme!=='moon'&&(avenue||(seed+i*5)%4===1)) {
       const tropical=theme==='island';
       parts.push(tube(x,z,.21,.23,1.54,'#977b61',y),
         dome(x,z,tropical?1.75:1.38,1.3,tropical?.44:1.22,tropical?'#72a676':'#789d6d',y+1.48),
         dome(x+.26,z-.16,1.04,.85,.56,'#8bb081',y+1.81));
-    } else {
+    }
+    if (avenue||theme==='moon'||(seed+i*5)%4!==1) {
       const top=y+(theme==='moon'?1.45:2.43),[u,v]=center.tangent;
-      const hx=x+v*side*.47,hz=z-u*side*.47;
+      const lx=x+u*(avenue?.67:0),lz=z+v*(avenue?.67:0);
+      const hx=lx+v*side*.47,hz=lz-u*side*.47;
       const metal=theme==='moon'?'#8995b0':'#72817e';
-      parts.push(tube(x,z,.22,.22,.11,metal,y),tube(x,z,.106,.105,top-y,metal,y),
-        beam([x,top-.22,z],[hx,top,hz],.083,metal),box(hx,hz,.34,.25,.10,'#f6e2a9',top-.035));
+      parts.push(tube(lx,lz,.22,.22,.11,metal,y),tube(lx,lz,.106,.105,top-y,metal,y),
+        beam([lx,top-.22,lz],[hx,top,hz],.083,metal),box(hx,hz,.34,.25,.10,'#f6e2a9',top-.035));
     }
   }
   return parts;
@@ -216,6 +222,17 @@ function pavedRoute(layout,path,width,{junctions,plan,stage}={}) {
         work.push(...across(b,width+.19,0).map(([x,y,z])=>box(x,z,.2,.2,.42,'#d1b39b',y)));
       }
     }
+    if (layout.theme==='moon'&&!bridge&&!plan?.inRoadTunnel?.((a.x+b.x)*.5,(a.z+b.z)*.5)) {
+      const topA=across(a,width+.27,-.053),topB=across(b,width+.27,-.053);
+      const rim=(point,side)=>{
+        const [x,y,z]=across(point,width+.61,-.19)[side];
+        return [x,Math.min(y,regionSurface(layout,x,z).y-.055),z];
+      };
+      for (const side of [0,1]) {
+        const outline=[topA[side],topB[side],rim(b,side),rim(a,side)];
+        work.push(surface(side===0?outline:outline.reverse(),i%4===0?'#9793aa':'#a39fb5',3.1));
+      }
+    }
     paint(work,(a.distance+b.distance)*.5/total);
     span=bridge?span+1:0;
   }
@@ -246,25 +263,31 @@ function intersections(layout,junctions,width) {
 }
 
 export function prepareRoadTunnels(layout,plan) {
-  if (layout.theme==='island'||plan.plots.length<4) return [];
+  if (plan.plots.length<3) return [];
   const mouth=3.55,approach=5.8;
   const candidates=plan.paths.flatMap(path=>{
     const first=path[0],last=path.at(-1);
     const span=length(first,last);
-    if (span<13||Math.min(Math.abs(first.x-last.x),Math.abs(first.z-last.z))>.001
+    if (span<12.1||Math.min(Math.abs(first.x-last.x),Math.abs(first.z-last.z))>.001
       ||path.some(point=>regionSurface(layout,point.x,point.z).water)) return [];
     const dx=(last.x-first.x)/span,dz=(last.z-first.z)/span;
     const x=(first.x+last.x)/2,z=(first.z+last.z)/2;
     const heights=[-approach,-mouth,mouth,approach].map(d=>roadElevation(layout,x+dx*d,z+dz*d));
-    if (Math.max(...heights)-Math.min(...heights)>.39
-      ||plan.plots.some(plot=>Math.hypot(x-plot.x,z-plot.z)<6.3)
+    if (Math.max(...heights)-Math.min(...heights)>.74
+      ||plan.plots.some(plot=>Math.hypot(x-plot.x,z-plot.z)<6.7)
       ||plan.transitPortals?.some(portal=>Math.hypot(x-portal.x,z-portal.z)<12)) return [];
     const seed=(Math.imul(Math.round(x*100),19)^Math.imul(Math.round(z*100),37)^layout.seed)>>>0;
     const relief=regionSurface(layout,x,z).relief;
     const level=(heights[0]+heights[3])*.5;
-    return relief>.54&&seed%7<4?[{x,z,dx,dz,level,path}]:[];
+    return relief>.28&&seed%9<7?[{x,z,dx,dz,level,path,relief}]:[];
   });
-  const selected=candidates.slice(0,plan.plots.length>=14?2:1);
+  const selected=[];
+  const limit=1+Math.floor(plan.plots.length/8);
+  for (const candidate of candidates.sort((a,b)=>b.relief-a.relief)) {
+    if (selected.some(near=>Math.hypot(near.x-candidate.x,near.z-candidate.z)<16)) continue;
+    selected.push(candidate);
+    if (selected.length>=limit) break;
+  }
   if (!selected.length) return [];
   const profile=(x,z,halfWidth)=>{
     for (const {x:cx,z:cz,dx,dz,level} of selected) {

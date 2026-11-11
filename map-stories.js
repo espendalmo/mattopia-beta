@@ -32,8 +32,10 @@ export const personStories={
     ],
   },
   astronaut:{
-    first:['Luna','Kaptein','Nova','Astro','Stella','Professor','Nomi','Mira','Orbit','Lio','Vega','Tara','Kosmo','Milo','Sola','Pia'],
-    last:['Luring','Knekkebrød','Nysgjerrig','Aksel','Stjernestøv','Plutselig','Komet','Rakettsko','Månesokk','Svev','Visir','Kakao','Turbotøffel','Krater','Parabol','Pling'],
+    first:['Luna','Kaptein','Nova','Astro','Stella','Professor','Nomi','Mira','Orbit','Lio','Vega','Tara','Kosmo','Milo','Sola','Pia',
+      'Una','Malin','Falk','Iris','Neil','Sirius','Astra','Frida','Thea','Elias','Aurora','Robin','Oda','Felix','Juno','Atlas'],
+    last:['Luring','Knekkebrød','Nysgjerrig','Aksel','Stjernestøv','Plutselig','Komet','Rakettsko','Månesokk','Svev','Visir','Kakao','Turbotøffel','Krater','Parabol','Pling',
+      'Kosmokrøll','Stjernebriller','Glittervott','Romsaft','Marsipan','Kometkake','Vektløs','Saturnring','Månestråle','Meteor','Solgløtt','Kapsel','Himmelhopp','Rakettbart','Stjernelue','Gravitasjon'],
     stories:[
       'Skal hente matpakken. Den flyter visst rundt i feil romskip.',
       'Leter etter en sokk som tok et lite månehopp.',
@@ -58,8 +60,10 @@ export const personStories={
     ],
   },
   alien:{
-    first:['Bip','Ziggi','Frøken','Plupp','Zorb','Snurr','Glim','Oopi','Mlep','Nøff','Zippa','Tikk','Kvik','Lulp','Poff','Vibb'],
-    last:['Bop','Zagg','Fnis','Boble','Zokk','Snabel','Spiral','Plask','Kvark','Dupp','Tøffel','Blink','Kring','Brus','Prikk','Muffins'],
+    first:['Bip','Ziggi','Frøken','Plupp','Zorb','Snurr','Glim','Oopi','Mlep','Nøff','Zippa','Tikk','Kvik','Lulp','Poff','Vibb',
+      'Niff','Tulp','Bøff','Flipp','Jøkk','Pippo','Gurg','Kvekk','Nib','Gorbi','Splo','Molli','Krøll','Zing','Voffi','Pong'],
+    last:['Bop','Zagg','Fnis','Boble','Zokk','Snabel','Spiral','Plask','Kvark','Dupp','Tøffel','Blink','Kring','Brus','Prikk','Muffins',
+      'Blopp','Snerk','Fnugg','Tutle','Klem','Ping','Sprell','Krønsj','Fizz','Slim','Snip','Prump','Skvulp','Rufse','Kværn','Romost'],
     stories:[
       'Er på vei til lunsj. Har bestilt en pizza med ekstra måneost.',
       'Lurer på hvorfor jordboere bare har to øyne.',
@@ -99,6 +103,19 @@ export const vehicleStories={
     'Neste levering er en kasse mango. Én mango har allerede bestilt returbillett.',
     'Kjører en ekstra runde for å få vind i solhatten.',
     'Har fått en liten palme på dashbordet. Nå vil bilen på ferie også.',
+  ]],
+  'island-bus':[['Strandbussen','Palmebussen','Solhattekspressen','Buktruta','Badebussen'],[
+    'Kjører mellom stranda og de skyggefulle palmene. Det er plass til badeball i bagasjerommet.',
+    'Sjåføren ringer med bjella når passasjerene kan se havet.',
+    'Har fått inn en glemt solhatt. Den har allerede vært med på to rundturer.',
+  ]],
+  'island-pickup':[['Brettbilen','Surfepilen','Strandfrakt','Rullende rev'],[
+    'Har to surfebrett på planet og en sjåfør som håper å rekke dagens første bølge.',
+    'Frakter et surfebrett til museet. Brettet har reist rundt halve øya.',
+  ]],
+  'island-van':[['Mangobudet','Fruktvogna','Kokosekspressen','Den gule matbilen'],[
+    'Leverer mango før den blir så moden at den må kjøres hjem i et glass.',
+    'Har en kasse med frukt og én tom kasse til kokosnøtter.',
   ]],
   rover:[['Rover Rulle','Månemusen','Hjulbert','Støvstjerna','Kraterkrabben'],[
     'Har seks hjul og én viktig jobb. Den leter etter den rundeste månesteinen.',

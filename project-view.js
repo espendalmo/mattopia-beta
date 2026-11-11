@@ -153,7 +153,7 @@ export function projectFaces(scene) {
       const color=landscape ? fade(rgb) : vertexColors ? rgb.map((_,i)=>vertexColors.reduce((sum,vertex)=>sum+vertex[i],0)/points.length) : fade(shaded(unit));
       const actorKind=scene.ambient?.[layerIndex-1]?.kind;
       const actorEntity=layerIndex&&!Number.isInteger(part.landmark)&&piece.life?.[3]!==-1
-        &&!['rocket-flame','football-stars','observation'].includes(actorKind);
+        &&!['rocket-flame','football-stars','observation','smoke'].includes(actorKind);
       return {points,normal:unit,color,vertexColors,opacity:piece.opacity,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,life:piece.life,entity:part.entity??(actorEntity?`actor:${layerIndex-1}`:null),landmark:part.landmark,foundation:Boolean(part.support||part.foundation),
         lunar:scene.id==='moon'&&scene.illustrated&&part.layer!==-1,
         origin:landscape||piece.radial ? [piece.x,piece.y,piece.z] : null,

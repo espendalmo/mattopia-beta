@@ -843,6 +843,22 @@ canvas.lunar-starfield,
 .setup-modes, .setup-rewards { min-width: 0; border: 0; margin: 0; padding: 0; }
 .setup-modes legend { margin-bottom: 8px; font-size: .93rem; font-weight: 700; }
 .setup-modes label:last-child { margin-bottom: 0; }
+.setup-modes .unavailable {
+  border-style: dashed; border-color: #ccd2c8; background: #edf0eb; color: #58665c; cursor: default;
+}
+.setup-modes .unavailable small { color: #536057; font-weight: 650; }
+.setup-grade-note { color: #465a4e; font-size: .85rem; line-height: 1.45; margin: 0 0 10px; }
+.help-button { border: 1.5px solid #b2cda5; background: #edf5e8; min-height: 40px; padding: 6px 13px; margin-bottom: 7px; }
+.help-button:not(:disabled):hover { background: #e0efda; border-color: #84ad76; }
+.perfect-progress:not([hidden]) { display: block; margin-top: 6px; font-size: .78rem; font-weight: 700; line-height: 1.25; }
+.line-visual { min-height: 0; padding: 10px 12px; }
+.jump-line { width: min(100%, 370px); height: auto; margin-inline: auto; overflow: visible; }
+.jump-line path { fill: none; stroke: #347453; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.jump-line .jump-axis { stroke: #a9bdab; stroke-width: 2; }
+.jump-line circle { fill: #347453; stroke: #fff; stroke-width: 1.5; }
+.jump-line text { fill: #325d49; font: 700 18px system-ui; text-anchor: middle; }
+.jump-line .jump-stop { font-size: 23px; }
+.jump-line .jump-unknown { fill: #815923; }
 .setup-progression { margin: 0; }
 .setup-progression .progression-tracks { margin: 0; border-top: 0; }
 .setup-form:not(:has(input[name="practice"][value="auto"]:checked)) .setup-progression { display: none; }

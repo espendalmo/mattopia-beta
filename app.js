@@ -4,10 +4,10 @@ import { VERSION, CHANNEL, ROUND_LENGTH, ROUND_LENGTHS, PROGRESSION_ROUNDS, STOR
 import { hintFor } from './learning.js';
 import { createSoundPlayer, taskSuccessStep } from './sound.js';
 import { createUpdater, readPublishedVersion, PRODUCTION_PATH } from './update.js';
-import { modelById, selectRewardMode, prepareReward, awardPractice, upcomingBuild, renderBuildSvg, puzzleBrickLayout, renderPuzzleBrick } from './rewards.js';
+import { modelById, selectRewardMode, prepareReward, awardPractice, upcomingBuild, renderBuildSvg, puzzleBrickLayout, renderPuzzleBrick, PERFECT_ROUNDS_PER_BONUS } from './rewards.js';
 import { plantById, renderPlant } from './plants.js';
 import { BREAK_ATTEMPTS, BREAK_INTERVAL, BREAK_TITLES, BRICK_COLORS, breakKind, createBreakGame, placeBreakBrick, retryBreak, scoreBreak } from './breaks.js';
-import { AVATARS, AVATAR_GROUPS, GRADES, NAME_LIMIT, profileDetails, readProfiles, saveProfile } from './profiles.js';
+import { AVATARS, AVATAR_GROUPS, GRADES, NAME_LIMIT, PROFILE_KEY, profileDetails, readProfiles, saveProfile, deleteProfile } from './profiles.js';
 import { rewardIllustration } from './illustrations.js';
 import { curriculumTopic, levelForGrade, levelsForGrade } from './curriculum.js';
 import { PROJECTS, projectById, projectScene, worldBuilding, worldBuildingOptions, worldBuildingPreview } from './projects.js';
@@ -26,7 +26,7 @@ try {
   storage = localStorage;
   profileStore = readProfiles(storage);
   profile = profileStore.profiles.find(item => item.id === profileStore.activeId) || null;
-  state = restoreState(profile ? profile.practice : JSON.parse(storage.getItem(STORAGE_KEY)));
+  state = restoreState(profile ? profile.practice : profileStore.deletedIds?.length ? null : JSON.parse(storage.getItem(STORAGE_KEY)));
 } catch { state = freshState(); }
 alignPracticeLevel(profile?.grade);
 if (state.rewardMode === 'bricks' || isWorld(state.rewardMode)) state = selectRewardMode(state, state.rewardMode);
@@ -67,6 +67,11 @@ function save({ select=false, edit=false } = {}) {
   if (profile) {
     const result = saveProfile(storage, profileStore, { ...profile, practice:state }, { select, edit, recover:!storageWorks });
     profileStore = result.store;
+    if (result.removed) {
+      const id=profile.id;
+      queueMicrotask(()=>{ if (profile?.id===id) selectAfterDeletion(); });
+      return true;
+    }
     profile = profileStore.profiles.find(item => item.id === profile.id);
     storageWorks = result.saved;
     return storageWorks;
@@ -207,12 +212,19 @@ function setupForm(draft) {
     ...Object.entries(PROJECTS).map(([id,{name,description}])=>
       [id,name,`Bygg ${description[0].toLowerCase()}${description.slice(1)}`]),
   ];
+  const practiceModes=modes.map(([id,label,note])=>{
+    const unavailable=!person.grade&&['auto','grade'].includes(id);
+    const selected=id===(mix||(autoProgress&&person.grade?'auto':'fixed'));
+    return `<label class="level-option${unavailable?' unavailable':''}">
+      <input type="radio" name="practice" value="${id}" ${selected?'checked':''} ${unavailable?'disabled':''}>
+      <span><strong>${label}</strong><small>${unavailable?'Krever klassetrinn':note}</small></span>
+    </label>`;
+  }).join('');
   const fields = [
     () => profileFields(person),
-    () => `<fieldset class="setup-modes"><legend>Velg øvingsmåte</legend>${modes.map(([id,label,note])=>`<label class="level-option">
-      <input type="radio" name="practice" value="${id}" ${id === (mix || (autoProgress && person.grade ? 'auto' : 'fixed')) ? 'checked' : ''} ${['auto','grade'].includes(id) && !person.grade ? 'disabled' : ''}>
-      <span><strong>${label}</strong><small>${['auto','grade'].includes(id) && !person.grade ? 'Velg klassetrinn for å bruke dette.' : note}</small></span>
-    </label>`).join('')}</fieldset>
+    () => `<fieldset class="setup-modes"><legend>Velg øvingsmåte</legend>
+    ${!person.grade?'<p class="setup-grade-note">Gå tilbake og velg klassetrinn for å bruke «Følg progresjonen» eller «Fri blanding på trinnet».</p>':''}
+    ${practiceModes}</fieldset>
     <label class="profile-field"><span>Startspor (for spor og progresjon)</span><select name="level">${levelsForGrade(person.grade).map(id=>`<option value="${id}" ${id === startingLevel ? 'selected' : ''} ${autoProgress&&excluded.includes(id)?'disabled':''}>${LEVELS[id].label}</option>`).join('')}</select></label>
     ${person.grade?`<div class="progression-setting setup-progression">${progressionTracks(person.grade,excluded,true)}</div>`:''}
     <label class="profile-field"><span>Oppgaver per runde</span><select name="length">${ROUND_LENGTHS.map(length=>`<option value="${length}" ${length === roundLength ? 'selected' : ''}>${length} oppgaver</option>`).join('')}</select></label>`,
@@ -224,7 +236,7 @@ function setupForm(draft) {
   ];
   return `<form class="profile-form setup-form" data-setup-form>
     <div class="setup-progress"><span>Steg ${step+1} av ${SETUP_TITLES.length}</span><div aria-hidden="true">${SETUP_TITLES.map((_,i)=>`<i ${i<=step?'class="done"':''}></i>`).join('')}</div></div>
-    ${step===0?eploNote('Hei, jeg heter Eplo! Trykk «Vis meg» hvis du vil ha et hint når du øver.'):''}
+    ${step===0?eploNote('Hei, jeg heter Eplo! Jeg er med når du øver på matte og heier på deg!'):''}
     ${fields[step]()}
     <div class="setup-actions">${step ? '<button type="button" class="secondary" data-action="setup-back">Tilbake</button>' : ''}
       <button type="submit" class="primary">${step < SETUP_TITLES.length-1 ? 'Neste' : 'Kom i gang'} ${icon('arrow')}</button></div>
@@ -322,6 +334,32 @@ function selectProfile(id) {
   save();
   const person = profileStore.profiles.find(item => item.id === id);
   if (person) openProfile(person, person.practice);
+}
+
+function selectAfterDeletion() {
+  const next=profileStore.profiles.find(person=>person.id===profileStore.activeId);
+  if (next) { openProfile(next,next.practice); return; }
+  profile=null;
+  state=freshState();
+  completedReward=null;
+  focusGame=null;
+  testBreakReturn=null;
+  setup=null;
+  ui=makeUI();
+  sounds.stop();
+  view='onboarding';
+  closeDialog();
+  render(); goTop(); focusHeading();
+}
+
+function confirmProfileDeletion() {
+  if (!profile) return;
+  const {id,name}=profile;
+  showDialog(`<h2 id="dialog-title">Slette profilen til ${escapeHtml(name)}?</h2>
+    <p>Øvingshistorikk, stjerner og alt spilleren har bygd eller dyrket, slettes fra denne enheten.</p>
+    <button class="primary" data-action="close-dialog" autofocus>Behold profilen</button>
+    <button class="delete-button" data-action="confirm-profile-delete" data-profile-id="${id}">Ja, slett profilen</button>
+    <p class="adult-note" data-delete-error role="alert" hidden></p>`, 'pause-dialog');
 }
 
 function submitProfile(mode, details, preferences = null) {
@@ -1326,7 +1364,24 @@ function equalGroups(t, solved) {
 function hintStage() { return state.active?.hintStages?.[state.active.index] || 0; }
 function hintText(t) { return hintFor(t, hintStage() || 1); }
 
-function curriculumVisual(model) {
+function curriculumVisual(model,solved) {
+  if (model.kind==='numberLine') {
+    const {start,middle,end,missing}=model;
+    const low=Math.min(start,end),span=Math.abs(end-start),sign=end>start?'+':'−';
+    const x=n=>28+(n-low)*274/span;
+    const jump=(from,to,hide)=>{
+      const a=x(from),b=x(to),tip=(a+b)/2,side=Math.sign(b-a);
+      const label=hide?'?':sign+Math.abs(to-from);
+      return `<path d="M${a} 66 Q${tip} -5 ${b} 66 m${-10*side} -4 ${10*side} 4 ${-2*side} -11" /><text x="${tip}" y="25">${label}</text>`;
+    };
+    const endLabel=missing||solved?end:'?';
+    const spokenDirection=end>start?'fram':'tilbake';
+    const description=`Start på ${start}. Hopp ${Math.abs(middle-start)} ${spokenDirection} til ${middle}. ${missing&&!solved?`Hvor langt er hoppet til ${end}?`:`Hopp ${Math.abs(end-middle)} ${spokenDirection}. ${solved?`Du lander på ${end}.`:'Hvor lander du?'}`}`;
+    return `<svg class="jump-line" viewBox="0 0 330 108" role="img" aria-label="${description}">
+      <path class="jump-axis" d="M12 70H318"/>${jump(start,middle,false)}${jump(middle,end,missing&&!solved)}
+      ${[[start,start],[middle,middle],[end,endLabel]].map(([n,label])=>`<circle cx="${x(n)}" cy="70" r="4.5"/><text class="jump-stop${label==='?'?' jump-unknown':''}" x="${x(n)}" y="98">${label}</text>`).join('')}
+    </svg>`;
+  }
   if (model.kind==='money') {
     const piece=(value,extra='')=>`<span class="money-piece ${value>=50?'money-note':'money-coin'} ${extra}" data-money-value="${value}"><strong>${value}</strong><small>kr</small></span>`;
     const label=model.pieces.map(value=>`${value} kroner`).join(', ');
@@ -1369,7 +1424,7 @@ function curriculumVisual(model) {
 
 function renderVisual(t, solved) {
   const stage = ui.retry ? ui.retryStage : hintStage();
-  if (curriculumTopic(t.type)) return t.visual ? `<div class="visual-card curriculum-visual">${curriculumVisual(t.visual)}</div>` : '';
+  if (curriculumTopic(t.type)) return t.visual ? `<div class="visual-card curriculum-visual${t.visual.kind==='numberLine'?' line-visual':''}">${curriculumVisual(t.visual,solved)}</div>` : '';
   if (t.support === 'optional' && !stage && !solved && !state.alwaysShowVisuals) return '<p class="mental-note">Prøv gjerne i hodet.<br>Brikkene er her hvis du trenger dem.</p>';
   let html = '', caption = '';
   if (t.type === 'ten') {
@@ -1426,9 +1481,9 @@ function renderRound() {
   } else feedback = '<p class="idle-note">Ta den tiden du trenger.</p>';
   root.innerHTML = `<div class="round-shell"><header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>${CHANNEL === 'preview' ? betaMark() : 'Din lille runde'}</span><strong>Oppgave ${r.index + 1} av ${length}</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="${length}" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
     <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-stage"><div class="companion-buddy">${buddy(r.solved, ui.retry)}</div>
-    <p><span class="companion-message">${r.solved ? 'Se hva du fikk til!' : r.attempts[r.index] ? 'Vi prøver igjen sammen.' : 'Vi finner det ut.'}</span></p><span class="companion-sparks" aria-hidden="true"></span></div></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
+    <p><span class="companion-message">${r.solved ? 'Se hva du fikk til!' : r.attempts[r.index] ? 'Vi prøver igjen sammen.' : 'Vi finner det ut.'}</span><small class="perfect-progress" hidden></small></p><span class="companion-sparks" aria-hidden="true"></span></div></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
     ${equation(t, r.solved)}${renderVisual(t, r.solved)}
-    ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 ? 'disabled' : ''}>${icon('help')}${stage === 3 ? 'Vi ser sammen' : stage ? 'Et hint til' : 'Vis meg'}</button>` : ''}
+    ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 ? 'disabled' : ''}>${icon('help')}${stage === 3 ? 'Vi ser sammen' : stage ? 'Forklar litt mer' : 'Forklar meg'}</button>` : ''}
     ${stage && !r.solved ? `<div class="hint" id="hint-panel"><span class="eplo-hint-name">Eplo</span>${escapeHtml(hintText(t))}</div>` : ''}
     ${t.mode === 'input' ? r.solved ? `<div class="entered-correct" aria-label="Svaret ${t.answer} er riktig">${t.answer} ${icon('check')}</div>` : keypad() : renderAnswers(t, r.solved)}
     <div class="feedback-area">${feedback}</div></main></div></div>`;
@@ -1461,7 +1516,7 @@ function renderComplete() {
   const badge = newBadge ? `<div class="new-badge">${badgeArt(newBadge)}<span>Ny utmerkelse <strong>${newBadge.name}</strong></span></div>` : '';
   const next = g.mode === 'bricks' && upcomingBuild(g.build);
   const preview = next ? `<div class="next-build-card">${renderBuildSvg(next, {mini:true, preview:true})}<div>Neste bygg<strong>Hva tror du det blir?</strong></div></div>` : '';
-  const latest = projectStep ? `<div class="project-latest result-latest${stage.finished ? ' landmark-complete' : ''}"><div><small>${stage.finished&&g.map ? 'Ferdig på kartet' : finishedProject ? 'Bygget er fullført' : 'Nytt byggesteg'} · ${g.completed} av ${g.total}</small><strong>${escapeHtml(g.map&&stage.finished ? stage.finished+' er på plass!' : projectStep)}</strong>${buildStory ? `<p class="build-story">${escapeHtml(buildStory)}</p>` : ''}</div><button class="secondary" data-project-latest>Vis igjen</button></div>` : '';
+  const latest = projectStep ? `<div class="project-latest result-latest${stage.finished ? ' landmark-complete' : ''}"><div><small>${completedReward?.bonus ? 'Byggebonus' : stage.finished&&g.map ? 'Ferdig på kartet' : finishedProject ? 'Bygget er fullført' : 'Nytt byggesteg'} · ${g.completed} av ${g.total}</small><strong>${escapeHtml(g.map&&stage.finished ? stage.finished+' er på plass!' : projectStep)}</strong>${buildStory ? `<p class="build-story">${escapeHtml(buildStory)}</p>` : ''}</div><button class="secondary" data-project-latest>Vis igjen</button></div>` : '';
   const mapIndex=g.map?playerMaps(g.mode).length-1:null;
   const inCollection=g.project&&(g.full||g.map&&stage?.finished);
   const gallery=inCollection ? `<button class="secondary result-gallery" data-action="collection" data-project="${g.mode}" ${g.map?`data-map="${mapIndex}"`:''}>${finishedProject?'Se '+(g.map?'kartet':'superhelten')+' i samlingen':'Se i samlingen'}${finishedProject?icon('arrow'):''}</button>` : '';
@@ -1777,6 +1832,7 @@ function adultView() {
     <label class="profile-field"><span>Klassetrinn</span><select id="player-grade" aria-describedby="grade-note">${gradeOptions(profile.grade)}</select></label>
     <p class="adult-note" id="grade-note">Velg trinn for å se aktuelle øvingsspor nedenfor.</p>
     <button class="secondary" data-action="show-profiles">Bytt eller legg til spiller</button>
+    <button class="delete-button" data-action="delete-profile">Slett profilen</button>
   </section>` : '';
   showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>For voksne</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk voksenvisningen">${icon('close')}</button></div><p class="adult-intro">Ingen tidsfrist, liv eller poengtrekk. En stjerne betyr at barnet har øvd.</p>
     ${!storageWorks ? '<p class="storage-warning">Nettleseren tillater ikke lagring akkurat nå. Appen virker, men framgangen kan forsvinne når siden lukkes.</p>' : ''}
@@ -1792,7 +1848,7 @@ function adultView() {
     <label class="sound-setting"><input type="checkbox" id="sound-setting" ${state.sound ? 'checked' : ''}>Lyd i appen</label>
     ${typeof navigator.vibrate === 'function' ? `<label class="sound-setting"><input type="checkbox" id="haptics-setting" ${state.haptics ? 'checked' : ''}>Vibrasjon ved svar og fullføring</label>` : ''}
     <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="visual-setting" aria-describedby="visual-setting-note" ${state.alwaysShowVisuals ? 'checked' : ''}>Vis alltid brikker og figurer</label>
-    <p class="adult-note" id="visual-setting-note">Holder tellebrikker og andre figurer synlige i matteoppgavene. Med valget av kan støtten bli valgfri etter flere trygge runder. Barnet kan da hente den fram med «Vis meg».</p></div>
+    <p class="adult-note" id="visual-setting-note">Holder tellebrikker og andre figurer synlige i matteoppgavene. Med valget av kan støtten bli valgfri etter flere trygge runder. Barnet kan da hente den fram med «Forklar meg».</p></div>
     <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="focus-break-setting" aria-describedby="focus-break-note" ${state.focusBreaks ? 'checked' : ''}>Pauseleker mellom øvingsrundene</label>
     <p class="adult-note" id="focus-break-note">En kort lek etter hver tredje runde. Appen veksler mellom Kims lek, klossebygging etter hukommelsen og å telle klosser til et gulv.</p></div>
     <p class="adult-note adaptation-note">Oppgaver som trengte hjelp får litt mer plass. Etter flere trygge runder kan én eller to oppgaver få talltastatur.</p>
@@ -1889,6 +1945,9 @@ function submitAnswer(value) {
   if (answered.solved) {
     const last = answered.index === answered.tasks.length - 1;
     const perfect = last && answered.results.every(result => result?.firstTry);
+    const goal=PERFECT_ROUNDS_PER_BONUS;
+    const progress=perfect ? state.perfectRounds%goal+1 : 0;
+    const bonusMessage=progress===goal ? `${goal} av ${goal}. Byggebonus klar!` : `${progress} av ${goal} til byggebonus`;
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
     save(); render();
     feedback(perfect ? 'perfect' : `task-success-${taskSuccessStep(answered.index,answered.tasks.length)}`, 16);
@@ -1897,8 +1956,10 @@ function submitAnswer(value) {
       const companion = root.querySelector('.companion-strip');
       const message = companion?.querySelector('.companion-message');
       if (message) {
+        const count=companion.querySelector('.perfect-progress');
         const previous = message.textContent;
         message.textContent = 'Perfekt runde!';
+        if (count) { count.textContent=bonusMessage; count.hidden=false; }
         companion.classList.add('perfect-round');
         const sparks = companion.querySelector('.companion-sparks');
         if (sparks && !reducedMotion) {
@@ -1908,12 +1969,13 @@ function submitAnswer(value) {
         }
         setTimeout(() => {
           message.textContent = previous;
+          if (count) count.hidden=true;
           companion.classList.replace('perfect-round','companion-returned');
           sparks?.replaceChildren();
         }, 3500);
       }
     }
-    say(`Riktig. ${equationText(task)} ${perfect ? 'Eplo sier: Perfekt runde!' : last ? 'Runden er klar til å fullføres.' : 'Neste oppgave er klar.'}`);
+    say(`Riktig. ${equationText(task)} ${perfect ? `Eplo sier: Perfekt runde! ${bonusMessage}` : last ? 'Runden er klar til å fullføres.' : 'Neste oppgave er klar.'}`);
     root.querySelector('[data-action="next"]')?.focus({ preventScroll: true });
     root.querySelector('.feedback-area')?.scrollIntoView({ block: 'nearest', behavior: reducedMotion ? 'instant' : 'smooth' });
     return;
@@ -2080,7 +2142,7 @@ document.addEventListener('click', e => {
       const summary = roundSummary(state.active);
       if (summary && !state.history.some(r => r.id === summary.id)) {
         state.history.push(summary); state.history = state.history.slice(-40); state.roundsCompleted++;
-        const awarded = awardPractice(state, summary.id);
+        const awarded = awardPractice(state, summary.id, Math.random, summary.firstTry===summary.length);
         state = summary.mix ? awarded.state : advancePractice(awarded.state, profile?.grade, summary.level); completedReward = awarded.reward;
         state.focusBreakPending = state.focusBreaks && state.roundsCompleted % BREAK_INTERVAL === 0;
       }
@@ -2138,6 +2200,15 @@ document.addEventListener('click', e => {
   if (action === 'adult') adultView();
   if (action === 'setup-back') stepSetup(actionButton.form,-1);
   if (action === 'show-profiles' && profile) showProfiles();
+  if (action === 'delete-profile') confirmProfileDeletion();
+  if (action === 'confirm-profile-delete' && profile?.id===actionButton.dataset.profileId) {
+    const result=deleteProfile(storage,profileStore,profile.id);
+    if (result.saved) { profileStore=result.store; selectAfterDeletion(); }
+    else {
+      const error=document.querySelector('[data-delete-error]');
+      if (error) { error.hidden=false; error.textContent='Kunne ikke slette profilen. Prøv igjen når nettleseren tillater lagring.'; }
+    }
+  }
   if (action === 'new-profile' && profile) showProfileForm('new');
   if (action === 'edit-profile' && profile) showProfileForm('edit');
   if (action === 'select-profile' && profile) selectProfile(e.target.closest('[data-profile-id]').dataset.profileId);
@@ -2192,6 +2263,13 @@ document.addEventListener('keydown', e => {
   }
 });
 window.addEventListener('pagehide', () => { markAway(); sounds.stop(); });
+window.addEventListener('storage', event=>{
+  if (event.key!==PROFILE_KEY||!profile) return;
+  try {
+    const latest=readProfiles(storage);
+    if (latest.deletedIds?.includes(profile.id)) { profileStore=latest; selectAfterDeletion(); }
+  } catch {}
+});
 window.addEventListener('pageshow', () => {
   if (!document.hidden&&state.sound) sounds.resume();
   welcomeBack();

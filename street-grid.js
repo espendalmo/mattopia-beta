@@ -130,9 +130,9 @@ function streetCircuits(nodes,open,links,starter) {
   }
   // Join adjacent blocks across their shared edge to make routes through several streets.
   const local=result.slice();
-  for (const first of local.slice(0,12)) {
+  for (const first of local.slice(0,32)) {
     let circuit=first;
-    for (let step=0;step<4;step++) {
+    for (let step=0;step<8;step++) {
       const ids=new Set(circuit.map(node=>node.id));
       let joined;
       for (let i=0;i<circuit.length&&!joined;i++) {
@@ -172,8 +172,21 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     active.add(edge.a);active.add(edge.b);
   };
   origin.perimeter.forEach(add);
+  const varied=requiredLots>=LARGE_REGION_PLACES;
+  if (varied) {
+    // The first block has a loop for traffic. Give it a seeded extension,
+    // which can be a second loop, a bend, or the beginning of a longer street.
+    const adjacent=available.filter(lot=>lot!==origin&&lot.ring.filter(id=>active.has(id)).length===2
+      &&lot.perimeter.every(Boolean));
+    const start=adjacent[layout.seed%Math.max(1,adjacent.length)];
+    if (start) {
+      const join=start.perimeter.findIndex(edge=>open.has(edge.key));
+      const extension=[1,2,3].map(i=>start.perimeter[(join+i)%4]);
+      extension.slice(0,1+(layout.seed>>>5)%3).forEach(add);
+    }
+  }
   track=true;
-  const balanceBanks=layout.theme==='city'&&requiredLots>=LARGE_REGION_PLACES;
+  const balanceBanks=layout.theme==='city'&&varied;
   const bankOf=site=>site.x<riverAt(layout,site.z)?0:1;
 
   for (const {index,kind} of buildings) {
@@ -227,8 +240,17 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     usedLots.add(lot);
     for (let i=1;i<path.length;i++) add(edges.get(edgeKey(path[i-1],path[i])));
     add(edge);
-    lot.perimeter.forEach(add);
-    const entry=yaw===0?{x:lot.x,z:nodes[lot.ring[2]].z}:{x:nodes[lot.ring[3]].x,z:lot.z};
+    const ringRoad=!varied||usedLots.size<=2||['railwayStation','monorailStation','tramStation','busStation'].includes(kind)||lot.weight<2.1;
+    if (ringRoad) lot.perimeter.forEach(add);
+    else if (lot.weight>3.5) {
+      // A corner plot gets a side street. Quiet parcels need only one frontage.
+      const corner=lot.perimeter.find(side=>side&&side!==edge&&!open.has(side.key)
+        &&[side.a,side.b].some(id=>id===edge.a||id===edge.b));
+      add(corner);
+    }
+    const offset=varied&&!ringRoad?Math.min(.58,Math.max(0,gap(nodes[lot.ring[0]],nodes[lot.ring[1]])*.5-6.32)):0;
+    const x=lot.x-Math.sin(yaw)*offset,z=lot.z-Math.cos(yaw)*offset;
+    const entry=yaw===0?{x,z:nodes[lot.ring[2]].z}:{x:nodes[lot.ring[3]].x,z};
     if (annex) {
       // Keep its original lot reserved so later parcels in saved towns stay put.
       const entries=specialEntrances(annex,kind);
@@ -240,7 +262,7 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
       connectedNodes.add(start.id);
       plots.push({...annex,index,kind,entries});
     } else {
-      plots.push({x:lot.x,y:lot.y,z:lot.z,yaw,index,kind,entries:[entry],
+      plots.push({x,y:lot.y,z,yaw,index,kind,entries:[entry],
         streetSpan:gap(nodes[lot.ring[0]],nodes[lot.ring[1]])});
     }
   }

@@ -1,4 +1,4 @@
-import {box,dome,tube,beam,pointOnSite,placeParts,regionActors,MAX_ACTORS} from './scenery.js';
+import {box,dome,tube,beam,pointOnSite,placeParts,regionActors,actor,visitor,MAX_ACTORS} from './scenery.js';
 import {regionLayout,planRegion,regionVisibility,regionSurface} from './regions.js';
 import {REGION_PLACES,WORLD_BUILD_STEPS,grandCatalog,hasExpandedCatalog,randomGenerator,worldStatus} from './worlds.js';
 import {planStreetRegion} from './street-grid.js';
@@ -7,7 +7,7 @@ import {constructionYard,landmarkVisitors,lunarEarth,rideModels} from './map-art
 import {plotAccess,terrainFoundation} from './landmark-ground.js';
 import {districtRail,districtTram,helicopterModels} from './transport.js';
 import {isSlidePark} from './slide-parks.js';
-import {terrainDiscoveries,discoveryGuides} from './map-discoveries.js';
+import {terrainDiscoveries,discoveryGuides,mineTerrain} from './map-discoveries.js';
 
 const SHADES={
   city:{ground:'#93ae77',shade:'#628c68',high:'#b2bd81',bank:'#c6c295',deep:'#5a93a8',shallow:'#85c5bf'},
@@ -100,7 +100,7 @@ function distantRelief(layout) {
   };
 }
 
-function regionGround(layout,plan,sky,full,horizon,season) {
+function regionGround(layout,plan,sky,full,horizon,season,discoveries) {
   const background=rgb(sky);
   const inner=Math.sqrt(layout.grid.length);
   const extension=[3,7,12,18,25,33,42,51];
@@ -109,6 +109,9 @@ function regionGround(layout,plan,sky,full,horizon,season) {
   const coords=[...extension.map(distance=>-edge-distance).reverse(),...layout.grid.slice(0,inner).map(tile=>tile.x),
     ...extension.map(distance=>edge+distance)];
   const relief=horizon?distantRelief(layout):null;
+  const airfields=plan.plots.filter(plot=>plot.airfield);
+  const mines=discoveries.filter(site=>site.type.mine);
+  const outerRoads=layout.theme==='moon'&&horizon?plan.paths.flat().filter(p=>Math.max(Math.abs(p.x),Math.abs(p.z))>61):[];
   const grid=Array.from({length:row*row},(_,i)=>{
     const col=i%row,line=Math.floor(i/row);
     const x=coords[col],z=coords[line];
@@ -123,18 +126,45 @@ function regionGround(layout,plan,sky,full,horizon,season) {
     const base=surfaceColor(tile,layout,season);
     const distant=relief?.(x,z,tile);
     const color=distant?.tint?blend(base,distant.color,distant.tint*horizon):base;
-    const ground=plan.streetGround?.(x,z,tile.y)??tile.y;
-    return {point:[x,ground+(distant?.height??0)*horizon,z],color:blend(background,color,visibility),visibility};
+    let ground=plan.streetGround?.(x,z,tile.y)??tile.y;
+    const reliefFactor=distant?.height&&outerRoads.length
+      ?smooth((Math.sqrt(outerRoads.reduce((near,p)=>Math.min(near,(x-p.x)**2+(z-p.z)**2),100))-3.3)/5.4):1;
+    ground+=(distant?.height??0)*horizon*reliefFactor;
+    for (const site of airfields) {
+      const a=x-site.x,b=z-site.z,c=Math.cos(site.yaw),s=Math.sin(site.yaw);
+      const beyond=Math.max(Math.abs(a*c-b*s)-11.1,Math.abs(a*s+b*c)-7.15);
+      ground-=Math.max(0,ground-(site.y-.14))*smooth((4-beyond)/4);
+    }
+    return {point:[x,ground,z],color:blend(background,color,visibility),visibility};
   });
   const ground=[];
+  const addTriangle=triangle=>{
+    const part=face(triangle.map(v=>v.point),sky,0,triangle.map(v=>v.color));
+    if (layout.theme==='moon') part.opacity=triangle.map(v=>v.visibility);
+    ground.push(part);
+  };
   for (let i=0;i<grid.length-row;i++) {
     if (i%row===row-1) continue;
     const [a,b,c,d]=[grid[i],grid[i+1],grid[i+row],grid[i+row+1]];
     if (Math.max(a.visibility,b.visibility,c.visibility,d.visibility)<.008) continue;
-    for (const triangle of [[a,c,b],[b,c,d]]) {
-      const part=face(triangle.map(v=>v.point),sky,0,triangle.map(v=>v.color));
-      if (layout.theme==='moon') part.opacity=triangle.map(v=>v.visibility);
-      ground.push(part);
+    const nearby=mines.filter(site=>site.x>a.point[0]-6&&site.x<b.point[0]+6&&site.z>a.point[2]-6&&site.z<c.point[2]+6);
+    if (!nearby.length) {
+      addTriangle([a,c,b]); addTriangle([b,c,d]);
+      continue;
+    }
+    const refined=Array.from({length:25},(_,j)=>{
+      const u=(j%5)/4,v=Math.floor(j/5)/4;
+      const x=lerp(a.point[0],b.point[0],u),z=lerp(a.point[2],c.point[2],v);
+      const base=lerp(lerp(a.point[1],b.point[1],u),lerp(c.point[1],d.point[1],u),v);
+      const offset=nearby.reduce((height,site)=>height+mineTerrain(site,x,z),0);
+      const color=blend(blend(a.color,b.color,u),blend(c.color,d.color,u),v);
+      return {point:[x,base+offset,z],color:blend(color,rgb(layout.theme==='moon'?'#82788d':'#8e826d'),clamp(Math.abs(offset)*.12)),
+        visibility:lerp(lerp(a.visibility,b.visibility,u),lerp(c.visibility,d.visibility,u),v)};
+    });
+    for (let j=0;j<20;j++) {
+      if (j%5===4) continue;
+      addTriangle([refined[j],refined[j+5],refined[j+1]]);
+      addTriangle([refined[j+1],refined[j+5],refined[j+6]]);
     }
   }
   return ground;
@@ -298,6 +328,50 @@ function viewBounds(plan,horizon) {
     size:lerp(Math.max(78,Math.hypot(right-left,front-back)*.91+39),238,horizon)};
 }
 
+function pocketParks(layout,plan,completed) {
+  const parts=[],walks=[],places=[],moon=layout.theme==='moon';
+  const roads=plan.paths.flat();
+  for (const [i,a] of completed.entries()) {
+    if (a.waterfront||a.airfield||places.length>=8) continue;
+    for (const b of completed.slice(i+1)) {
+      if (b.waterfront||b.airfield) continue;
+      const gap=Math.hypot(a.x-b.x,a.z-b.z);
+      if (gap<11.8||gap>17) continue;
+      const x=(a.x+b.x)*.5,z=(a.z+b.z)*.5;
+      const clear=(u,v)=>!regionSurface(layout,u,v).water&&!plan.inRoadTunnel?.(u,v)
+        && roads.every(p=>Math.hypot(u-p.x,v-p.z)>1.95)
+        && (plan.transit??[]).every(p=>Math.hypot(u-p.x,v-p.z)>1.45);
+      if (!clear(x,z)||places.some(p=>Math.hypot(x-p.x,z-p.z)<9)
+        || plan.plots.some(p=>p!==a&&p!==b&&Math.hypot(x-p.x,z-p.z)<6.9)) continue;
+      const dx=(a.z-b.z)/gap,dz=(b.x-a.x)/gap;
+      const spots=[-2.5,-1.25,0,1.25,2.5].map(t=>[x+t*dx,z+t*dz]);
+      if (!spots.every(([u,v])=>clear(u,v))) continue;
+      places.push({x,z});
+      const position=([u,v])=>[u,regionSurface(layout,u,v).y+.065,v];
+      for (let j=1;j<spots.length;j++) {
+        const [u,h,v]=position(spots[j-1]),[w,k,q]=position(spots[j]);
+        const n=.56;
+        parts.push(face([[u-dz*n,h,v+dx*n],[w-dz*n,k,q+dx*n],[w+dz*n,k,q-dx*n],[u+dz*n,h,v-dx*n]],moon?'#c3b8cc':'#c9bd9b',2));
+      }
+      const seed=randomGenerator(layout.seed^Math.imul(a.index+1,b.index+59));
+      for (const [u,v] of [spots[0],spots.at(-1)]) {
+        const h=regionSurface(layout,u,v).y;
+        if (moon) {
+          parts.push(tube(u,v,.82,.82,.15,'#888ea6',h),...[-1,0,1].map((n,i)=>({
+            shape:'boulder',x:u+n*.33,z:v+i*.13,y:h+.13,w:.41,d:.38,h:.67+i*.24,color:i%2?'#8ed1d5':'#b798d5',phase:i,
+          })));
+        } else parts.push(...naturePlant(layout.theme,u,h,v,seed,'summer'));
+      }
+      const route=spots.slice(1,-1).map(([u,v])=>[u,v])
+        .concat(spots.slice(1,-1).reverse().map(([u,v])=>[u+dz*.48,v-dx*.48]));
+      if (walks.length<2) walks.push({...actor(visitor(moon?'astronaut':'human','#b087a7',undefined,false,.83,i%8),route,
+        {kind:'walk',speed:.79,phase:.32,corner:.22,elevation:(u,v)=>regionSurface(layout,u,v).y+.08}),characterSlot:904+walks.length});
+      break;
+    }
+  }
+  return {parts,walks};
+}
+
 const PHASES=['grunnarbeid','form og fasade','siste detaljer'];
 
 export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,season) {
@@ -328,13 +402,14 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const roads=regionRoads(layout,plan,isNewPlot);
   const roadBuild=roads.some(part=>part.roadBuild!==undefined);
   const discoveries=terrainDiscoveries(layout,plan,status.full);
+  const parks=pocketParks(layout,plan,completedPlots);
   const parts=[
     ...(id==='moon'&&horizon?lunarEarth(sky,horizon):[]),
-    ...regionGround(layout,plan,sky,status.full,horizon,season),
+    ...regionGround(layout,plan,sky,status.full,horizon,season,discoveries.sites),
     ...roads,
     ...tunnels,
     ...landscapeDetails(layout,plan,status.full,sky,season,discoveries.sites),
-    ...discoveries.parts,
+    ...discoveries.parts,...parks.parts,
   ];
   let latest=[],last,finished=null,latestTarget=null;
   const landmarks={},sites={},rides=[];
@@ -379,11 +454,11 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   });
   const locals=discoveryGuides(regionActors(id,layout,plan,completedPlots),discoveries.sites,layout,plan);
   const craft=rides.filter(actor=>['plane','shuttle','rocket','rocket-flame'].includes(actor.kind));
-  const street=locals.find(actor=>actor.kind==='road');
+  const street=locals.filter(actor=>actor.kind==='road').slice(0,id==='island'?3:1);
   const speakers=[...locals.filter(actor=>actor.encounter),...locals.filter(actor=>actor.voice&&!actor.encounter)].slice(0,2);
   const essential=[...(rail?.actors??[]),...helicopter,...craft.slice(0,5),...speakers,
-    ...(discoveries.visitor?[discoveries.visitor]:[]),
-    ...(street?[street]:[]),...locals.filter(actor=>['bus','offroad-rover','hover'].includes(actor.kind))];
+    ...(discoveries.visitor?[discoveries.visitor]:[]),...discoveries.smoke,
+    ...street,...parks.walks,...locals.filter(actor=>['bus','offroad-rover','hover'].includes(actor.kind))];
   const football=rides.filter(actor=>actor.footballPlayer||actor.kind.startsWith('football-'));
   const slide=rides.find(actor=>actor.kind==='slide');
   const ambient=[...new Set([...essential,...football,...(slide?[slide]:[]),...rides,...locals])].slice(0,MAX_ACTORS);

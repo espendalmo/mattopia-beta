@@ -1128,10 +1128,13 @@ function surfMuseum() {
   const wave=crest.slice(1).flatMap(([x,y],i)=>{
     const [a,b0]=crest[i];
     const outline=[[a,b0,-2.98],[a,b0,1.63],[x,y,1.63],[x,y,-2.98]];
+    const underside=outline.map(([u,v,w])=>[u,v-.19,w]);
+    const roofFace=(outline,color)=>({shape:'terrain',outline,x,y,z:-.69,h:.19,color});
     return [
-      {shape:'terrain',outline,x,y,z:-.69,h:.06,color:mint},
-      {shape:'terrain',outline:[...outline].reverse(),x,y,z:-.69,h:.06,color:'#75bcaf'},
-      beam([a,b0,1.65],[x,y,1.65],.13,i>4?'#c7e5d1':'#8bd2ba'),
+      roofFace(outline,mint),
+      roofFace([...underside].reverse(),'#75bcaf'),
+      roofFace([outline[1],underside[1],underside[2],outline[2]],i>4?'#c7e5d1':'#8bd2ba'),
+      roofFace([outline[3],underside[3],underside[0],outline[0]],'#489d90'),
     ];
   });
   return [base(10.32,9.15,'#d9ba87'),[

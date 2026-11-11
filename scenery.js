@@ -184,6 +184,21 @@ export function vehicle(kind,color) {
       box(0,1.676,.54,.061,.11,'#edbf75',1.229),
       box(0,-1.655,.93,.081,.12,'#b65e70',.48)];
   }
+  if (kind==='pickup'||kind==='van') {
+    const pickup=kind==='pickup';
+    return [...[-.54,.54].flatMap(x=>[-.77,.77].flatMap(z=>wheel(x,z,.49,0))),
+      rounded(0,0,1.23,2.4,.44,color,.28),
+      rounded(0,pickup?.38:-.14,1.12,pickup?1.21:1.95,pickup?.54:.81,color,.68),
+      rounded(0,.96,1.0,.092,.34,'#77b1bd',.78),
+      ...[-1,1].flatMap(side=>[
+        rounded(side*.554,.42,.055,.7,.36,'#8bc0c3',.8),
+        rounded(side*.42,1.19,.22,.08,.15,'#fff0bf',.46),
+        rounded(side*.42,-1.19,.22,.08,.15,'#c96962',.46),
+        ...(pickup?[box(side*.52,-.67,.12,1.02,.24,color,.69)]:[box(side*.57,-.49,.06,.94,.19,'#e7ce86',.95)]),
+      ]),
+      ...(pickup?[dome(.21,-.66,.26,1.44,.17,'#e8bb72',.72,.1),dome(-.19,-.7,.27,1.56,.19,'#79c1b9',.72,-.12)]
+        :[dome(0,-.4,.68,.88,.3,'#e5ab58',1.47),dome(.17,-.38,.26,.4,.1,'#8db178',1.75)])];
+  }
   if (kind==='rover') {
     return [
       ...[-.67,.67].flatMap(x=>[-.86,0,.86].flatMap(z=>wheel(x,z,.71,0))),
@@ -825,7 +840,7 @@ export function regionActors(theme,layout,plan,completed) {
   if (theme==='island') actors.push(...islandWaterLife(layout,plan,completed));
   if (moon) {
     const rover=completed.length&&offroadRover(layout,plan,completed);
-    if (rover) actors.push(rover,{...rover,kind:'walk',offroadExplorer:true,
+    if (rover) actors.push(rover,{...rover,kind:'walk',offroadExplorer:true,characterSlot:901,
       parts:visitor('alien','#9d86bb',undefined,false,.83,layout.seed%4),speed:.58,phase:.73,voice:'alien'});
     if (circuits.length||paths.length) {
       const circuit=circuits[1]??circuits[0];
@@ -848,6 +863,16 @@ export function regionActors(theme,layout,plan,completed) {
     actors.push({...actor(vehicle('bus','#4c9694'),points,{kind:'bus',speed:2.25,phase:.33,
       elevation,corner:STREET_TURN_RADIUS}),horn:44});
   }
+  if (theme==='island'&&completed.length>=2) {
+    const busCount=completed.length>=12&&circuits.length>=2?2:1;
+    for (let i=0;i<busCount;i++) {
+      const circuit=circuits[i];
+      const points=circuit?lane(i===0?circuit:circuit.slice().reverse()):laneLoop(paths.at(-1),.83);
+      actors.push({...actor(vehicle('bus',i?'#cd7f75':'#4e9e98'),points,
+        {kind:'bus',speed:2.05+i*.16,phase:.48+i*.17,elevation,corner:STREET_TURN_RADIUS}),
+        islandVehicle:'bus',...(circuit&&{alternatives}),horn:58+i*12});
+    }
+  }
   for (const plot of completed.filter(plot=>['pier','quay','marina'].includes(plot.kind))) {
     const cargo=plot.kind==='quay';
     actors.push(actor(sailboat(cargo),boatRoute(theme,layout,plot),{kind:'boat',ground:.06,speed:cargo?1.45:1.85,phase:.35,corner:2}));
@@ -865,20 +890,22 @@ export function regionActors(theme,layout,plan,completed) {
     const path=paths[(paths.length-1-i*3+paths.length*3)%paths.length];
     const circuit=circuits[i%circuits.length];
     const points=circuit?lane(circuit):laneLoop(path,.83);
-    actors.push({...actor(vehicle(moon?'rover':theme==='island'?'cart':'car',colors[i]),points,{
+    const model=moon?'rover':theme==='island'?['cart','pickup','van','car'][i]:'car';
+    actors.push({...actor(vehicle(model,colors[i]),points,{
       kind:'road',elevation,speed:moon?2.3:2.9,phase:i*.23+.12,
       corner:circuit?STREET_TURN_RADIUS:1.12,
-    }),...(circuit&&{route:routeVariants[i%circuits.length],alternatives}),horn:moon?0:34+i*11});
+    }),...(circuit&&{route:routeVariants[i%circuits.length],alternatives}),horn:moon?0:34+i*11,
+      ...(theme==='island'&&{islandVehicle:model==='car'?'cart':model})});
   }
   for (let i=0;completed.length&&i<Math.min(paths.length,4,1+Math.floor(completed.length/4));i++) {
     const path=paths[(i*3+1)%paths.length];
     const walkCircuit=circuits.find(circuit=>circuit.length>=6)??circuits[0];
     const points=walkCircuit ? lane(walkCircuit,i%2===0?1.86:-1.86) : laneLoop(path,1.83);
     const person=walkers[i%walkers.length];
-    actors.push(actor(visitor(person,colors[(i+1)%4],i%2?'#a97963':'#edb88c',false,.83,(layout.seed+i)%8),points,{
+    actors.push({...actor(visitor(person,colors[(i+1)%4],i%2?'#a97963':'#edb88c',false,.83,(layout.seed+i)%8),points,{
       kind:'walk',elevation:(x,z)=>elevation(x,z)+.012,speed:.87+i*.092,phase:.13+i*.17,corner:.52,
       voice:moon?person:'people',
-    }));
+    }),characterSlot:896+i});
   }
   if (completed.length>=2) {
     const {x,z}=completed.at(-1);

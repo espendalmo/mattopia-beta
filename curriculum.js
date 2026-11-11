@@ -9,6 +9,7 @@ export const CURRICULUM_LEVELS = {
   22:track('Mynter og småkjøp', 'Tell mynter, veksle småbeløp og finn hvor mye du får tilbake.', 'coinTotal', 'coinExchange', 'smallChange'),
   31:track('Måling og kart', 'Finn punkter i rutenett og regn med lengde og masse.', 'coordinate', 'measure', 'coordinateMove'),
   32:track('Penger og veksling', 'Veksle sedler, legg sammen priser og regn ut hva du får tilbake.', 'noteExchange', 'moneyChange', 'shoppingSum', 'moneyMissing'),
+  33:track('Hopp på tallinja', 'Del opp pluss og minus i to hopp, med stopp på en hel tier.', 'lineAdd', 'lineSubtract', 'lineMissing'),
   41:track('Gangetabell og deling', 'Gangetabeller, like grupper og deling i praktiske situasjoner.', 'tables', 'sharing', 'arrayCount', 'groupsMissing'),
   42:track('Ruter og klosser', 'Finn hvor mange ruter en flate dekker, og hvor mange klosser en boks rommer.', 'arrayCount', 'boxUnits', 'pattern', 'compositeArea'),
   51:track('Brøk og desimaltall', 'Les brøker, finn en del av en mengde og sammenlign brøker.', 'fractionModel', 'fractionOf', 'fractionCompare', 'fractionDecimal', 'equivalentFraction'),
@@ -30,7 +31,7 @@ export const CURRICULUM_LEVELS = {
 };
 
 export const GRADE_LEVELS = {
-  1:[11, 1, 22], 2:[1, 2, 21, 22], 3:[1, 2, 3, 4, 31, 32], 4:[4, 41, 42, 32], 5:[51, 52, 53],
+  1:[11, 1, 22], 2:[1, 2, 21, 22], 3:[1, 2, 33, 3, 4, 31, 32], 4:[4, 41, 42, 32], 5:[51, 52, 53],
   6:[61, 62, 53], 7:[71, 72, 73], 8:[81, 82, 83], 9:[91, 92], 10:[101, 102, 103],
 };
 
@@ -55,7 +56,7 @@ export const CURRICULUM_TOPICS = {
   fractions:'Brøk', decimals:'Desimaltall og prosent', algebra:'Algebra og likninger',
   statistics:'Statistikk', probability:'Sannsynlighet', signed:'Negative tall',
   operations:'Regnerekkefølge', factors:'Primtall og faktorer', functions:'Funksjoner',
-  finance:'Økonomi', rates:'Fart og endring',
+  finance:'Økonomi', rates:'Fart og endring', numberLine:'Hopp på tallinja',
 };
 
 const format = number => String(Number(number.toFixed(4))).replace('.', ',').replace('-', '−');
@@ -94,7 +95,25 @@ const table = (headers, cells) => ({ kind:'table', headers, cells });
 const money = (pieces, exchange) => ({kind:'money',pieces,...(exchange && {exchange})});
 const equation = (a, b) => `${a}x ${b < 0 ? '−' : '+'} ${Math.abs(b)}`;
 
+function numberLine(int,direction,missing=false) {
+  const ten=int(2,8)*10;
+  const first=int(2,7),second=int(2,7);
+  const start=ten-first*direction,end=ten+second*direction;
+  const sign=direction>0?'+':'−',way=direction>0?'fram':'tilbake';
+  const visual={kind:'numberLine',start,middle:ten,end,missing};
+  const solution=`${start} ${sign} ${first} = ${ten}, og ${ten} ${sign} ${second} = ${end}.`;
+  if (missing) return number('Hvor langt er det siste hoppet?', `Fra ${start} til ${end} med stopp på ${ten}.`, second,
+    `Start på ${ten} for å finne det siste hoppet.`, `Tell ${way} fra ${ten} til ${end}.`,
+    `Det siste hoppet er ${second} ${way}. ${solution}`,{minimum:1,visual});
+  return number('Hvor lander du?', `${start} ${sign} ${first+second} = ?`, end,
+    `Hopp først ${first} ${way} fra ${start} til ${ten}.`,`Hopp ${second} ${way} fra ${ten}.`,
+    solution,{wrong:[ten,ten-direction*second],visual});
+}
+
 const tasks = {
+  lineAdd:['numberLine',int=>numberLine(int,1)],
+  lineSubtract:['numberLine',int=>numberLine(int,-1)],
+  lineMissing:['numberLine',(int,pick)=>numberLine(int,pick([1,-1]),true)],
   coinTotal:['finance', (_int,pick) => {
     const pieces=[pick([1,5,10]),pick([1,5]),pick([1,5])];
     const total=pieces.reduce((sum,coin)=>sum+coin,0);
@@ -559,6 +578,10 @@ export function validCurriculumTask(task) {
     money:() => Array.isArray(visual.pieces) && visual.pieces.length>=1 && visual.pieces.length<=5
       && visual.pieces.every(piece=>[1,5,10,20,50,100,200,500].includes(piece))
       && (visual.exchange===undefined || [1,5,10,20].includes(visual.exchange)),
+    numberLine:() => whole(visual.start,0,99) && whole(visual.middle,10,90) && whole(visual.end,0,99)
+      && visual.middle%10===0 && (visual.middle-visual.start)*(visual.end-visual.middle)>0
+      && whole(Math.abs(visual.middle-visual.start),2,7) && whole(Math.abs(visual.end-visual.middle),2,7)
+      && typeof visual.missing==='boolean',
     table:() => Array.isArray(visual.headers) && visual.headers.length === 2 && visual.headers.every(v=>text(v,20))
       && Array.isArray(visual.cells) && visual.cells.length <= 6
       && visual.cells.every(row=>Array.isArray(row) && row.length === 2 && row.every(v=>text(v,20)||whole(v,-1000,1000))),

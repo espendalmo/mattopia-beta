@@ -87,8 +87,9 @@ function outlyingAirfield(layout) {
   const side=Math.sign(layout.origin.x)||1;
   const yaw=-side*Math.PI/2,x=side*88;
   const candidates=[-34,-19,0,19,34].map(z=>{
-    const ground=[-7,0,7].flatMap(dx=>[-10,0,10].map(dz=>regionSurface(layout,x+dx,z+dz).y));
-    const y=Math.max(...ground)+.085;
+    const ground=Array.from({length:8},(_,i)=>-7+2*i)
+      .flatMap(dx=>Array.from({length:12},(_,i)=>regionSurface(layout,x+dx,z-11+2*i).y));
+    const y=Math.max(...ground)+.16;
     return {x,y,z,yaw,airfield:true,score:y-Math.min(...ground)+Math.abs(z-layout.origin.z)*.007};
   });
   const {score,...site}=candidates.sort((a,b)=>a.score-b.score)[0];
@@ -306,5 +307,9 @@ export function regionVisibility(plan,x,z,full=false) {
 
 export function roadElevation(layout,x,z) {
   const surface=regionSurface(layout,x,z);
+  if (layout.theme==='moon') {
+    const rim=[[-1.35,0],[1.35,0],[0,-1.35],[0,1.35],[-.96,-.96],[.96,-.96],[-.96,.96],[.96,.96]];
+    return Math.max(surface.y,...rim.map(([a,b])=>regionSurface(layout,x+a,z+b).y))+.19;
+  }
   return Math.max(layout.theme==='city'&&surface.bank<1.1?.47:.13,surface.y+.108);
 }

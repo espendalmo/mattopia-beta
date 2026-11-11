@@ -1,6 +1,6 @@
 import { PLANTS, plantById } from './plants.js';
 import { projectById, restoreProjects } from './projects.js';
-import { isWorld, currentWorld, ensureWorld, replaceCurrentWorld, restoreWorlds, worldAdvance, worldStatus } from './worlds.js';
+import { isWorld, currentWorld, ensureWorld, replaceCurrentWorld, restoreWorlds, worldAdvance, worldStatus, WORLD_BUILD_STEPS } from './worlds.js';
 
 // Local, code-drawn toy bricks. A piece is earned only by finishing a round.
 const PALETTE = { blue:'#398bd4', red:'#df5149', yellow:'#efc546', green:'#60a86d', orange:'#ec9a43', purple:'#9877bd', white:'#e8eee9', black:'#52626a', pink:'#e483a5', tan:'#c99a6e', teal:'#42aba4' };
@@ -140,6 +140,7 @@ export const BUILD_MODELS = [
 const ids = BUILD_MODELS.map(m=>m.id);
 export const modelById = id => BUILD_MODELS.find(m=>m.id===id);
 const count = n => Number.isSafeInteger(n)&&n>=0;
+export const PERFECT_ROUNDS_PER_BONUS=3;
 
 function shuffle(items,rng) {
   const a=[...items];
@@ -209,13 +210,17 @@ function nextPlant(garden, rng) {
 export function restoreRewards(raw,total=0) {
   const plantRounds = count(raw?.plantRounds) && raw.plantRounds <= total ? raw.plantRounds : total;
   const projects=restoreProjects(raw?.projects,total);
+  const perfectRounds=count(raw?.perfectRounds)?Math.min(raw.perfectRounds,total):0;
+  const buildBonusesUsed=count(raw?.buildBonusesUsed)?Math.min(raw.buildBonusesUsed,Math.floor(perfectRounds/PERFECT_ROUNDS_PER_BONUS)):0;
+  const bonusBuildSteps=count(raw?.bonusBuildSteps)?Math.min(raw.bonusBuildSteps,buildBonusesUsed*(WORLD_BUILD_STEPS-1)):0;
   return {
     rewardMode:raw?.rewardMode==='bricks'||projectById(raw?.rewardMode)?raw.rewardMode:'plant',
     plantRounds,
     garden:restoreGarden(raw?.garden, plantRounds),
     brickBuild:restoreBuild(raw?.brickBuild),
     projects,
-    worlds:restoreWorlds(raw?.worlds,projects,total),
+    worlds:restoreWorlds(raw?.worlds,projects,total+bonusBuildSteps),
+    perfectRounds, buildBonusesUsed, bonusBuildSteps,
     lastRewardRoundId:typeof raw?.lastRewardRoundId==='string'?raw.lastRewardRoundId:null,
   };
 }
@@ -234,15 +239,22 @@ export function prepareReward(state,rng=Math.random) {
   if(build.pieces===modelById(build.model).pieces.length)build=nextBuild(build,rng);
   return {...state,brickBuild:build};
 }
-export function awardPractice(state,roundId,rng=Math.random) {
+export function awardPractice(state,roundId,rng=Math.random,perfect=false) {
   if(!roundId||state.lastRewardRoundId===roundId)return {state,reward:null};
+  if (perfect) state={...state,perfectRounds:(state.perfectRounds??0)+1};
   const mode=state.rewardMode, project=projectById(mode);
   if (isWorld(mode)) {
     const prepared=ensureWorld(state,mode,rng);
     const before=currentWorld(prepared,mode);
-    const map=worldAdvance(before,mode);
-    return {state:{...replaceCurrentWorld(prepared,mode,map),lastRewardRoundId:roundId},
-      reward:{mode,map,completed:worldStatus(map).completed,added:map!==before}};
+    let map=worldAdvance(before,mode);
+    const after=worldStatus(map);
+    const earned=Math.floor((state.perfectRounds??0)/PERFECT_ROUNDS_PER_BONUS);
+    const used=state.buildBonusesUsed??0;
+    const extra=map!==before&&after.phase>0&&earned>used ? WORLD_BUILD_STEPS-after.phase : 0;
+    if (extra) map={...map,progress:map.progress+extra};
+    return {state:{...replaceCurrentWorld(prepared,mode,map),lastRewardRoundId:roundId,
+      ...(extra&&{buildBonusesUsed:used+1,bonusBuildSteps:(state.bonusBuildSteps??0)+extra})},
+      reward:{mode,map,completed:worldStatus(map).completed,added:map!==before,...(extra&&{bonus:true})}};
   }
   if (project) {
     const before=state.projects[mode]||0;

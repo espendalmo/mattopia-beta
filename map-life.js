@@ -2,6 +2,27 @@ import {mapStorySeed,personStories,vehicleStories} from './map-stories.js';
 import {visitor,dome,tube,pointOnSite} from './scenery.js';
 
 const modulo=(value,n)=>{const remainder=value%n;return remainder<0?remainder+n:remainder;};
+
+function vehicleStoryKind(actor,lunar,island) {
+  const kind=actor?.kind;
+  if (actor?.parts.some(piece=>piece.animalKind==='dog')) return 'dog';
+  if (actor?.lunarBus) return 'rover-bus';
+  if (actor?.islandVehicle) return `island-${actor.islandVehicle}`;
+  if (kind==='road'&&lunar) return 'rover';
+  if (kind==='road'&&island) return 'island-cart';
+  if (kind==='bird'&&lunar) return 'drone';
+  if (kind==='train-car') return lunar?'monorail':'train';
+  if (kind==='helicopter-rotor') return 'helicopter';
+  return kind;
+}
+
+function lunarName(scene,key,actor,kind,first,last) {
+  const [role,index,person]=key.split(':');
+  const slot=role==='resident'?16*Number(index)+Number(person):actor?.characterSlot??928+Number(index);
+  // 173 is coprime to the 32 × 32 name combinations. Each slot gets a different name.
+  const name=modulo(slot*173+mapStorySeed(scene.seed,kind),first.length*last.length);
+  return `${first[name%first.length]} ${last[Math.floor(name/first.length)]}`;
+}
 // Names and voices stay consistent while a child explores the map.
 export function mapCharacterInfo(scene,key,discovery) {
   if (typeof key!=='string') return null;
@@ -16,7 +37,8 @@ export function mapCharacterInfo(scene,key,discovery) {
   if (!dog&&(actor?.kind==='walk'||key.startsWith('resident:')||actor?.footballPlayer||actor?.kind==='slide')) {
     const kind=part?.characterKind??(lunar?'astronaut':'human');
     const {first,last,stories}=personStories[kind]??personStories.human;
-    const name=`${first[seed%first.length]} ${last[(seed>>>8)%last.length]}`;
+    const name=lunar&&['alien','astronaut'].includes(kind)?lunarName(scene,key,actor,kind,first,last)
+      :`${first[seed%first.length]} ${last[(seed>>>8)%last.length]}`;
     const found=actor?.encounter?.key===discovery?scene.discoveries?.[discovery]:null;
     if (found) return {name,status:'Har oppdaget noe',story:`Se hva jeg fant! ${found.name}. ${found.story}`,
       sound:kind,voice:seed%24};
@@ -36,18 +58,14 @@ export function mapCharacterInfo(scene,key,discovery) {
     }
     return {name,status,story,sound:kind,voice:seed%24};
   }
-  let kind=actor?.kind;
-  if (dog) kind='dog';
-  if (actor?.lunarBus) kind='rover-bus';
-  if (kind==='road'&&lunar) kind='rover';
-  if (kind==='road'&&scene.id==='island') kind='island-cart';
-  if (kind==='bird'&&lunar) kind='drone';
-  if (kind==='train-car') kind=lunar?'monorail':'train';
-  if (kind==='helicopter-rotor') kind='helicopter';
+  const island=scene.id==='island';
+  const kind=vehicleStoryKind(actor,lunar,island);
   const pool=vehicleStories[kind];
   if (!pool) return null;
   const [names,stories]=pool;
-  return {name:names[seed%names.length],status:lunar?'Liv i månebasen':'Liv på kartet',
+  const ordinal=scene.ambient.slice(0,index).filter(other=>vehicleStoryKind(other,lunar,island)===kind).length;
+  const name=names[(mapStorySeed(scene.seed,kind)+ordinal)%names.length]+(ordinal>=names.length?` ${Math.floor(ordinal/names.length)+1}`:'');
+  return {name,status:lunar?'Liv i månebasen':'Liv på kartet',
     story:stories[(seed>>>12)%stories.length],sound:['dog','bird'].includes(kind)?'animal':kind==='swimmer'?'human':'vehicle',voice:seed%24};
 }
 
@@ -74,7 +92,7 @@ export function footballActors(plot) {
     const [a,b,c]=pointOnSite([x,y+level,z],plot),turn=plot.yaw+yaw;
     return {x:a,y:b,z:c,cos:Math.cos(turn),sin:Math.sin(turn),stride,rollCos:1,rollSin:0,sound:0};
   };
-  const players=[0,1].map(i=>({kind:'walk',footballPlayer:true,
+  const players=[0,1].map(i=>({kind:'walk',footballPlayer:true,characterSlot:16*plot.index+12+i,
     parts:visitor(space?(i?'alien':'astronaut'):'human',i?'#6b9bbc':'#d48078',i?'#b48466':'#edb78a',false,.83,i+2),
     pose(seconds) {
       const t=localTime(seconds),state=footballMoment(t),[x,z]=state.players[i];
