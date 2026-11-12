@@ -136,6 +136,7 @@ export const ACTIVITY_SOUNDS=Object.freeze({
   'train-start':[.76,.18,0],
   'monorail-start':[.59,.17,0],
   horn:[.52,.085,12],
+  'queue-horn':[.55,.085,1.9],
   monorail:[1.65,.052,5],
   traffic:[1.45,.047,6.5],
   rover:[1.65,.045,7.5],
@@ -315,7 +316,7 @@ export function soundClip(context,kind) {
         (wave(age,frequency)*.62+wave(age,frequency*(moon?2:1.26))*.29);
       return call(t-.014,moon?660:174)+call(t-(moon?.18:.29),moon?850:196)*.88;
     }
-    if (kind==='horn') {
+    if (kind==='horn'||kind==='queue-horn') {
       const toot=age=>age<0?0:unit(age*105)*unit((.16-age)*27)*(wave(age,392)*.63+wave(age,512)*.31+wave(age,783)*.13);
       return toot(t-.01)+toot(t-.22)*.72;
     }

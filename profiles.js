@@ -27,6 +27,11 @@ export function profileDetails({ name, grade, avatar } = {}) {
   };
 }
 
+export function chosenProfileName(profile) {
+  const name=profile?.name??'';
+  return (profile?.hasName??!/^Spiller(?: \d+)?$/u.test(name))?name:'';
+}
+
 export function readProfiles(storage) {
   const empty = { activeId:null, profiles:[] };
   const data = storage.getItem(PROFILE_KEY);
@@ -39,7 +44,8 @@ export function readProfiles(storage) {
   for (const item of raw.profiles) {
     if (!validId(item?.id) || deleted.has(item.id)) continue;
     const details = profileDetails(item);
-    profiles.set(item.id, { ...details, name:details.name || 'Spiller', id:item.id, practice:item.practice });
+    profiles.set(item.id,{...details,name:details.name||'Spiller',id:item.id,practice:item.practice,
+      ...(typeof item.hasName==='boolean'&&{hasName:item.hasName&&Boolean(details.name)})});
   }
   return {
     activeId:profiles.has(raw.activeId) ? raw.activeId : profiles.keys().next().value ?? null,

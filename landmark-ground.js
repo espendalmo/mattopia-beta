@@ -16,7 +16,7 @@ const curved=new Set(['park','garden','greatPark','bandstand','palmGarden','moon
 const square=new Set(['school','sawmill','factory','airstrip','solar','solarGarden','prison',
   'field','spaceField','launch','pool','dance']);
 const paved=new Set(['busStation','airport','airstrip','shuttlePort','factory','sawmill','hoverDealer','roverGarage','moonWorkshop','moonCargo','cargoDepot',
-  'railwayStation','monorailStation']);
+  'railwayStation','monorailStation','residence']);
 
 export function shapeLandmarkGround(stages,kind) {
   const foundation=stages[0].find(part=>part.support);

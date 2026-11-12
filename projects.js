@@ -1,9 +1,10 @@
 import {transitVehiclePreview} from './transport.js';
 import {box,tube,roof,rounded,dome,at,worldSign,vehicle,worldActors,districtActors} from './scenery.js';
-import {isWorld,isRegion,hasExpandedCatalog,grandCatalog,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,RAIL_PLACE,randomGenerator} from './worlds.js';
+import {isWorld,isRegion,hasExpandedCatalog,grandCatalog,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,RAIL_PLACE,RESIDENCE_PLACE,randomGenerator} from './worlds.js';
 import {expandedWorldScene} from './region-scenery.js';
-import {NEW_LANDMARKS,EXPANDED_LANDMARKS,GRAND_LANDMARKS,RAIL_LANDMARKS,landmarkStages,earthStarterStages} from './world-landmarks.js';
+import {NEW_LANDMARKS,EXPANDED_LANDMARKS,GRAND_LANDMARKS,RAIL_LANDMARKS,RESIDENCE_LANDMARKS,landmarkStages,earthStarterStages} from './world-landmarks.js';
 import {shapeLandmarkGround} from './landmark-ground.js';
+import {detailFacades} from './facades.js';
 import {landmarkStory} from './landmark-stories.js';
 import {seasonForDate} from './seasons.js';
 
@@ -22,10 +23,11 @@ export function projectById(id) {
   return Object.hasOwn(PROJECTS,id) ? PROJECTS[id] : null;
 }
 
-export function restoreProjects(raw, total) {
+export function restoreProjects(raw,total,bonusHeroBricks=0) {
   return Object.fromEntries(Object.keys(PROJECTS).map(id => {
     const saved = raw?.[id];
-    return [id,Number.isSafeInteger(saved) && saved>0 ? Math.min(saved,total,PROJECTS[id].total) : 0];
+    const budget=total+(isWorld(id)?0:bonusHeroBricks);
+    return [id,Number.isSafeInteger(saved) && saved>0 ? Math.min(saved,budget,PROJECTS[id].total) : 0];
   }));
 }
 
@@ -428,6 +430,11 @@ const DETAILS = {
 function catalogBuilding(id,index,map) {
   if (!isRegion(map)) return null;
   if (index===RAIL_PLACE) return RAIL_LANDMARKS[id];
+  if (index===RESIDENCE_PLACE) {
+    const residence=RESIDENCE_LANDMARKS[id];
+    if (residence&&map.residenceName) return [`${map.residenceName} ${id==='island'?'sitt':'sin'} ${residence[0].toLowerCase()}`,...residence.slice(1)];
+    return residence;
+  }
   return (grandCatalog(map)?GRAND_LANDMARKS[id]?.[index]:null)??(hasExpandedCatalog(map)?EXPANDED_LANDMARKS[id]?.[index]:null)??NEW_LANDMARKS[id]?.[index];
 }
 
@@ -443,8 +450,8 @@ export function worldBuilding(id,index,map=null) {
   return {name,description:DETAILS[id][index],kind,story:landmarkStory(id,index,kind,map?.seed)};
 }
 
-export function worldBuildingOptions(id,map) {
-  const available=worldChoices(map,id).filter(index=>{
+export function worldBuildingOptions(id,map,owner='') {
+  const available=worldChoices(map,id,owner).filter(index=>{
     const {kind}=worldBuilding(id,index,map);
     return !isRegion(map)||map.progress>=2*WORLD_BUILD_STEPS||!['pier','marina','quay','bridge'].includes(kind);
   });
@@ -473,6 +480,10 @@ export function worldBuildingOptions(id,map) {
     available.splice(available.indexOf(slide),1);
     available.unshift(slide);
   }
+  if (available.includes(RESIDENCE_PLACE)) {
+    available.splice(available.indexOf(RESIDENCE_PLACE),1);
+    available.splice(1,0,RESIDENCE_PLACE);
+  }
   const types=new Set();
   const varied=[];
   for (const index of available) {
@@ -498,7 +509,8 @@ function regionLandmarkParts(id,index,site,map) {
     ];
   }
   if (site?.waterfront&&custom?.[2]!=='lighthouse') return stages;
-  stages=shapeLandmarkGround(stages,custom?.[2]??PLACES[id][index][1]);
+  const kind=custom?.[2]??PLACES[id][index][1];
+  stages=shapeLandmarkGround(detailFacades(stages,id,kind),kind);
   // Broad, thin surfaces stay in elevation order in the Canvas painter.
   return stages.map(parts=>parts.map(part=>{
     const top=part.y+part.h;
@@ -701,7 +713,8 @@ export function projectScene(id, completed=0, season=seasonForDate()) {
   const project=projectById(id);
   if(!project) return null;
   if (isWorld(id)&&isRegion(completed)) {
-    const key=`${id}:${completed.layout}:${completed.catalog??1}:${Number(completed.starter===true)}:${completed.seed}:${completed.progress}:${completed.order.join(',')}:${season}`;
+    const key=JSON.stringify([id,completed.layout,completed.catalog,completed.starter,completed.seed,completed.progress,
+      completed.order,season,completed.residenceName]);
     if (regionScenes.has(key)) return regionScenes.get(key);
     const scene=expandedWorldScene(id,completed,THEMES[id],index=>worldBuilding(id,index,completed),(index,site)=>regionLandmarkParts(id,index,site,completed),season);
     regionScenes.set(key,scene);

@@ -1564,6 +1564,12 @@ body:has(> .project-dialog.project-fullscreen[open]) {
 .project-fullscreen:has(.demo-controls) .map-info-card { bottom: max(90px, calc(env(safe-area-inset-bottom) + 76px)); }
 .result-latest > div { flex: 1 1 205px; min-width: 0; }
 .complete .result-latest .build-story { margin: 5px 0 0; font-size: .88rem; line-height: 1.4; }
+.complete .completion-bonus {
+  display: flex; align-items: center; gap: .7rem; margin: 1rem auto;
+  max-width: 26rem; padding: .8rem 1rem; border: 1px solid #d7bc78; border-radius: 1rem;
+  background: #fff1cf; color: #624713; text-align: left; font-weight: 700; line-height: 1.38;
+}
+.completion-bonus svg { width: 1.45rem; height: 1.45rem; flex: 0 0 auto; }
 
 .money-visual, .money-pile, .money-exchange {
   display: flex;

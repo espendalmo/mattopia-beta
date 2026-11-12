@@ -1,4 +1,4 @@
-import {walkingClock} from './scene-motion.js';
+import {roadworkAge,walkingClock} from './scene-motion.js';
 import {regionSurface,regionVisibility,roadElevation,regionalPoint,riverAt} from './regions.js';
 import {STREET_TURN_RADIUS} from './street-grid.js';
 import {randomGenerator} from './worlds.js';
@@ -13,7 +13,7 @@ export const at = (parts,x,y,z) => parts.map(part=>({...part,x:part.x+x,y:part.y
 export const beam = (from,to,width,color) => ({
   shape:'beam',from,to,width,color,x:(from[0]+to[0])/2,z:(from[2]+to[2])/2,y:Math.min(from[1],to[1]),h:Math.abs(from[1]-to[1])+width,
 });
-export const MAX_ACTORS=38;
+export const MAX_ACTORS=54;
 
 export function pointOnSite([a,b,d],{x,y,z,yaw=0}) {
   const c=Math.cos(yaw),s=Math.sin(yaw);
@@ -478,11 +478,13 @@ function vehicleFootprint(actor) {
 function overlaps(a,b) {
   const dx=b.pose.x-a.pose.x,dz=b.pose.z-a.pose.z;
   if (Math.abs(dx)>4||Math.abs(dz)>4||Math.abs(a.pose.y-b.pose.y)>1.7) return false;
-  const axes=({sin,cos})=>[[sin,cos],[cos,-sin]];
-  const aa=axes(a.pose),bb=axes(b.pose);
-  const radius=(axes,[long,wide],[x,z])=>Math.abs(x*axes[0][0]+z*axes[0][1])*long
-    +Math.abs(x*axes[1][0]+z*axes[1][1])*wide;
-  return [...aa,...bb].every(([x,z])=>Math.abs(dx*x+dz*z)<radius(aa,a.size,[x,z])+radius(bb,b.size,[x,z]));
+  const {sin:as,cos:ac}=a.pose,{sin:bs,cos:bc}=b.pose;
+  const [al,aw]=a.size,[bl,bw]=b.size;
+  const parallel=Math.abs(as*bs+ac*bc),cross=Math.abs(as*bc-ac*bs);
+  return Math.abs(dx*as+dz*ac)<al+bl*parallel+bw*cross
+    &&Math.abs(dx*ac-dz*as)<aw+bl*cross+bw*parallel
+    &&Math.abs(dx*bs+dz*bc)<bl+al*parallel+aw*cross
+    &&Math.abs(dx*bc-dz*bs)<bw+al*cross+aw*parallel;
 }
 
 function followsTooClosely(a,b) {
@@ -504,18 +506,23 @@ function transferDistance(route,pose) {
   return null;
 }
 
-function waitingCycle(vehicles) {
+function waitingCycleVehicles(vehicles) {
+  const checked=new Set(),cycles=[];
   for (const start of vehicles) {
     const path=[];
     let next=start;
-    while (next?.wait>1.15) {
+    while (next?.wait>1.15&&!checked.has(next)) {
       const repeated=path.indexOf(next);
-      if (repeated>=0) return path.slice(repeated);
+      if (repeated>=0) {
+        cycles.push(...path.slice(repeated));
+        break;
+      }
       path.push(next);
       next=next.blocker;
     }
+    for (const vehicle of path) checked.add(vehicle);
   }
-  return [];
+  return cycles;
 }
 
 function passingPose(vehicle,pass,elapsed,seconds) {
@@ -531,7 +538,7 @@ function passingPose(vehicle,pass,elapsed,seconds) {
     sound:.64,thrust:Number(pass.hover)}};
 }
 
-export function createTraffic(actors,junctions=[],obstacles=[]) {
+export function createTraffic(actors,junctions=[],obstacles=[],roadworks=[]) {
   const crossings=new Map();
   const cell=8;
   for (const point of junctions) {
@@ -549,10 +556,24 @@ export function createTraffic(actors,junctions=[],obstacles=[]) {
     return crossings.get(id)?.find(point=>(pose.x-point.x)**2+(pose.z-point.z)**2<vehicle.crossingReach)??null;
   };
   const vehicles=[];
+  let closures=[];
+  const roadworkBlocker=(vehicle,pose)=>{
+    if (!closures.length||!['road','bus','hover'].includes(vehicle.actor.kind)) return null;
+    return closures.find(site=>{
+      const contains=position=>{
+        const dx=position.x-site.x,dz=position.z-site.z;
+        return Math.abs(dx*site.dx+dz*site.dz)<1.45+vehicle.size[0]
+          &&Math.abs(dx*site.dz-dz*site.dx)<1.4&&Math.abs(position.y-site.y)<1.45;
+      };
+      // Vehicles already in the work area can leave before the lane closes.
+      return contains(pose)&&!contains(vehicle.pose);
+    });
+  };
   const physicalBlocker=(vehicle,pose)=>vehicles.find(other=>other!==vehicle&&overlaps({size:vehicle.size,pose},other));
   const laneBlocker=(vehicle,pose)=>vehicles.find(other=>other!==vehicle&&(
     overlaps({size:vehicle.size,pose},other)||followsTooClosely({size:vehicle.size,pose},other)));
-  const intersectionOwner=(vehicle,zone)=>zone&&vehicles.find(other=>other!==vehicle&&other.zone===zone);
+  const intersectionOwner=(vehicle,zone)=>zone&&vehicles.find(other=>other!==vehicle&&other.zone===zone
+    &&other.yielding?.other!==vehicle);
   function planPass(vehicle,blocker,seconds) {
     const {actor,pose,size}=vehicle;
     const hover=actor.kind==='hover';
@@ -579,7 +600,7 @@ export function createTraffic(actors,junctions=[],obstacles=[]) {
       const forward=next.pose.cos*pose.cos+next.pose.sin*pose.sin>(hover?-.12:.988);
       const overJunction=hover&&t>.29&&t<duration-.31;
       const nearFind=obstacles.some(({x,z,radius})=>Math.hypot(x-next.pose.x,z-next.pose.z)<radius+Math.hypot(...size));
-      if (!forward||nearFind||junctionAt(vehicle,next.pose)&&!overJunction) return null;
+      if (!forward||nearFind||roadworkBlocker(vehicle,next.pose)||junctionAt(vehicle,next.pose)&&!overJunction) return null;
       for (const other of vehicles) {
         if (other===vehicle) continue;
         const expected=actorPose(other.actor,seconds+t,other.distance+other.actor.speed*t);
@@ -618,7 +639,7 @@ export function createTraffic(actors,junctions=[],obstacles=[]) {
   function exitBlocker(vehicle,distance,zone,seconds) {
     for (let advance=.55;advance<=12;advance+=.55) {
       const pose=actorPose(vehicle.actor,seconds,distance+advance);
-      const blocker=laneBlocker(vehicle,pose);
+      const blocker=roadworkBlocker(vehicle,pose)||laneBlocker(vehicle,pose);
       if (blocker) return blocker;
       if (junctionAt(vehicle,pose)!==zone) return null;
     }
@@ -626,52 +647,73 @@ export function createTraffic(actors,junctions=[],obstacles=[]) {
   }
   function findRetreat(seconds) {
     // Let a vehicle already in the junction clear it before the queue moves up.
-    const cycle=waitingCycle(vehicles).sort((a,b)=>Number(Boolean(a.zone))-Number(Boolean(b.zone))
-      ||a.size[0]-b.size[0]||a.index-b.index);
+    const cycle=waitingCycleVehicles(vehicles).sort((a,b)=>Number(Boolean(a.zone))-Number(Boolean(b.zone))
+      ||b.wait-a.wait||a.size[0]-b.size[0]||a.index-b.index);
     for (const vehicle of cycle) {
       let clear=0;
-      for (let back=.3;back<=4.5;back+=.3) {
+      const room=vehicle.zone?7.2:4.5;
+      for (let back=.3;back<=room;back+=.3) {
         const pose=actorPose(vehicle.actor,seconds,vehicle.distance-back);
-        if (physicalBlocker(vehicle,pose)||intersectionOwner(vehicle,junctionAt(vehicle,pose))) break;
+        if (roadworkBlocker(vehicle,pose)||physicalBlocker(vehicle,pose)||intersectionOwner(vehicle,junctionAt(vehicle,pose))) break;
         clear=back;
       }
-      if (clear>=1.2) return {vehicle,target:vehicle.distance-clear};
+      if (clear>=1.2) {
+        const other=vehicle.blocker;
+        return {vehicle,target:vehicle.distance-clear,other,route:other.actor.route,distance:other.distance,pose:other.pose};
+      }
     }
     return null;
   }
   return seconds=>{
     carry+=Math.max(0,Math.min(.2,seconds-last));
     last=seconds;
+    closures=roadworks.filter(site=>{
+      const age=roadworkAge(site,seconds);
+      return age!==null&&age>=1.5&&age<site.duration-1.5;
+    });
     const step=1/30;
     while (carry>=step) {
       carry-=step;
-      if (!retreat&&vehicles.some(vehicle=>vehicle.wait>1.15)) retreat=findRetreat(seconds);
+      if (!retreat&&vehicles.some(vehicle=>vehicle.blocker&&vehicle.wait>1.15)) retreat=findRetreat(seconds);
       const backing=retreat?.vehicle;
       if (backing) {
         const distance=Math.max(retreat.target,backing.distance-step*1.55);
         const pose=actorPose(backing.actor,seconds,distance);
         const zone=junctionAt(backing,pose);
-        const blocked=physicalBlocker(backing,pose)||intersectionOwner(backing,zone);
+        const blocked=roadworkBlocker(backing,pose)||physicalBlocker(backing,pose)||intersectionOwner(backing,zone);
         if (!blocked) Object.assign(backing,{distance,zone,pose:{...pose,sound:0,thrust:0}});
         if (blocked||distance<=retreat.target) {
-          Object.assign(backing,{wait:0,blocker:null,holdUntil:seconds+.85});
+          const {other,route,distance:otherDistance,pose:otherPose}=retreat;
+          Object.assign(backing,{wait:0,blocker:null,holdUntil:seconds+1.25,
+            yielding:{other,route,distance:otherDistance,pose:otherPose,expires:seconds+8.5}});
           retreat=null;
         }
       }
       const priority=vehicles.slice().sort((a,b)=>Number(Boolean(b.zone))-Number(Boolean(a.zone))||b.wait-a.wait);
       for (const vehicle of priority) {
         if (vehicle===backing||seconds<vehicle.holdUntil) continue;
+        if (vehicle.yielding) {
+          const {other,route,distance,pose,expires}=vehicle.yielding;
+          const advance=other.actor.route===route?other.distance-distance:Math.hypot(other.pose.x-pose.x,other.pose.z-pose.z);
+          if (seconds<expires&&advance<vehicle.size[0]+other.size[0]+.55) continue;
+          vehicle.yielding=null;
+        }
         if (vehicle.pass) {
           const pass=vehicle.pass;
           const elapsed=Math.min(pass.duration,pass.elapsed+step);
           const {distance,pose}=passingPose(vehicle,pass,elapsed,seconds);
-          if (!physicalBlocker(vehicle,pose)) {
+          const work=roadworkBlocker(vehicle,pose);
+          if (!work&&!physicalBlocker(vehicle,pose)) {
             Object.assign(vehicle,{distance,pose});
+            vehicle.workWait=0;
             pass.elapsed=elapsed;
             if (elapsed>=pass.duration) {
               vehicle.pass=null;
               vehicle.nextPass=seconds+6+vehicle.rng()*5;
             }
+          } else if (work) {
+            vehicle.workWait=(vehicle.workWait??0)+step;
+            vehicle.pose={...vehicle.pose,sound:0,thrust:0};
           }
           continue;
         }
@@ -701,10 +743,11 @@ export function createTraffic(actors,junctions=[],obstacles=[]) {
         const distance=parking?vehicle.nextPark:proposed;
         const pose=actorPose(vehicle.actor,seconds,distance);
         const zone=junctionAt(vehicle,pose);
-        const blocker=intersectionOwner(vehicle,zone)||laneBlocker(vehicle,pose)
+        const blocker=roadworkBlocker(vehicle,pose)||intersectionOwner(vehicle,zone)||laneBlocker(vehicle,pose)
           ||(zone&&zone!==vehicle.zone&&exitBlocker(vehicle,distance,zone,seconds));
         if (blocker) {
-          const pass=!zone&&planPass(vehicle,blocker,seconds);
+          const roadwork=blocker.roadwork||blocker.workWait>0;
+          const pass=!zone&&!roadwork&&planPass(vehicle,blocker,seconds);
           if (pass) {
             Object.assign(vehicle,{pass,wait:0,blocker:null});
             vehicle.passCount=(vehicle.passCount??0)+1;
@@ -712,10 +755,11 @@ export function createTraffic(actors,junctions=[],obstacles=[]) {
             continue;
           }
           vehicle.wait+=step;
-          vehicle.blocker=blocker;
+          vehicle.blocker=blocker.roadwork?null:blocker;
+          vehicle.workWait=roadwork?(vehicle.workWait??0)+step:0;
           vehicle.pose={...vehicle.pose,sound:0,thrust:0};
         } else {
-          Object.assign(vehicle,{pose,zone,distance,wait:0,blocker:null});
+          Object.assign(vehicle,{pose,zone,distance,wait:0,workWait:0,blocker:null});
           if (parking) {
             vehicle.nextPark+=actor.route.length;
             vehicle.holdUntil=seconds+actor.parking.rest;
@@ -728,6 +772,10 @@ export function createTraffic(actors,junctions=[],obstacles=[]) {
       const vehicle=byIndex.get(i);
       if (!vehicle) return actor.route&&streetKinds.has(actor.kind)
         ? {...actorPose(actor,seconds),y:-540,sound:0} : actorPose(actor,seconds);
+      const queueAge=(vehicle.workWait??0)-1.55-.87*actor.phase;
+      if (queueAge>=0&&queueAge%5.1<.54) {
+        return {...vehicle.pose,cue:'queue-horn',sound:.8};
+      }
       const horn=seconds<vehicle.passHorn||actor.horn&&(seconds+17*actor.phase)%actor.horn<.68&&seconds>8;
       return horn?{...vehicle.pose,cue:'horn',sound:.65}:vehicle.pose;
     });
@@ -1036,15 +1084,16 @@ export function driveThroughApproach(plot) {
 
 function driveThroughTraffic(plot,theme,elevation,circuits) {
   const {reach,world}=driveThroughApproach(plot);
-  const right=reach+.61,left=reach-.61;
+  const far=reach+.87,near=reach-.87;
   const span=plot.streetSpan??13.4;
   const bend=Math.max(5.65,span*.45);
   const localX=({x,z})=>(x-plot.x)*Math.cos(plot.yaw)-(z-plot.z)*Math.sin(plot.yaw);
   const localZ=({x,z})=>(x-plot.x)*Math.sin(plot.yaw)+(z-plot.z)*Math.cos(plot.yaw);
-  const pullIn=[[-4.26,left],[-4.26,1.63],[4.26,1.63],[4.26,left]];
+  const pullIn=[[4.26,near],[4.26,1.63],[-4.26,1.63],[-4.26,near]];
   const convert=([x,z])=>{ const [a,,b]=world(x,z); return [a,b]; };
-  let stops=[[-bend,left],...pullIn,[bend,left],[bend,right],[-bend,right]].map(convert);
-  for (const circuit of circuits) {
+  let stops=[[bend,near],...pullIn,[-bend,near],[-bend,far],[bend,far]].map(convert);
+  let corner=.58;
+  for (const circuit of circuits.slice().sort((a,b)=>a.length-b.length)) {
     const edge=circuit.findIndex((a,i)=>{
       const b=circuit[(i+1)%circuit.length];
       return Math.abs(localZ(a)-reach)<.85&&Math.abs(localZ(b)-reach)<.85
@@ -1052,13 +1101,15 @@ function driveThroughTraffic(plot,theme,elevation,circuits) {
     });
     if (edge<0) continue;
     const street=circuit.slice(edge).concat(circuit.slice(0,edge));
-    const detour=localX(street[0])<localX(street[1])?pullIn:pullIn.slice().reverse();
-    stops=[[street[0].x,street[0].z],...detour.map(convert),...street.slice(1).map(({x,z})=>[x,z])];
+    const ordered=localX(street[0])>localX(street[1])?street:[street[1],street[0],...street.slice(2).reverse()];
+    const lane=streetLane(ordered);
+    stops=[lane[0],...pullIn.map(convert),...lane.slice(1)];
+    corner=STREET_TURN_RADIUS;
     break;
   }
   const local=(x,z)=>(x-plot.x)*Math.sin(plot.yaw)+(z-plot.z)*Math.cos(plot.yaw);
   const car=actor(vehicle(theme==='moon'?'rover':theme==='island'?'pickup':'car','#d5a961'),stops,{
-    kind:'road',speed:1.68,phase:.07,corner:.58,
+    kind:'road',speed:1.68,phase:.07,corner,
     elevation:(x,z)=>{
       const depth=local(x,z);
       const inside=Math.abs(localX({x,z}))<5.35&&depth>=.71&&depth<reach;
@@ -1081,7 +1132,7 @@ function streetFleet(theme,layout,plan,completed,circuits,alternatives,elevation
     :['car','motorcycle','compact','van','delivery','pickup','car','compact'];
   const colors=['#deaa73','#8eb1c6','#d27d84','#e0bb83','#80b5a9','#ad91c0','#d6a26e','#7798bc'];
   const span=network.edges.reduce((sum,edge)=>sum+edge.length,0);
-  const count=Math.min(18,2+Math.floor(completed.length*.43),Math.max(2,Math.floor(span/25)));
+  const count=Math.min(24,2+Math.floor(completed.length*.60),Math.max(2,Math.floor(span/21)));
   const rng=randomGenerator(layout.seed^0x52b7af34);
   const fleet=[];
   for (let i=0;i<count;i++) {

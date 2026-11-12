@@ -384,7 +384,6 @@ function webGLPainter(canvas, faces, background, illustrated, stars, actorCount)
     uniform float curvature;
     uniform vec4 reveal;
     uniform vec4 actorPose[${actorSlots}];
-    uniform vec3 actorTilt[${actorSlots}];
     uniform vec4 actorMotion[${actorSlots}];
     varying mediump vec4 shade;
     varying mediump float modelHeight;
@@ -415,18 +414,20 @@ function webGLPainter(canvas, faces, background, illustrated, stars, actorCount)
         if (group == 2.0+float(i)) {
           vec4 pose = actorPose[i];
           vec4 motion = actorMotion[i];
+          vec2 heading = vec2(cos(pose.w),sin(pose.w));
+          vec2 roll = vec2(cos(motion.y),sin(motion.y));
+          vec2 slope = vec2(cos(motion.z),sin(motion.z));
           vec2 pivot = hinge.z > .5 ? hinge.xy : pos.xy;
-          pos.xy += vec2(pivot.x*motion.z-pivot.y*motion.w,pivot.x*motion.w+pivot.y*motion.z)-pivot;
-          vec3 slope = actorTilt[i];
-          if (life.w == -1.0 && slope.z < .5) {
+          pos.xy += vec2(pivot.x*roll.x-pivot.y*roll.y,pivot.x*roll.y+pivot.y*roll.x)-pivot;
+          if (life.w == -1.0 && motion.w < .5) {
             gl_Position = vec4(2.0,2.0,2.0,1.0);
             return;
           }
           pos.yz = vec2(pos.y*slope.x+pos.z*slope.y,pos.z*slope.x-pos.y*slope.y);
-          float step = stride*motion.y;
+          float step = stride*motion.x;
           float z = pos.z+step;
-          pos = vec3(pose.x+pos.x*pose.w+z*motion.x,pos.y+pose.y+max(0.0,step)*.58,
-            pose.z+z*pose.w-pos.x*motion.x);
+          pos = vec3(pose.x+pos.x*heading.x+z*heading.y,pos.y+pose.y+max(0.0,step)*.58,
+            pose.z+z*heading.x-pos.x*heading.y);
           break;
         }
       }
@@ -479,10 +480,9 @@ function webGLPainter(canvas, faces, background, illustrated, stars, actorCount)
     gl.enableVertexAttribArray(location);
     gl.vertexAttribPointer(location,size,gl.FLOAT,false,vertexFloats*4,offset);
   }
-  const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','curvature','reveal','shine','age','actorPose[0]','actorMotion[0]','actorTilt[0]']
+  const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','curvature','reveal','shine','age','actorPose[0]','actorMotion[0]']
     .map(name=>[name,gl.getUniformLocation(program,name)]));
   const actorPositions=new Float32Array(actorSlots*4),actorMovement=new Float32Array(actorSlots*4);
-  const actorSlopes=new Float32Array(actorSlots*3);
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
   gl.clearColor(...backgroundRGB(background),stars?0:1);
@@ -503,14 +503,12 @@ function webGLPainter(canvas, faces, background, illustrated, stars, actorCount)
       gl.uniform1f(uniforms.curvature,effects.curvature??0);
       gl.uniform4f(uniforms.reveal,effects.lift,effects.growth,effects.ground,effects.road);
       gl.uniform2f(uniforms.shine,effects.highlight,effects.sweep);
-      effects.actors.forEach(({x,y,z,cos,sin,stride,rollCos,rollSin,pitch=0,thrust=0},i)=>{
-        actorPositions.set([x,y,z,cos],i*4);
-        actorMovement.set([sin,stride,rollCos,rollSin],i*4);
-        actorSlopes.set([Math.cos(pitch),Math.sin(pitch),thrust],i*3);
+      effects.actors.forEach(({x,y,z,cos=1,sin=0,stride=0,rollCos=1,rollSin=0,pitch=0,thrust=0},i)=>{
+        actorPositions.set([x,y,z,Math.atan2(sin,cos)],i*4);
+        actorMovement.set([stride,Math.atan2(rollSin,rollCos),pitch,thrust],i*4);
       });
       gl.uniform4fv(uniforms['actorPose[0]'],actorPositions);
       gl.uniform4fv(uniforms['actorMotion[0]'],actorMovement);
-      gl.uniform3fv(uniforms['actorTilt[0]'],actorSlopes);
       gl.drawArrays(gl.TRIANGLES,0,data.length/vertexFloats);
     },
     dispose() {
@@ -632,7 +630,7 @@ export function mountProjectView(container, scene, interactive=false, {
     : {x:0,y:Math.max(...scene.parts.map(part=>part.y+part.h)),z:0});
   const fireworkY=fireworkTarget.y+(fireworkTarget.height??0)+1.4;
   const mounted=performance.now();
-  const moveActors=createTraffic(scene.ambient??[],scene.junctions,scene.trafficObstacles);
+  const moveActors=createTraffic(scene.ambient??[],scene.junctions,scene.trafficObstacles,scene.roadworks);
   if (target || closeUp && (!reveal || motion.matches || demo&&!scene.world || focusLatest&&!completedBuild&&!scene.roadBuild)) Object.assign(camera,detail);
   else if (reveal&&scene.world) Object.assign(camera,context);
   from={...camera};

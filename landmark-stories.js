@@ -111,6 +111,9 @@ function originalLandmarkStory(theme,index,kind) {
   if (kind==='monorailStation') return 'Månetoget trenger bare én skinne. Det glir over gatene, gjennom tunnelen og tilbake til stasjonen.';
   if (kind==='tramStation') return 'Du kan ta trikken hele veien rundt og ende på samme sted. Hvor mange stopp finner du?';
   if (kind==='needleTower') return 'Restauranten snurrer sakte, så alle bord får utsikt i alle retninger.';
+  if (kind==='residence') return theme==='moon'?'I krystallhagen glitrer steinene. Roverne har hver sin plass, med nok rom til å snu.':
+    theme==='island'?'Her kan du bade i hagen. De to bilene står klare for en tur langs kysten.':
+    'Fontenen står midt i hagen. Fra tårnene kan du se båtene passere ute på elva.';
   if (kind==='lighthouse') return 'På mørke kvelder viser lykta båtene vei forbi grunna.';
   if (kind==='telescopeArray') return 'De små teleskopene hjelper det store med å finne riktig del av stjernehimmelen.';
   if (kind==='airport'&&theme==='city') return 'Se etter lysene langs rullebanen når flyet lander. Helikopteret har sin egen plass.';

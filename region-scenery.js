@@ -9,6 +9,7 @@ import {plotAccess,terrainFoundation} from './landmark-ground.js';
 import {districtRail,districtTram,helicopterModels} from './transport.js';
 import {regionalHeadquarters} from './world-landmarks.js';
 import {isSlidePark} from './slide-parks.js';
+import {planRoadworks} from './roadworks.js';
 import {terrainDiscoveries,discoveryGuides,mineTerrain} from './map-discoveries.js';
 
 const SHADES={
@@ -466,7 +467,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
     districtRail(layout,station,sceneryPlan,developments,completedPlots.length));
   if (rail) {
     plan.transit=rail.points;
-    plan.transitPortals=rail.portals;
+    plan.transitPortals=[...(rail.portals??[]),...Object.values(rail.entries??{})];
   }
   const airport=completedPlots.find(plot=>plot.kind==='airport');
   const helicopter=airport?helicopterModels(true,airport):id==='city'&&status.built>=2?helicopterModels(false,plan.origin):[];
@@ -488,7 +489,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
       .flatMap(part=>terrainFoundation(layout,part,map.seed)).map(part=>({...part,entity:'headquarters'})));
   }
   const parks=pocketParks(layout,{...plan,plots:sceneryPlan.plots},completedPlots,discoveries.sites);
-  plan.footpaths=parks.paths;
+  plan.footpaths=[...parks.paths,...(rail?.walkways??[])];
   const roads=regionRoads(layout,plan,isNewPlot);
   const roadBuild=roads.some(part=>part.roadBuild!==undefined);
   const parts=[
@@ -511,7 +512,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
     const shadow=plot.waterfront?[]:groundShadow(layout,plot.x+1.92,plot.z-1.47,7.35,6.18,amount===1?.15:.27,12,season);
     parts.push(...shadow);
     for (let j=0;j<amount;j++) {
-      latest=placeParts(steps[j].filter(part=>!(done&&(part.wheel||part.flight||part.transitPreview||part.observation))),plot)
+      latest=placeParts(steps[j].filter(part=>!(done&&(part.flight||part.transitPreview))),plot)
         .flatMap(part=>terrainFoundation(layout,part,map.seed^Math.imul(plot.index+1,0x6c8e9cf5)))
         .map(part=>({...part,landmark:plot.index}));
       parts.push(...latest);
@@ -520,7 +521,8 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
     finished=done?name:null;
     if (done) {
       landmarks[plot.index]=latestTarget;
-      rides.push(...rideModels(plot,steps).map(ride=>ride.kind==='observation'||ride.kind==='wheel'?{...ride,parts:ride.parts.map(part=>({...part,landmark:plot.index}))}:ride));
+      rides.push(...rideModels(plot,steps).map(ride=>ride.kind==='observation'||ride.kind==='wheel'
+        ?{...ride,landmark:plot.index,parts:ride.parts.map(part=>({...part,landmark:plot.index}))}:ride));
       if (rail&&plot===station) {
         const tracks=rail.parts.flatMap(part=>{
           if (id==='city'||station.kind==='tramStation'||part.tunnel) return [part];
@@ -567,22 +569,25 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const locals=discoveryGuides(regionActors(id,layout,{...plan,plots:sceneryPlan.plots},completedPlots,discoveries.sites),discoveries.sites,layout,plan);
   const craft=rides.filter(actor=>['plane','shuttle','rocket','rocket-flame'].includes(actor.kind));
   const street=locals.filter(actor=>actor.fleet);
+  const roadworks=planRoadworks(layout,plan,[...street,...locals.filter(actor=>actor.kind==='bus'||actor.kind==='hover')],status.built);
   const speakers=[...locals.filter(actor=>actor.encounter),...locals.filter(actor=>actor.voice&&!actor.encounter)].slice(0,2);
   const primaryTours=[...new Map(parkedTours.slice().reverse().map(actor=>[actor.parking.plot,actor])).values()];
-  const essential=[...(rail?.actors??[]),...helicopter,...craft.slice(0,5),...beachSwimmers,...rides.filter(actor=>actor.dustBather),...primaryTours,...speakers,
+  const essential=[...rides.filter(actor=>actor.kind==='observation'||actor.kind==='wheel'),...(rail?.actors??[]),...(rail?.walkers??[]),...roadworks.crews,
+    ...helicopter,...craft.slice(0,5),...beachSwimmers,...rides.filter(actor=>actor.dustBather),...primaryTours,...speakers,
     ...(discoveries.visitor?[discoveries.visitor]:[]),...discoveries.smoke,
-    ...parks.walks,...locals.filter(actor=>actor.driveThrough||actor.offroadExplorer||['bus','offroad-rover','hover'].includes(actor.kind)),...street.slice(0,12)];
+    ...parks.walks,...locals.filter(actor=>actor.driveThrough||actor.offroadExplorer||['bus','offroad-rover','hover'].includes(actor.kind)),...street.slice(0,17)];
   const football=rides.filter(actor=>actor.footballPlayer||actor.kind.startsWith('football-'));
   const slide=rides.find(actor=>actor.kind==='slide');
-  const ambient=[...new Set([...essential,...football,...(slide?[slide]:[]),...parkedTours,...street,...rides,...locals])].slice(0,MAX_ACTORS);
+  const ambient=[...new Set([...essential,...football,...(slide?[slide]:[]),...street,...parkedTours,...rides,...locals])].slice(0,MAX_ACTORS);
   const moving=new Set(ambient.flatMap(actor=>actor.parking?[actor.parking.model]:[]));
-  const keep=part=>!moving.has(part.parking);
+  const rotating=new Set(ambient.flatMap(actor=>Number.isInteger(actor.landmark)?[actor.landmark]:[]));
+  const keep=part=>!moving.has(part.parking)&&!((part.observation||part.wheel)&&rotating.has(part.landmark));
   return {
     id,seed:map.seed,junctions:plan.junctions,discoveries:{...discoveries.info,...rail?.entries},parts:parts.filter(keep),latest:latest.filter(keep),last,finished,landmarks,sites,roadBuild,latestTarget,world:true,illustrated:true,background:sky,yaw:-Math.PI/4,pitch:.6155,center:1.1,closeSize:76,
     ...viewBounds({...plan,transit:id==='city'?plan.transit:plan.transit?.filter(point=>Math.hypot(point.x-plan.origin.x,point.z-plan.origin.z)<55)},horizon),
     soundscape:{buildings:completedPlots.length,wheel:completedPlots.some(plot=>plot.kind==='wheel'),
       hotel:id==='island'&&completedPlots.some(plot=>['hotel','resort','sunsetHotel','glassHotel','megaResort'].includes(plot.kind)),fun:completedPlots.filter(plot=>isSlidePark(plot.kind)||['wheel','coaster','arcade','lunarArcade','islandArcade','tropicalPools'].includes(plot.kind)).length},
-    ambient,
+    ambient,roadworks:roadworks.sites,
     trafficObstacles:discoveries.sites.map(({x,z,type})=>({x,z,radius:type.mine?4.8:3.9})),
     next:status.building!==null?`${buildingInfo(status.building).name} · ${PHASES[status.phase]}`:null,
   };
