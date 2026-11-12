@@ -3,6 +3,7 @@ import {box as b,rounded as r,dome as d,tube as t,roof,beam,worldSign,pointOnSit
 import {transitStation,helipadParts,REGIONAL_HELIPAD} from './transport.js';
 import {slidePark} from './slide-parks.js';
 import {detailFacades} from './facades.js';
+import {RESIDENCE_PLOT} from './regions.js';
 
 const cream='#f3e5c8', stone='#c9bda6', dark='#344451', glass='#68a4ba', ice='#a1dae2';
 const brass='#e5bc68', teal='#347e81', rose='#c86173';
@@ -1534,22 +1535,87 @@ function earthAccents(theme,style,stages,index) {
   return details?[stages[0],stages[1],[...stages[2],...details]]:stages;
 }
 
-function residence(theme) {
+function picketFence(length,x,z,yaw,color,level=0) {
+  const pickets=Math.ceil(length/.43),posts=Math.ceil(length/2.18);
+  return placeParts([
+    ...[.42,.78].map(y=>b(0,0,length,.085,.09,color,y)),
+    ...Array.from({length:pickets},(_,i)=>b(((i+.5)/pickets-.5)*length,.045,.096,.085,.76,color,.187)),
+    ...Array.from({length:posts+1},(_,i)=>{
+      const post=(i/posts-.5)*length;
+      return [b(post,0,.17,.17,.86,color,.18),r(post,0,.22,.22,.11,color,1.02)];
+    }).flat(),
+  ],{x,y:level,z,yaw});
+}
+
+function residencePark(theme,trim,lawn,water) {
+  const {halfWidth,halfDepth,deck,gateHalf}=RESIDENCE_PLOT;
   const moon=theme==='moon',island=theme==='island';
+  const edge=moon?'#868aa6':island?'#8aab70':'#729666';
+  const paving=RESIDENCE_PLOT.paving[theme];
+  const hedge=moon?'#9caac6':island?'#6a9c68':'#62865c';
+  const fence=moon?'#d0d9ed':'#ffedd0';
+  const fenceX=halfWidth-.38,fenceZ=halfDepth-.38;
+  const border=[
+    {...b(0,0,2*halfWidth,2*halfDepth,1.28,moon?'#9496ab':'#b6a487',-1.24),support:true},
+    b(0,0,2*halfWidth,2*halfDepth,.115,edge,.04),
+    r(0,0,2*(fenceX-.18),2*(fenceZ-.2),.021,lawn,.155),
+    r(0,4.81,10.71,4.7,.018,paving,deck-.018),
+    b(0,halfDepth-.61,2*gateHalf,1.25,.018,paving,deck-.018),
+    r(0,-1.46,9.38,5.94,.22,trim,.158),
+    r(0,2.55,1.91,1.32,.095,trim,.18),
+    ...pair.flatMap(side=>[
+      r(side*5.68,-1.14,.53,9.44,.29,hedge,.174),
+      r(side*4.36,-6.84,2.72,.56,.32,hedge,.17),
+      r(side*3.6,6.72,3.55,.64,.30,hedge,.176),
+      ...picketFence(2*fenceZ,side*fenceX,0,Math.PI/2,fence),
+      ...picketFence(fenceX-gateHalf,side*(fenceX+gateHalf)*.5,fenceZ,0,fence),
+    ]),
+    ...picketFence(2*fenceX,0,-fenceZ,0,fence),
+  ];
+  const pond=[
+    {...t(-1.64,-5.83,4.07,2.53,.12,moon?'#af9fb7':'#b0b490',.167),angle:-.19},
+    {...t(-1.65,-5.85,3.69,2.17,.044,water,.285),angle:-.19},
+    t(-2.14,-6.06,1.87,.68,.009,moon?'#9be8e4':'#a5d6c9',.33),
+    ...[[-.46,-5.5],[-.69,-6.2],[-1.06,-6.36]].flatMap(([x,z],i)=>[
+      t(x,z,.27,.21,.015,hedge,.33),d(x,z,.13,.12,.084,i===1?'#edcb7e':'#e9a9b2',.345),
+    ]),
+    r(2.56,-5.89,3.1,1.18,.027,paving,.174),
+    ...placeParts(bench(2.61,-5.81),{x:0,y:-.164,z:0,yaw:0}),
+    ...[[-4.1,-5.55],[3.94,-6.11],[-5.29,-2.88],[5.32,-1.64],[-5.4,.44],[5.4,.58],[-4.39,6.65],[4.4,6.62]]
+      .flatMap(([x,z],i)=>moon?[d(x,z,.96,.89,.52,hedge,.177),
+        ...pair.map(side=>t(x+side*.24,z,.24,.25,.49+i%3*.15,side<0?'#a5d9d6':'#c3b0d8',.43))]
+        :i<6?placeParts(broadTree(x,z,theme),{x:0,y:-.16,z:0,yaw:0})
+          :[d(x,z,1.19,.86,.53,hedge,.17),d(x+.23,z,.36,.36,.17,island?'#eab37c':'#e8b585',.57)]),
+    ...pair.flatMap(side=>[1.44,2.09,2.74,4.83,5.43].map((x,i)=>d(side*x,7.13,.21,.24,.13,
+      moon?'#bed4ef':i%2?'#eac782':'#dea1a5',.18))),
+  ];
+  return {border,pond};
+}
+
+function residence(theme,site) {
+  const moon=theme==='moon',island=theme==='island';
+  const estate=!site||site.residence;
   const walls=moon?'#c8cbdf':island?'#f2ce9d':'#d7b694';
   const trim=moon?'#8e9bbd':island?'#fff0cd':'#f5dfba';
   const cap=moon?'#6672a7':island?'#438f90':'#587b7a';
   const lawn=moon?'#9294b4':island?'#8fad69':'#79996b';
   const water=moon?'#88cdd2':island?'#67bdb7':'#6eacb4';
   const window={w:.74,h:1.02,color:moon?'#75bdcd':island?'#7ebdc1':'#739db4'};
-  const garden=[
+  const park=estate?residencePark(theme,trim,lawn,water):null;
+  const fence=moon?'#d0d9ed':'#ffedd0';
+  const garden=park?.border??[
     ...base(11.72,10.62,moon?'#9295b4':'#c4b393'),
+    r(0,-4.7,10.96,.91,.055,lawn,.376),
     ...pair.flatMap(side=>[
       r(side*4.68,1.92,2.0,4.95,.11,lawn,.38),
       r(side*3.36,3.69,1.65,2.97,.10,moon?'#78809f':'#a39581',.382),
       r(side*2.08,1.57,1.14,3.36,.08,lawn,.382),
       ...[-2.8,-.95,.8].map(z=>r(side*5.05,z,1.02,.82,.12,lawn,.38)),
+      ...picketFence(10.02,side*5.57,0,Math.PI/2,fence,.19),
+      ...picketFence(1.2,side*4.97,5.01,0,fence,.19),
+      ...picketFence(1.54,side*1.47,5.01,0,fence,.19),
     ]),
+    ...picketFence(11.14,0,-5.01,0,fence,.19),
     r(0,3.11,2.83,2.61,.19,trim,.38),r(0,3.12,2.51,2.27,.057,water,.56),
     r(0,4.83,1.26,.79,.057,trim,.385),
   ];
@@ -1575,18 +1641,20 @@ function residence(theme) {
     ...flankWindows(4.55,[-3.08,-1.5,.11],[1.12,2.57,4.02],window),
     ...glazing([0],[5.34],-.07,{...window,w:1.15,h:.8}),
     t(0,-1.65,.13,.13,.82,trim,7.78),d(0,-1.65,.49,.45,.39,moon?'#b9ebeb':'#e9bd73',8.53),
+    ...(park?.pond??[]),
+    ...(estate?[]:[t(-1.53,-4.65,2.13,.65,.115,trim,.423),t(-1.53,-4.65,1.91,.49,.019,water,.54)]),
     ...pair.flatMap((side,i)=>[
       ...parkedVehicle(moon?(i?'mini-rover':'rover'):(i?'compact':'car'),i?'#739dbe':'#ba746f',
-        {x:side*3.36,y:.484,z:3.65,yaw:0}),
-      ...[-2.87,-.94,1.14,3.09].flatMap((z,j)=>island?palm(side*4.88,z,2.45+j*.2)
+        estate?{x:side*RESIDENCE_PLOT.bayX,y:RESIDENCE_PLOT.deck,z:RESIDENCE_PLOT.bayZ,yaw:Math.atan2(-side*1.82,.75)}
+          :{x:side*3.36,y:.484,z:3.31,yaw:Math.PI}),
+      ...(!estate?[-2.87,-.94,1.14,3.09]:[]).flatMap((z,j)=>island?palm(side*4.88,z,2.45+j*.2)
         :moon?[d(side*4.88,z,.91,.89,.36,'#a8bdca',.39),...[-1,1].map(n=>t(side*4.88+n*.17,z,.23,.23,.38+j*.1,n<0?'#9cd7d6':'#cba9d7',.56))]
         :shrub(side*4.88,z,j%2?'#719261':'#577e62',.64+j*.11)),
-      ...[1.0,2.26].flatMap(z=>[d(side*2.12,z,.67,.65,.33,moon?'#c3a3d2':'#6e9367',.45),
-        d(side*2.12,z+.1,.23,.22,.12,moon?'#92cfd4':'#e5b77d',.72)]),
+      ...[1.0,2.26].flatMap(z=>[d(side*2.12,z,.67,.65,.33,moon?'#c3a3d2':'#6e9367',estate?.18:.45),
+        d(side*2.12,z+.1,.23,.22,.12,moon?'#92cfd4':'#e5b77d',estate?.45:.72)]),
     ]),
-    ...(island?[...umbrella(-1.12,3.7,'#dc877b')]
+    ...(estate?[]:island?umbrella(-1.12,3.7,'#dc877b')
       :[t(0,3.11,.52,.52,.53,trim,.56),d(0,3.11,.71,.71,.21,water,1.08)]),
-    ...nameplate(moon?'BASE':island?'PALASS':'RESIDENS',0,3.26,2.54,cap,.133),
   ];
   return [garden,house,details];
 }

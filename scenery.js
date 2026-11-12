@@ -1,5 +1,5 @@
 import {roadworkAge,walkingClock} from './scene-motion.js';
-import {regionSurface,regionVisibility,roadElevation,regionalPoint,riverAt} from './regions.js';
+import {regionSurface,regionVisibility,roadElevation,regionalFootprint,regionalPoint,riverAt,residenceDrive} from './regions.js';
 import {STREET_TURN_RADIUS} from './street-grid.js';
 import {randomGenerator} from './worlds.js';
 import {destinationRoutes,joinStreetPaths,roadProjections,streetNetwork} from './street-network.js';
@@ -574,6 +574,29 @@ export function createTraffic(actors,junctions=[],obstacles=[],roadworks=[]) {
     overlaps({size:vehicle.size,pose},other)||followsTooClosely({size:vehicle.size,pose},other)));
   const intersectionOwner=(vehicle,zone)=>zone&&vehicles.find(other=>other!==vehicle&&other.zone===zone
     &&other.yielding?.other!==vehicle);
+  const atBay=vehicle=>vehicle.distance<=vehicle.nextPark-vehicle.actor.route.length+.0001;
+  function drivewayClear(vehicle,distance,seconds) {
+    const {actor,size}=vehicle;
+    const {entry,reach}=actor.parking.merge;
+    const duration=reach/actor.speed;
+    const nearby=vehicles.filter(other=>other!==vehicle&&Math.hypot(other.pose.x-entry.x,other.pose.z-entry.z)<11+other.actor.speed*duration);
+    for (let t=0;t<=duration+.16;t+=.16) {
+      const pose=actorPose(actor,seconds+t,distance+Math.min(reach,actor.speed*t));
+      const leaving={size,pose};
+      if (roadworkBlocker(vehicle,pose)||intersectionOwner(vehicle,junctionAt(vehicle,pose))) return false;
+      const atGate=Math.hypot(pose.x-entry.x,pose.z-entry.z)<3.2;
+      for (const other of nearby) {
+        const waiting=other.holdUntil>seconds+t||other.blocker||other.workWait>0;
+        const next=other.pass?passingPose(other,other.pass,Math.min(other.pass.duration,other.pass.elapsed+t),seconds+t).pose
+          :waiting?other.pose:actorPose(other.actor,seconds+t,other.distance+other.actor.speed*t);
+        const approaching={size:other.size,pose:next};
+        const passingGate=atGate&&Math.abs(pose.y-next.y)<1.6&&Math.hypot(next.x-entry.x,next.z-entry.z)<other.size[0]+.98;
+        if (passingGate||overlaps(leaving,other)||overlaps(leaving,approaching)||followsTooClosely(leaving,approaching)
+          ||followsTooClosely(approaching,leaving)) return false;
+      }
+    }
+    return true;
+  }
   function planPass(vehicle,blocker,seconds) {
     const {actor,pose,size}=vehicle;
     const hover=actor.kind==='hover';
@@ -651,7 +674,8 @@ export function createTraffic(actors,junctions=[],obstacles=[],roadworks=[]) {
       ||b.wait-a.wait||a.size[0]-b.size[0]||a.index-b.index);
     for (const vehicle of cycle) {
       let clear=0;
-      const room=vehicle.zone?7.2:4.5;
+      const lap=vehicle.nextPark-vehicle.actor.route.length;
+      const room=Math.min(vehicle.zone?7.2:4.5,vehicle.actor.parking?vehicle.distance-lap:Infinity);
       for (let back=.3;back<=room;back+=.3) {
         const pose=actorPose(vehicle.actor,seconds,vehicle.distance-back);
         if (roadworkBlocker(vehicle,pose)||physicalBlocker(vehicle,pose)||intersectionOwner(vehicle,junctionAt(vehicle,pose))) break;
@@ -718,6 +742,9 @@ export function createTraffic(actors,junctions=[],obstacles=[],roadworks=[]) {
           continue;
         }
         const actor=vehicle.actor;
+        const merge=actor.parking?.merge;
+        if (merge&&atBay(vehicle)&&vehicles.some(other=>other!==vehicle&&other.actor.parking?.plot===actor.parking.plot
+          &&(!atBay(other)||other.holdUntil<vehicle.holdUntil))) continue;
         if (actor.driveThrough) {
           const near=Math.hypot(actor.driveThrough.x-vehicle.pose.x,actor.driveThrough.z-vehicle.pose.z)<.33;
           if (near&&!vehicle.pickedUp) {
@@ -738,11 +765,21 @@ export function createTraffic(actors,junctions=[],obstacles=[],roadworks=[]) {
             vehicle.nextTurn=seconds+12+vehicle.rng()*17;
           } else vehicle.nextTurn=seconds+(near?.45:1.8);
         }
-        const proposed=vehicle.distance+vehicle.actor.speed*step;
+        let proposed=vehicle.distance+vehicle.actor.speed*step;
+        const stop=merge&&vehicle.nextPark-actor.route.length+merge.stop;
+        if (merge&&vehicle.distance<=stop+.00001&&proposed>=stop) {
+          if (vehicle.distance<stop-.00001) proposed=stop;
+          else if (seconds<vehicle.nextMergeCheck) continue;
+          else if (!drivewayClear(vehicle,stop,seconds)) {
+            vehicle.nextMergeCheck=seconds+.14;
+            vehicle.pose={...vehicle.pose,sound:0,thrust:0};
+            continue;
+          }
+        }
         const parking=actor.parking&&proposed>=vehicle.nextPark;
         const distance=parking?vehicle.nextPark:proposed;
         const pose=actorPose(vehicle.actor,seconds,distance);
-        const zone=junctionAt(vehicle,pose);
+        const zone=merge&&distance<=stop+.00001?null:junctionAt(vehicle,pose);
         const blocker=roadworkBlocker(vehicle,pose)||intersectionOwner(vehicle,zone)||laneBlocker(vehicle,pose)
           ||(zone&&zone!==vehicle.zone&&exitBlocker(vehicle,distance,zone,seconds));
         if (blocker) {
@@ -868,27 +905,55 @@ function roadNear(paths,access,loop=false) {
     !best||spot.gap<best.gap?spot:best,null);
 }
 
-function parkingStreet(plan,access) {
+function parkingStreet(plan,access,site) {
   const local=roadNear(plan.paths,access);
   if (!local||local.gap>1.85) return null;
-  const branches=(plan.circuits??[]).filter(path=>path.length<=8);
+  const branches=(plan.circuits??[]).filter(path=>site||path.length<=8);
   const circuit=roadNear(branches,access,true);
   if (circuit&&circuit.gap<.75) {
-    const {path,i,x,z}=circuit;
+    const {path,i,x,z,u,v}=circuit;
     const points=path.slice(i+1).concat(path.slice(0,i+1));
-    const from=points.at(-1),to=points[0];
-    const length=Math.hypot(to.x-from.x,to.z-from.z)||1;
-    const dx=(from.z-to.z)/length,dz=(to.x-from.x)/length;
-    const join=[x+dx*.87,z+dz*.87];
+    const reverse=site&&(site.x-x)*-v+(site.z-z)*u<0;
+    if (reverse) points.reverse();
+    const offset=reverse?-.87:.87;
+    const join=[x-v*offset,z+u*offset];
     return [join,...streetLane(points),join];
   }
   const {x,z,path,i}=local;
   const right=path.slice(i+1),left=path.slice(0,i+1).reverse();
   const reach=branch=>branch.reduce((sum,p,i)=>sum+Math.hypot(p.x-(branch[i-1]?.x??x),p.z-(branch[i-1]?.z??z)),0);
-  const branch=reach(right)>reach(left)?right:left;
+  const preferred=site&&((site.x-x)*-local.v+(site.z-z)*local.u>0?right:left);
+  const branch=preferred&&reach(preferred)>=5?preferred:reach(right)>reach(left)?right:left;
   if (reach(branch)<5) return null;
   const points=[{x,z},...branch.slice(0,24)].filter((point,i,all)=>!i||Math.hypot(point.x-all[i-1].x,point.z-all[i-1].z)>.15);
   return laneLoop(points,.87);
+}
+
+function residenceMerge(route,plot,entry,front) {
+  const depth=(x,z)=>(x-plot.x)*Math.sin(plot.yaw)+(z-plot.z)*Math.cos(plot.yaw);
+  const line=front-3.02;
+  const segment=route.segments.find(p=>depth(p.x,p.z)<=line&&depth(p.x+p.dx,p.z+p.dz)>line);
+  const stop=segment?segment.start+(segment.end-segment.start)*(line-depth(segment.x,segment.z))
+    /(depth(segment.x+segment.dx,segment.z+segment.dz)-depth(segment.x,segment.z)):0;
+  return {stop,reach:6.1,entry};
+}
+
+function residenceTours(layout,plan,plot,spots) {
+  const entry=plot.entries[0];
+  const street=parkingStreet(plan,entry,plot);
+  if (!street) return [];
+  const {front,elevation}=residenceDrive(layout,plot,plan.streetElevation);
+  const point=([x,z])=>{const at=regionalPoint(plot,x,z);return [at.x,at.z];};
+  const throat=[0,front-1.53];
+  return spots.map((spot,i)=>{
+    const side=Math.sign(spot.x);
+    const leaving=[[spot.x,spot.z],[side*1.43,4.78],[0,front-3.45],throat];
+    const returning=[throat,[0,front-3.48],[side*1.66,5.72],[side*4.14,5.51],[side*4.62,4.52],[side*4.34,3.58]];
+    const points=leaving.map(point).concat(street,returning.map(point));
+    const car=actor(vehicle(spot.kind,spot.color),points,{kind:'road',speed:2.16,corner:STREET_TURN_RADIUS,elevation,exactStart:true});
+    return {...car,vehicleModel:spot.kind,parking:{model:spot,plot:plot.index,delay:8+i*11,rest:15+i*6,
+      merge:residenceMerge(car.route,plot,entry,front)}};
+  });
 }
 
 export function parkingTours(layout,plan,plot,stages) {
@@ -896,12 +961,13 @@ export function parkingTours(layout,plan,plot,stages) {
   if (!entry) return [];
   const spots=[...new Set(stages.flatMap(stage=>stage.flatMap(part=>part.parking?[part.parking]:[])))];
   if (!spots.length) return [];
+  if (plot.residence) return residenceTours(layout,plan,plot,spots);
   const cos=Math.cos(plot.yaw),sin=Math.sin(plot.yaw);
   const front=(entry.x-plot.x)*sin+(entry.z-plot.z)*cos;
   return spots.flatMap((spot,i)=>{
     const apron=plot.airportDistrict?spot.x*.31:spot.x;
     const access=regionalPoint(plot,apron,front);
-    const street=parkingStreet(plan,access)??parkingStreet(plan,entry);
+    const street=parkingStreet(plan,access,plot.kind==='residence'?plot:null)??parkingStreet(plan,entry);
     if (!street||front<spot.z+1.5) return [];
     const bay=regionalPoint(plot,spot.x,spot.z);
     const fromDeck=regionalPoint(plot,spot.x,Math.min(front-.84,spot.z+1.48));
@@ -910,7 +976,7 @@ export function parkingTours(layout,plan,plot,stages) {
     const points=[bay,fromDeck,driveway].map(toArray).concat(street,[driveway,fromDeck].map(toArray));
     const height=spot.kind==='hover'?.17:0;
     const deck=plot.y+spot.y-height;
-    const edge=Math.min(front-1.05,(plot.halfDepth??4.6)-.28);
+    const edge=Math.min(front-1.05,Math.max(plot.kind==='residence'?spot.z+.74:0,(plot.halfDepth??4.6)-.28));
     const elevation=(x,z)=>{
       const a=x-plot.x,b=z-plot.z;
       const localX=a*cos-b*sin,depth=a*sin+b*cos;
@@ -921,8 +987,9 @@ export function parkingTours(layout,plan,plot,stages) {
     };
     const car=actor(spot.kind==='hover'?occupiedHovercar(i===0,spot.color):vehicle(spot.kind,spot.color),points,
       {kind:spot.kind==='hover'?'hover':'road',speed:spot.kind==='hover'?2.38:1.76,corner:STREET_TURN_RADIUS,elevation,exactStart:true});
-    return [{...car,parking:{
+    return [{...car,...(plot.kind==='residence'&&{vehicleModel:spot.kind}),parking:{
       model:spot,plot:plot.index,delay:7+(plot.index*3+i*12)%18,rest:18+(plot.index+i*9)%15,reverseUntil:front-spot.z+.65,
+      ...(plot.kind==='residence'&&{merge:residenceMerge(car.route,plot,access,front)}),
       access:Array.from({length:7},(_,j)=>{
         const t=j/6,depth=edge+(front-.55-edge)*t;
         const point=regionalPoint(plot,spot.x+(apron-spot.x)*t,depth);
@@ -1019,7 +1086,7 @@ function terrainWander(layout,plan,completed,discoveries,driver) {
   const safe=(x,z)=>{
     const ground=regionSurface(layout,x,z);
     return !ground.water&&ground.basin>-2.8&&regionVisibility(plan,x,z)>.56
-      &&plan.plots.every(plot=>Math.hypot(plot.x-x,plot.z-z)>(plot.airfield?16:7.1))
+      &&plan.plots.every(plot=>plot.residence?!regionalFootprint(plot,x,z,1.45):Math.hypot(plot.x-x,plot.z-z)>(plot.airfield?16:7.1))
       &&discoveries.every(site=>Math.hypot(site.x-x,site.z-z)>(site.type.mine?7.15:6.25))
       &&roads.every(point=>Math.hypot(point.x-x,point.z-z)>2.9)
       &&tracks.every(point=>Math.hypot(point.x-x,point.z-z)>2.6);
@@ -1122,7 +1189,7 @@ function driveThroughTraffic(plot,theme,elevation,circuits) {
 
 function streetFleet(theme,layout,plan,completed,circuits,alternatives,elevation) {
   const network=plan.network??streetNetwork(joinStreetPaths([],plan.paths,new Map(),new Set()).paths);
-  const entries=completed.flatMap(plot=>plot.waterfront||plot.halfWidth?
+  const entries=completed.flatMap(plot=>plot.kind!=='residence'&&(plot.waterfront||plot.halfWidth)?
     plot.entries.map(point=>({...point,landmark:plot.index+1,airportDistrict:plot.airportDistrict,hangar:plot.kind==='hangar'})):[]);
   const visits=destinationRoutes(network,entries);
   const landmarkVisits=visits.filter(tour=>tour.landmark);

@@ -1,5 +1,5 @@
 import {box,dome,tube,beam,pointOnSite,placeParts,regionActors,parkingTours,driveThroughApproach,actor,visitor,MAX_ACTORS} from './scenery.js';
-import {regionLayout,planRegion,regionVisibility,regionSurface,regionalFootprint} from './regions.js';
+import {regionLayout,planRegion,regionVisibility,regionSurface,regionalFootprint,residenceDrive,RESIDENCE_PLOT} from './regions.js';
 import {REGION_PLACES,WORLD_BUILD_STEPS,grandCatalog,hasExpandedCatalog,randomGenerator,worldStatus} from './worlds.js';
 import {planStreetRegion} from './street-grid.js';
 import {prepareRoadTunnels,regionRoads,streetHalfWidth} from './region-roads.js';
@@ -114,6 +114,7 @@ function regionGround(layout,plan,sky,full,horizon,season,discoveries) {
   const relief=horizon?distantRelief(layout):null;
   const airfields=plan.plots.filter(plot=>plot.airfield);
   const resort=plan.plots.find(plot=>plot.beach);
+  const estate=plan.plots.find(plot=>plot.residence&&plot.gradeCut>.012);
   const beachSand=rgb('#ebd1a2');
   const mines=discoveries.filter(site=>site.type.mine);
   const outerRoads=horizon?[...plan.paths.flat(),...(plan.transit??[])].filter(p=>Math.max(Math.abs(p.x),Math.abs(p.z))>59):[];
@@ -142,6 +143,11 @@ function regionGround(layout,plan,sky,full,horizon,season,discoveries) {
     const reliefFactor=distant?.height&&outerRoads.length
       ?smooth((Math.sqrt(outerRoads.reduce((near,p)=>Math.min(near,(x-p.x)**2+(z-p.z)**2),100))-3.3)/5.4):1;
     ground+=(distant?.height??0)*horizon*reliefFactor;
+    if (estate&&ground>estate.y+.012) {
+      const dx=x-estate.x,dz=z-estate.z,turned=Math.abs(Math.sin(estate.yaw))>.5;
+      const beyond=Math.max(Math.abs(turned?dz:dx)-estate.halfWidth,Math.abs(turned?dx:dz)-estate.halfDepth);
+      ground-=(ground-estate.y-.012)*smooth(1-Math.max(0,beyond)/2.15);
+    }
     for (const site of airfields) {
       const a=x-site.x,b=z-site.z,c=Math.cos(site.yaw),s=Math.sin(site.yaw);
       const beyond=Math.max(Math.abs(a*c-b*s)-12.4,Math.abs(a*s+b*c)-8.4);
@@ -471,15 +477,17 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   }
   const airport=completedPlots.find(plot=>plot.kind==='airport');
   const helicopter=airport?helicopterModels(true,airport):id==='city'&&status.built>=2?helicopterModels(false,plan.origin):[];
-  plan.approaches=developments.flatMap(({plot,steps},i)=>{
-    const approach=plotAccess(layout,plot,steps[0].find(part=>part.support));
-    return approach?[{...approach,latest:i===developments.length-1}]:[];
-  });
   const horizon=clamp((status.built-status.capacity+6)/6);
   const sky=id==='moon'?'#000000':palette.sky;
   const tunnels=prepareRoadTunnels(layout,plan);
+  plan.approaches=developments.flatMap(({plot,steps},i)=>{
+    const approach=plot.residence
+      ?{path:residenceDrive(layout,plot,plan.streetElevation).path,drive:true,width:RESIDENCE_PLOT.gateHalf,color:RESIDENCE_PLOT.paving[id]}
+      :plotAccess(layout,plot,steps[0].find(part=>part.support));
+    return approach?[{...approach,latest:i===developments.length-1}]:[];
+  });
   const parkedTours=developments.slice(0,status.built).flatMap(({plot,steps})=>parkingTours(layout,plan,plot,steps));
-  plan.approaches.push(...parkedTours.map(actor=>({path:actor.parking.access,drive:true})));
+  plan.approaches.push(...parkedTours.flatMap(({parking})=>parking.access?[{path:parking.access,drive:true}]:[]));
   const discoveries=terrainDiscoveries(layout,{...plan,plots:sceneryPlan.plots},status.full);
   if (plan.starter) {
     discoveries.info.headquarters={...plan.starter,status:'Startbygg',sound:'discovery',
@@ -573,7 +581,8 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const speakers=[...locals.filter(actor=>actor.encounter),...locals.filter(actor=>actor.voice&&!actor.encounter)].slice(0,2);
   const primaryTours=[...new Map(parkedTours.slice().reverse().map(actor=>[actor.parking.plot,actor])).values()];
   const essential=[...rides.filter(actor=>actor.kind==='observation'||actor.kind==='wheel'),...(rail?.actors??[]),...(rail?.walkers??[]),...roadworks.crews,
-    ...helicopter,...craft.slice(0,5),...beachSwimmers,...rides.filter(actor=>actor.dustBather),...primaryTours,...speakers,
+    ...helicopter,...craft.slice(0,5),...beachSwimmers,...rides.filter(actor=>actor.dustBather),...primaryTours,
+    ...parkedTours.filter(actor=>actor.parking.merge),...speakers,
     ...(discoveries.visitor?[discoveries.visitor]:[]),...discoveries.smoke,
     ...parks.walks,...locals.filter(actor=>actor.driveThrough||actor.offroadExplorer||['bus','offroad-rover','hover'].includes(actor.kind)),...street.slice(0,17)];
   const football=rides.filter(actor=>actor.footballPlayer||actor.kind.startsWith('football-'));

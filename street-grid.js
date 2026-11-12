@@ -1,4 +1,5 @@
-import {connectWaterfront,regionalAnnex,regionalFootprint,regionSurface,riverAt,riverWidth,specialEntrances} from './regions.js';
+import {connectWaterfront,regionalAnnex,regionalFootprint,regionalPoint,regionSurface,riverAt,riverWidth,
+  roadElevation,specialEntrances,RESIDENCE_PLOT} from './regions.js';
 import {randomGenerator,REGION_PLACES,LARGE_REGION_PLACES} from './worlds.js';
 import {joinStreetPaths,streetNetwork} from './street-network.js';
 
@@ -66,7 +67,7 @@ function streetGraph(layout,spacing,shift,maxGrade=2.15) {
       if (layout.regionalSites.some(site=>regionalFootprint(site,x,z,6.05))
         ||districtAccess.some(entry=>Math.hypot(entry.x-x,entry.z-z)<6.5)) continue;
       if (Object.entries(layout.berths).some(([kind,site])=>kind!=='lighthouse'&&gap(site,{x,z})<(site.span?site.span*.66+3:8.7))) continue;
-      lots.push({x,z,y:high+.045,ring,perimeter,front,west,weight:rng()*4.8,westFirst:rng()>.5});
+      lots.push({x,z,y:high+.045,grade:high-low,ring,perimeter,front,west,weight:rng()*4.8,westFirst:rng()>.5});
     }
   }
   lots.sort((a,b)=>gap(a,layout.origin)+a.weight-gap(b,layout.origin)-b.weight);
@@ -127,6 +128,76 @@ function pathToStreet(links,starts,active,avoid) {
   return null;
 }
 
+function residenceSites(layout,{available}) {
+  const {halfWidth,halfDepth,deck}=RESIDENCE_PLOT;
+  const reach=halfDepth+(layout.theme==='island'?1.92:2.12);
+  return available.flatMap(lot=>lot.perimeter.flatMap((edge,side)=>{
+    if (!edge) return [];
+    const first=edge.points[0],last=edge.points.at(-1);
+    const entry={x:(first.x+last.x)*.5,z:(first.z+last.z)*.5};
+    const yaw=[Math.PI,Math.PI/2,0,-Math.PI/2][side];
+    const x=entry.x-Math.sin(yaw)*reach,z=entry.z-Math.cos(yaw)*reach;
+    if (Math.abs(x)>65||Math.abs(z)>64) return [];
+    const site={x,z,yaw,halfWidth,halfDepth,entries:[entry],residence:true};
+    const samples=Array.from({length:63},(_,i)=>{
+      const point=regionalPoint(site,(i%7/3-1)*halfWidth,(Math.floor(i/7)/4-1)*halfDepth);
+      return {...point,...regionSurface(layout,point.x,point.z)};
+    });
+    const {regionalSites,berths}=layout;
+    if (samples.some(point=>point.water||point.bank<.45||layout.theme==='moon'&&point.basin<-.55
+      ||regionalSites.some(neighbor=>regionalFootprint(neighbor,point.x,point.z,2.05))
+      ||Object.entries(berths).some(([kind,neighbor])=>gap(point,neighbor)<(kind==='bridge'?(neighbor.span??12)*.53:6.9)))) return [];
+    const high=Math.max(...samples.map(point=>point.y)),low=Math.min(...samples.map(point=>point.y));
+    const lane=regionalPoint(site,0,reach-.87);
+    const street=roadElevation(layout,lane.x,lane.z);
+    const natural=high+.018;
+    if (high-low>1.28||natural+deck-street>.68) return [];
+    const y=Math.max(street-deck-.08,Math.min(natural,street-deck+.24));
+    const cut=Math.max(0,natural-y),rise=Math.abs(y+deck-street);
+    const shore=Math.min(...samples.map(point=>point.basin));
+    const lake=layout.theme==='moon'?0:Math.min(26,Math.max(0,shore-2.2))*1.4;
+    return [{lot,edge,site:{...site,y,gradeCut:cut},terrainCost:(high-low)*22+(rise+cut)*35+lake}];
+  }));
+}
+
+function chooseResidence(layout,graph,{links,open,active,connectors,usedLots,blockedLots,remaining}) {
+  const {nodes,edges,available,origin}=graph;
+  const sites=graph.residences??=residenceSites(layout,graph);
+  const activeNodes=[...active].map(id=>nodes[id]);
+  const candidates=sites.filter(({lot})=>!usedLots.has(lot))
+    .map(candidate=>{
+      const {site,terrainCost}=candidate;
+      const newRoad=Math.min(...activeNodes.map(node=>gap(node,site.entries[0])));
+      return {...candidate,score:terrainCost+gap(site,origin)*.15+newRoad*.46};
+    }).sort((a,b)=>a.score-b.score);
+  for (const {edge,site} of candidates) {
+    const turned=Math.abs(Math.sin(site.yaw))>.5;
+    const wx=turned?site.halfDepth:site.halfWidth,wz=turned?site.halfWidth:site.halfDepth;
+    const covers=lot=>Math.abs(lot.x-site.x)<wx+5.9&&Math.abs(lot.z-site.z)<wz+5.9;
+    const hits=(a,b,margin)=>Math.min(a.x,b.x)<site.x+wx+margin&&Math.max(a.x,b.x)>site.x-wx-margin
+      &&Math.min(a.z,b.z)<site.z+wz+margin&&Math.max(a.z,b.z)>site.z-wz-margin;
+    const edgeHits=road=>hits(road.points[0],road.points.at(-1),1.35);
+    if ([...usedLots].some(covers)||[...open.values()].some(edgeHits)
+      ||connectors.some(path=>path.some((p,i)=>i&&hits(path[i-1],p,1.42)))) continue;
+    const clear=nodes.map(({id})=>links[id].filter(next=>!edgeHits(edges.get(edgeKey(id,next)))));
+    const street=pathToStreet(clear,[edge.a,edge.b],active);
+    if (!street) continue;
+    // Give both ends of the frontage a way back into the street network.
+    const loop=pathToStreet(clear,[edge.a],new Set([edge.b]),edge.key);
+    if (!loop||loop.length>9) continue;
+    const connected=new Set(active),queue=[...connected];
+    for (let i=0;i<queue.length;i++) for (const next of clear[queue[i]]) {
+      if (connected.has(next)) continue;
+      connected.add(next);queue.push(next);
+    }
+    const spare=available.filter(lot=>!usedLots.has(lot)&&!blockedLots.has(lot)&&!covers(lot)
+      &&[lot.front,lot.west].some(road=>road&&!edgeHits(road)&&connected.has(road.a)));
+    if (spare.length<remaining) continue;
+    return {site,edge,street,loop,links:clear,covered:available.filter(covers)};
+  }
+  return null;
+}
+
 function streetCircuits(nodes,open,links,starter) {
   const result=[starter.map(id=>nodes[id])];
   const used=new Set([starter.slice().sort((a,b)=>a-b).join(',')]);
@@ -170,11 +241,13 @@ function streetCircuits(nodes,open,links,starter) {
 export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Object.keys(layout.berths).length,{starter=false}={}) {
   const graph=layoutStreets(layout,requiredLots+Number(starter))??layoutStreets(layout,requiredLots);
   if (!graph) return null;
-  const {nodes,edges,origin,available,links,connectorLayout}=graph;
+  const {nodes,edges,origin,available}=graph;
+  let {links,connectorLayout}=graph;
   const reserveOrigin=starter&&available.length>requiredLots;
   const open=new Map(), active=new Set(), connectors=[],plots=[];
   const gateways=new Set();
   const usedLots=new Set(reserveOrigin?[origin]:[]);
+  const blockedLots=new Set();
   let latestPaths=new Map();
   let track=false;
   const add=edge=>{
@@ -239,6 +312,25 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
       attach(special,index,kind);
       continue;
     }
+    if (kind==='residence') {
+      const remaining=requiredLots-usedLots.size-1;
+      const estate=chooseResidence(layout,graph,{links,open,active,connectors,usedLots,blockedLots,remaining});
+      if (estate) {
+        const {site,edge,street,loop,covered}=estate;
+        links=estate.links;
+        covered.forEach(lot=>blockedLots.add(lot));
+        const oldRoadBlock=connectorLayout.blockedRoad;
+        const blockedRoad=(x,z)=>oldRoadBlock(x,z)||regionalFootprint(site,x,z,1.35);
+        connectorLayout={...connectorLayout,blockedRoad,
+          grid:connectorLayout.grid.map(tile=>({...tile,blocked:blockedRoad(tile.x,tile.z)}))};
+        for (const path of [street,loop]) {
+          for (let i=1;i<path.length;i++) add(edges.get(edgeKey(path[i-1],path[i])));
+        }
+        add(edge);
+        plots.push({...site,index,kind});
+        continue;
+      }
+    }
 
     const banks=[0,0];
     if (balanceBanks) for (const plot of plots) {
@@ -247,16 +339,18 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     // Keep the centre compact, then let new districts take turns across the river.
     let choice=null;
     for (const lot of available) {
-      if (usedLots.has(lot)) continue;
+      if (usedLots.has(lot)||blockedLots.has(lot)) continue;
       for (const [edge,yaw] of [[lot.front,0],[lot.west,-Math.PI/2]]) {
-        if (!edge) continue;
+        if (!edge||!links[edge.a].includes(edge.b)) continue;
         const path=pathToStreet(links,[edge.a,edge.b],active);
         if (!path) continue;
         const starter=lot===origin&&usedLots.size===0?-5:0;
         const bank=balanceBanks?bankOf(lot):0;
         const imbalance=banks[bank]-banks[1-bank];
         const riverBias=usedLots.size>=3&&imbalance>1 ? imbalance*9 : 0;
-        const score=path.length*6+gap(lot,origin)*.18+lot.weight+starter+riverBias+(lot.westFirst===(yaw!==0)?0:.65);
+        const middle=edge.points[Math.floor(edge.points.length/2)];
+        const slope=kind==='residence'?lot.grade*10+Math.abs(lot.y+.484-roadElevation(layout,middle.x,middle.z))*18:0;
+        const score=path.length*6+gap(lot,origin)*.18+lot.weight+starter+riverBias+slope+(lot.westFirst===(yaw!==0)?0:.65);
         if (!choice||score<choice.score) choice={lot,edge,yaw,path,score};
       }
     }
@@ -266,18 +360,19 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     for (let i=1;i<path.length;i++) add(edges.get(edgeKey(path[i-1],path[i])));
     add(edge);
     const ringRoad=!varied||usedLots.size<=2||['railwayStation','monorailStation','tramStation','busStation'].includes(kind)||lot.weight<2.1;
-    if (ringRoad) lot.perimeter.forEach(add);
+    if (ringRoad) lot.perimeter.filter(side=>side&&links[side.a].includes(side.b)).forEach(add);
     else if (lot.weight>3.5) {
       // A corner plot gets a side street. Quiet parcels need only one frontage.
       const corner=lot.perimeter.find(side=>side&&side!==edge&&!open.has(side.key)
-        &&[side.a,side.b].some(id=>id===edge.a||id===edge.b));
+        &&links[side.a].includes(side.b)&&[side.a,side.b].some(id=>id===edge.a||id===edge.b));
       add(corner);
     }
     const offset=varied&&!ringRoad?Math.min(.58,Math.max(0,gap(nodes[lot.ring[0]],nodes[lot.ring[1]])*.5-6.32)):0;
     const x=lot.x-Math.sin(yaw)*offset,z=lot.z-Math.cos(yaw)*offset;
     const entry=yaw===0?{x,z:nodes[lot.ring[2]].z}:{x:nodes[lot.ring[3]].x,z};
+    const y=kind==='residence'?lot.y-Math.min(.22,Math.max(0,lot.y+.484-roadElevation(layout,entry.x,entry.z))):lot.y;
     if (reserveLot) attach(special,index,kind);
-    else plots.push({x,y:lot.y,z,yaw,index,kind,entries:[entry],
+    else plots.push({x,y,z,yaw,index,kind,entries:[entry],
       streetSpan:gap(nodes[lot.ring[0]],nodes[lot.ring[1]])});
   }
   const openLinks=nodes.map(()=>[]);

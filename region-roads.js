@@ -297,7 +297,8 @@ export function prepareRoadTunnels(layout,plan) {
     const x=(first.x+last.x)/2,z=(first.z+last.z)/2;
     const heights=[-approach,-mouth,mouth,approach].map(d=>roadElevation(layout,x+dx*d,z+dz*d));
     if (Math.max(...heights)-Math.min(...heights)>.74
-      ||plan.plots.some(plot=>Math.hypot(x-plot.x,z-plot.z)<6.7)
+      ||plan.plots.some(plot=>Math.hypot(x-plot.x,z-plot.z)<6.7
+        ||plot.residence&&plot.entries.some(entry=>Math.hypot(x-entry.x,z-entry.z)<10))
       ||plan.transitPortals?.some(portal=>Math.hypot(x-portal.x,z-portal.z)<12)) return [];
     const seed=(Math.imul(Math.round(x*100),19)^Math.imul(Math.round(z*100),37)^layout.seed)>>>0;
     const relief=regionSurface(layout,x,z).relief;
@@ -365,8 +366,8 @@ export function regionRoads(layout,plan,animate=false) {
     }):path;
     return pavedRoute(layout,fine,width,{junctions,plan:plan.plots?plan:null,stage,gateway:plan.gateways?.has(plan.paths[i])});
   });
-  for (const {path,drive,latest} of plan.approaches??[]) {
-    const road=measureRoad(layout,path),half=drive?.61:.38,color=drive?'#a7a699':'#d3c09e';
+  for (const {path,drive,latest,width,color=drive?'#a7a699':'#d3c09e'} of plan.approaches??[]) {
+    const road=measureRoad(layout,path),half=width??(drive?.61:.38);
     for (let i=1;i<road.length;i++) {
       const part=strip(road[i-1],road[i],half,.014,color,4.3);
       if (animate&&latest) part.roadBuild=(count-1+i/(road.length-1))/count;

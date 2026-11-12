@@ -1,5 +1,5 @@
 import {box,beam,rounded,roof,tube,dome,placeParts,pointOnSite,visitor,actor} from './scenery.js';
-import {regionSurface,regionVisibility} from './regions.js';
+import {regionSurface,regionVisibility,regionalFootprint} from './regions.js';
 import {randomGenerator} from './worlds.js';
 
 const timber='#8d705b';
@@ -402,7 +402,7 @@ export function discoveryGuides(walkers,sites,layout,plan) {
         return tiles.every(([u,v])=>{
           const tile=regionSurface(layout,u,v);
           return !tile.water&&Math.abs(tile.y-site.y)<1.4
-            &&!plan.plots.some(plot=>Math.hypot(u-plot.x,v-plot.z)<6.5);
+            &&!plan.plots.some(plot=>plot.residence?regionalFootprint(plot,u,v,.8):Math.hypot(u-plot.x,v-plot.z)<6.5);
         });
       });
       if (!clear) continue;
@@ -438,7 +438,8 @@ export function terrainDiscoveries(layout,plan,full) {
       const z=plan.origin.z+Math.sin(angle)*radius;
       if (Math.abs(x)>63||Math.abs(z)>61||regionVisibility(plan,x,z,full)<.66) continue;
       if (finds.some(site=>Math.hypot(x-site.x,z-site.z)<7.3)) continue;
-      if (plots.some(plot=>Math.hypot(x-plot.x,z-plot.z)<(plot.airfield?15:(plot.span??9.1)))) continue;
+      if (plots.some(plot=>plot.residence?regionalFootprint(plot,x,z,type.mine?5:3.9)
+        :Math.hypot(x-plot.x,z-plot.z)<(plot.airfield?15:(plot.span??9.1)))) continue;
       if (nearRoad(x,z,type.mine?7.15:6.25)||tracks.some(point=>Math.hypot(x-point.x,z-point.z)<5.3)) continue;
       const samples=[[-2.5,-2.5],[-2.5,2.5],[2.5,-2.5],[2.5,2.5],[0,0]]
         .map(([dx,dz])=>regionSurface(layout,x+dx,z+dz));

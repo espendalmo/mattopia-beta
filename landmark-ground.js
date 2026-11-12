@@ -13,10 +13,10 @@ const oval=Array.from({length:16},(_,i)=>{
 });
 const curved=new Set(['park','garden','greatPark','bandstand','palmGarden','moonGarden','biodome','habitat','ringHabitat',
   'moonHotel','rocketPort','orbitalPort','telescope','tropicalPools','beachClub','coaster']);
-const square=new Set(['school','sawmill','factory','airstrip','solar','solarGarden','prison',
+const square=new Set(['school','sawmill','factory','airstrip','solar','solarGarden','prison','residence',
   'field','spaceField','launch','pool','dance']);
 const paved=new Set(['busStation','airport','airstrip','shuttlePort','factory','sawmill','hoverDealer','roverGarage','moonWorkshop','moonCargo','cargoDepot',
-  'railwayStation','monorailStation','residence']);
+  'railwayStation','monorailStation']);
 
 export function shapeLandmarkGround(stages,kind) {
   const foundation=stages[0].find(part=>part.support);
@@ -88,7 +88,7 @@ export function plotAccess(layout,plot,foundation) {
   const dx=entry.x-plot.x,dz=entry.z-plot.z;
   const front=dx*s+dz*c,across=dx*c-dz*s;
   const drive=paved.has(plot.kind);
-  const endX=foundation.x+(drive?.18:plot.index%2===0?-.21:.21)*foundation.w;
+  const endX=foundation.x+(plot.kind==='residence'?0:drive?.18:plot.index%2===0?-.21:.21)*foundation.w;
   const rim=foundation.outline;
   let endZ=foundation.z+foundation.d*.5;
   if (rim) {

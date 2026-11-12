@@ -11,6 +11,9 @@ const mix=(a,b,t)=>a+(b-a)*t;
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const polar=(angle,r)=>({x:Math.sin(angle)*r,z:Math.cos(angle)*r});
 
+export const RESIDENCE_PLOT={halfWidth:6.65,halfDepth:7.85,deck:.194,gateHalf:1.13,bayX:3.25,bayZ:4.03,
+  paving:{city:'#cbbba2',island:'#e1caa7',moon:'#adabc0'}};
+
 export function riverAt(layout,z) {
   return 6.8*Math.sin(z*.046+layout.phase)+2.45*Math.sin(z*.101-layout.phase);
 }
@@ -491,4 +494,25 @@ export function roadElevation(layout,x,z) {
     return Math.max(surface.y,...rim.map(([a,b])=>regionSurface(layout,x+a,z+b).y))+.19;
   }
   return Math.max(layout.theme==='city'&&surface.bank<1.1?.47:.13,surface.y+.108);
+}
+
+export function residenceDrive(layout,plot,street=(x,z)=>roadElevation(layout,x,z)) {
+  const {entries:[entry],halfDepth,yaw}=plot;
+  const c=Math.cos(yaw),s=Math.sin(yaw);
+  const front=(entry.x-plot.x)*s+(entry.z-plot.z)*c;
+  const curb=front-(layout.theme==='island'?1.02:1.22);
+  const deck=plot.y+RESIDENCE_PLOT.deck;
+  const elevation=(x,z)=>{
+    const dx=x-plot.x,dz=z-plot.z;
+    const localX=dx*c-dz*s,localZ=dx*s+dz*c;
+    if (Math.abs(localX)>plot.halfWidth+.04||localZ>=curb+.08) return street(x,z);
+    if (localZ<=halfDepth-.24) return deck;
+    const t=clamp((localZ-halfDepth+.24)/(curb-halfDepth+.32),0,1);
+    return mix(deck,street(x,z),t*t*(3-2*t));
+  };
+  const path=Array.from({length:7},(_,i)=>{
+    const at=regionalPoint(plot,0,mix(halfDepth-.25,curb+.15,i/6));
+    return {...at,y:elevation(at.x,at.z)-.014};
+  });
+  return {front,elevation,path};
 }

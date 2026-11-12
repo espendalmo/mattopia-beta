@@ -205,7 +205,8 @@ const VISITORS={
 };
 
 export function landmarkVisitors(theme,plot) {
-  const positions=VISITORS[plot.kind]??(plot.kind==='bridge'?[]:theme==='moon'?[[-2.1,.36,3.14,-.25],[1.53,.36,2.82,.4]]:[[1.4,.36,2.9,-.35]]);
+  const positions=plot.residence?[[-4.53,.18,-4.94,.62],[3.3,.18,-6.66,-.65]]
+    :VISITORS[plot.kind]??(plot.kind==='bridge'?[]:theme==='moon'?[[-2.1,.36,3.14,-.25],[1.53,.36,2.82,.4]]:[[1.4,.36,2.9,-.35]]);
   const outfits=['#ca8677','#6c9cb4','#e0b375','#8a80b0'];
   const skins=['#deae85','#aa765b','#ebbf91'];
   const deckX=plot.beach?1.5:1,deckZ=plot.beach?1.22:1;
