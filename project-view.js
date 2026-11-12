@@ -356,7 +356,8 @@ function canvasPainter(canvas, faces, background, stars) {
   };
 }
 
-function webGLPainter(canvas, faces, background, illustrated, stars) {
+function webGLPainter(canvas, faces, background, illustrated, stars, actorCount) {
+  const actorSlots=Math.max(1,Math.min(MAX_ACTORS,actorCount));
   const vertexFloats=17;
   const gl=canvas.getContext('webgl',{alpha:stars,antialias:true});
   if (!gl) return null;
@@ -382,9 +383,9 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
     uniform float center;
     uniform float curvature;
     uniform vec4 reveal;
-    uniform vec4 actorPose[${MAX_ACTORS}];
-    uniform vec3 actorTilt[${MAX_ACTORS}];
-    uniform vec4 actorMotion[${MAX_ACTORS}];
+    uniform vec4 actorPose[${actorSlots}];
+    uniform vec3 actorTilt[${actorSlots}];
+    uniform vec4 actorMotion[${actorSlots}];
     varying mediump vec4 shade;
     varying mediump float modelHeight;
     varying mediump float latest;
@@ -410,7 +411,7 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
         return;
       }
       if (latest == 1.0) pos.y = reveal.z + (pos.y-reveal.z)*reveal.y + reveal.x;
-      for (int i = 0; i < ${MAX_ACTORS}; i++) {
+      if (group >= 2.0) for (int i = 0; i < ${actorSlots}; i++) {
         if (group == 2.0+float(i)) {
           vec4 pose = actorPose[i];
           vec4 motion = actorMotion[i];
@@ -426,6 +427,7 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
           float z = pos.z+step;
           pos = vec3(pose.x+pos.x*pose.w+z*motion.x,pos.y+pose.y+max(0.0,step)*.58,
             pose.z+z*pose.w-pos.x*motion.x);
+          break;
         }
       }
       if (lunar > .5 && curvature > 0.0) {
@@ -479,8 +481,8 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
   }
   const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','curvature','reveal','shine','age','actorPose[0]','actorMotion[0]','actorTilt[0]']
     .map(name=>[name,gl.getUniformLocation(program,name)]));
-  const actorPositions=new Float32Array(MAX_ACTORS*4),actorMovement=new Float32Array(MAX_ACTORS*4);
-  const actorSlopes=new Float32Array(MAX_ACTORS*3);
+  const actorPositions=new Float32Array(actorSlots*4),actorMovement=new Float32Array(actorSlots*4);
+  const actorSlopes=new Float32Array(actorSlots*3);
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
   gl.clearColor(...backgroundRGB(background),stars?0:1);
@@ -595,7 +597,7 @@ export function mountProjectView(container, scene, interactive=false, {
   if (stars) canvas.classList.add('lunar-starfield');
   let engine;
   if (interactive || scene.world && !still) {
-    try { engine=webGLPainter(canvas,faces,scene.background,scene.illustrated,stars); }
+    try { engine=webGLPainter(canvas,faces,scene.background,scene.illustrated,stars,scene.ambient?.length??0); }
     catch {
       const fallback=canvas.cloneNode();
       canvas.replaceWith(fallback);

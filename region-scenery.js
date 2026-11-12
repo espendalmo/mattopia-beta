@@ -2,7 +2,8 @@ import {box,dome,tube,beam,pointOnSite,placeParts,regionActors,parkingTours,driv
 import {regionLayout,planRegion,regionVisibility,regionSurface,regionalFootprint} from './regions.js';
 import {REGION_PLACES,WORLD_BUILD_STEPS,grandCatalog,hasExpandedCatalog,randomGenerator,worldStatus} from './worlds.js';
 import {planStreetRegion} from './street-grid.js';
-import {prepareRoadTunnels,regionRoads} from './region-roads.js';
+import {prepareRoadTunnels,regionRoads,streetHalfWidth} from './region-roads.js';
+import {roadProjections} from './street-network.js';
 import {constructionYard,landmarkVisitors,lunarEarth,rideModels,resortBeach} from './map-art.js';
 import {plotAccess,terrainFoundation} from './landmark-ground.js';
 import {districtRail,districtTram,helicopterModels} from './transport.js';
@@ -277,7 +278,8 @@ function landscapeDetails(layout,plan,full,sky,season,finds) {
       marks.push({...box(x,z,.83+random()*1.36,.065,.008,theme==='island'?'#b9dfd8':'#a1cbca',tile.y+.014),layer:2,fog:1-visibility});
       continue;
     }
-    if (plan.plots.some(plot=>plot.halfWidth&&regionalFootprint(plot,x,z,1.3))) continue;
+    if (plan.plots.some(plot=>plot.halfWidth&&regionalFootprint(plot,x,z,1.3))
+      ||plan.footpaths?.some(path=>path.some(point=>Math.hypot(x-point.x,z-point.z)<1.1))) continue;
     if (plan.plots.some(plot=>plot.beach&&Math.hypot(x-plot.x,z-plot.z)<24&&tile.bank<9.8)) continue;
     if (tile.bank>1.35 && visibility>.38) {
       const ring=Array.from({length:7},(_,i)=>{
@@ -340,33 +342,95 @@ function viewBounds(plan,horizon) {
     size:lerp(Math.max(78,Math.hypot(right-left,front-back)*.91+39),238,horizon)};
 }
 
-function pocketParks(layout,plan,completed) {
-  const parts=[],walks=[],places=[],moon=layout.theme==='moon';
-  const roads=plan.paths.flat();
+function walkLine(a,b,step=.85) {
+  const count=Math.max(1,Math.ceil(Math.hypot(b.x-a.x,b.z-a.z)/step));
+  return Array.from({length:count+1},(_,i)=>({x:lerp(a.x,b.x,i/count),z:lerp(a.z,b.z,i/count)}));
+}
+
+function parkStreetLink(layout,plan,start,clear) {
+  const width=streetHalfWidth(layout.theme);
+  const shoulders=roadProjections(plan.paths,start,13).filter(road=>road.gap>width+1)
+    .sort((a,b)=>a.gap-b.gap);
+  for (const road of shoulders.slice(0,28)) {
+    const side=Math.sign((start.x-road.x)*-road.v+(start.z-road.z)*road.u)||1;
+    const shoulder=(point,u=road.u,v=road.v)=>({x:point.x-v*side*(width+.55),z:point.z+u*side*(width+.55)});
+    const landing=shoulder(road);
+    const access=walkLine(start,landing);
+    if (!access.every(clear)) continue;
+    for (const direction of [1,-1]) {
+      const nodes=direction>0?road.path.slice(road.i+1):road.path.slice(0,road.i+1).reverse();
+      const pavement=[landing];
+      let last=road,length=0;
+      for (const next of nodes) {
+        const span=Math.hypot(next.x-last.x,next.z-last.z);
+        if (span<.08) continue;
+        const u=(next.x-last.x)/span*direction,v=(next.z-last.z)/span*direction;
+        if (u*road.u+v*road.v<.65) break;
+        const amount=Math.min(8.4-length,span);
+        const to=shoulder({x:last.x+(next.x-last.x)*amount/span,z:last.z+(next.z-last.z)*amount/span},u,v);
+        const extension=walkLine(pavement.at(-1),to).slice(1);
+        if (!extension.every(clear)) break;
+        pavement.push(...extension);
+        length+=amount;
+        last=next;
+        if (length>=8.3) break;
+      }
+      if (length>=3.9) return [...access,...pavement.slice(1)];
+    }
+  }
+  return null;
+}
+
+function pocketParks(layout,plan,completed,finds) {
+  const parts=[],walks=[],places=[],paths=[],moon=layout.theme==='moon';
+  const roads=plan.paths.flat(),width=streetHalfWidth(layout.theme);
+  const dry=({x,z})=>!regionSurface(layout,x,z).water&&!plan.inRoadTunnel?.(x,z)
+    && roads.every(p=>Math.hypot(x-p.x,z-p.z)>width+.23)
+    && (plan.transit??[]).every(p=>Math.hypot(x-p.x,z-p.z)>1.42)
+    && finds.every(p=>Math.hypot(x-p.x,z-p.z)>3.8);
+  const clear=point=>dry(point)&&plan.plots.every(plot=>
+    !regionalFootprint({...plot,halfWidth:plot.halfWidth??5.07,halfDepth:plot.halfDepth??4.5},point.x,point.z,.34));
+  const height=({x,z})=>regionSurface(layout,x,z).y+.061;
+  const paint=(path,wide)=>{
+    const half=wide?.57:.43;
+    const edges=path.map((point,i)=>{
+      const a=path[Math.max(0,i-1)],b=path[Math.min(path.length-1,i+1)];
+      const span=Math.hypot(b.x-a.x,b.z-a.z)||1;
+      const dx=(b.z-a.z)*half/span,dz=(a.x-b.x)*half/span;
+      return [-1,1].map(side=>{
+        const x=point.x+dx*side,z=point.z+dz*side;
+        return [x,height({x,z}),z];
+      });
+    });
+    for (let i=1;i<edges.length;i++) {
+      const [a,b]=edges[i-1],[c,d]=edges[i];
+      parts.push({...face([a,c,d,b],moon?'#c3b8cc':'#c9bd9b',2.2),footpath:true});
+    }
+  };
   for (const [i,a] of completed.entries()) {
-    if (a.waterfront||a.airfield||places.length>=8) continue;
+    if (a.waterfront||a.halfWidth||places.length>=8) continue;
     for (const b of completed.slice(i+1)) {
-      if (b.waterfront||b.airfield) continue;
+      if (b.waterfront||b.halfWidth) continue;
       const gap=Math.hypot(a.x-b.x,a.z-b.z);
       if (gap<11.8||gap>17) continue;
       const x=(a.x+b.x)*.5,z=(a.z+b.z)*.5;
-      const clear=(u,v)=>!regionSurface(layout,u,v).water&&!plan.inRoadTunnel?.(u,v)
-        && roads.every(p=>Math.hypot(u-p.x,v-p.z)>1.95)
-        && (plan.transit??[]).every(p=>Math.hypot(u-p.x,v-p.z)>1.45);
-      if (!clear(x,z)||places.some(p=>Math.hypot(x-p.x,z-p.z)<9)
-        || plan.plots.some(p=>p!==a&&p!==b&&Math.hypot(x-p.x,z-p.z)<6.9)) continue;
+      if (!clear({x,z})||places.some(p=>Math.hypot(x-p.x,z-p.z)<9)) continue;
       const dx=(a.z-b.z)/gap,dz=(b.x-a.x)/gap;
-      const spots=[-2.5,-1.25,0,1.25,2.5].map(t=>[x+t*dx,z+t*dz]);
-      if (!spots.every(([u,v])=>clear(u,v))) continue;
+      const park=[-2.5,-1.25,0,1.25,2.5].map(t=>({x:x+t*dx,z:z+t*dz}));
+      if (!park.every(clear)) continue;
+      const before=parkStreetLink(layout,plan,park[0],clear);
+      const after=parkStreetLink(layout,plan,park.at(-1),clear);
+      if (!before&&!after) continue;
       places.push({x,z});
-      const position=([u,v])=>[u,regionSurface(layout,u,v).y+.065,v];
-      for (let j=1;j<spots.length;j++) {
-        const [u,h,v]=position(spots[j-1]),[w,k,q]=position(spots[j]);
-        const n=.56;
-        parts.push(face([[u-dz*n,h,v+dx*n],[w-dz*n,k,q+dx*n],[w+dz*n,k,q-dx*n],[u+dz*n,h,v-dx*n]],moon?'#c3b8cc':'#c9bd9b',2));
-      }
+      paint(park,true);
+      if (before) paint(before,false);
+      if (after) paint(after,false);
+      const path=[...(before?.slice(1).reverse()??[]),...park,...(after?.slice(1)??[])];
+      paths.push(path);
       const seed=randomGenerator(layout.seed^Math.imul(a.index+1,b.index+59));
-      for (const [u,v] of [spots[0],spots.at(-1)]) {
+      for (const [j,point] of [park[1],park[3]].entries()) {
+        const side=j===0?1:-1,u=point.x+side*dz*1.21,v=point.z-side*dx*1.21;
+        if (!clear({x:u,z:v})||path.some(point=>Math.hypot(point.x-u,point.z-v)<1.05)) continue;
         const h=regionSurface(layout,u,v).y;
         if (moon) {
           parts.push(tube(u,v,.82,.82,.15,'#888ea6',h),...[-1,0,1].map((n,i)=>({
@@ -374,14 +438,14 @@ function pocketParks(layout,plan,completed) {
           })));
         } else parts.push(...naturePlant(layout.theme,u,h,v,seed,'summer'));
       }
-      const route=spots.slice(1,-1).map(([u,v])=>[u,v])
-        .concat(spots.slice(1,-1).reverse().map(([u,v])=>[u+dz*.48,v-dx*.48]));
-      if (walks.length<2) walks.push({...actor(visitor(moon?'astronaut':'human','#b087a7',undefined,false,.83,i%8),route,
-        {kind:'walk',speed:.79,phase:.32,corner:.22,elevation:(u,v)=>regionSurface(layout,u,v).y+.08}),characterSlot:904+walks.length});
+      const route=path.concat(path.slice(1,-1).reverse()).map(({x,z})=>[x,z]);
+      if (walks.length<3) walks.push({...actor(visitor(moon?'astronaut':'human','#b087a7',undefined,false,.83,i%8),route,
+        {kind:'walk',speed:.81,phase:.32,corner:.23,elevation:(u,v)=>height({x:u,z:v}),voice:moon?'astronaut':'people'}),
+        characterSlot:904+walks.length,parkWalk:true});
       break;
     }
   }
-  return {parts,walks};
+  return {parts,walks,paths};
 }
 
 const PHASES=['grunnarbeid','form og fasade','siste detaljer'];
@@ -415,8 +479,6 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const tunnels=prepareRoadTunnels(layout,plan);
   const parkedTours=developments.slice(0,status.built).flatMap(({plot,steps})=>parkingTours(layout,plan,plot,steps));
   plan.approaches.push(...parkedTours.map(actor=>({path:actor.parking.access,drive:true})));
-  const roads=regionRoads(layout,plan,isNewPlot);
-  const roadBuild=roads.some(part=>part.roadBuild!==undefined);
   const discoveries=terrainDiscoveries(layout,{...plan,plots:sceneryPlan.plots},status.full);
   if (plan.starter) {
     discoveries.info.headquarters={...plan.starter,status:'Startbygg',sound:'discovery',
@@ -425,7 +487,10 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
     discoveries.parts.push(...placeParts(regionalHeadquarters(id),plan.starter)
       .flatMap(part=>terrainFoundation(layout,part,map.seed)).map(part=>({...part,entity:'headquarters'})));
   }
-  const parks=pocketParks(layout,{...plan,plots:sceneryPlan.plots},completedPlots);
+  const parks=pocketParks(layout,{...plan,plots:sceneryPlan.plots},completedPlots,discoveries.sites);
+  plan.footpaths=parks.paths;
+  const roads=regionRoads(layout,plan,isNewPlot);
+  const roadBuild=roads.some(part=>part.roadBuild!==undefined);
   const parts=[
     ...(id==='moon'&&horizon?lunarEarth(sky,horizon):[]),
     ...regionGround(layout,plan,sky,status.full,horizon,season,discoveries.sites),
@@ -501,15 +566,15 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   });
   const locals=discoveryGuides(regionActors(id,layout,{...plan,plots:sceneryPlan.plots},completedPlots,discoveries.sites),discoveries.sites,layout,plan);
   const craft=rides.filter(actor=>['plane','shuttle','rocket','rocket-flame'].includes(actor.kind));
-  const street=locals.filter(actor=>actor.kind==='road').slice(0,id==='island'?3:1);
+  const street=locals.filter(actor=>actor.fleet);
   const speakers=[...locals.filter(actor=>actor.encounter),...locals.filter(actor=>actor.voice&&!actor.encounter)].slice(0,2);
   const primaryTours=[...new Map(parkedTours.slice().reverse().map(actor=>[actor.parking.plot,actor])).values()];
   const essential=[...(rail?.actors??[]),...helicopter,...craft.slice(0,5),...beachSwimmers,...rides.filter(actor=>actor.dustBather),...primaryTours,...speakers,
     ...(discoveries.visitor?[discoveries.visitor]:[]),...discoveries.smoke,
-    ...street,...parks.walks,...locals.filter(actor=>actor.driveThrough||actor.offroadExplorer||['bus','offroad-rover','hover'].includes(actor.kind))];
+    ...parks.walks,...locals.filter(actor=>actor.driveThrough||actor.offroadExplorer||['bus','offroad-rover','hover'].includes(actor.kind)),...street.slice(0,12)];
   const football=rides.filter(actor=>actor.footballPlayer||actor.kind.startsWith('football-'));
   const slide=rides.find(actor=>actor.kind==='slide');
-  const ambient=[...new Set([...essential,...football,...(slide?[slide]:[]),...parkedTours,...rides,...locals])].slice(0,MAX_ACTORS);
+  const ambient=[...new Set([...essential,...football,...(slide?[slide]:[]),...parkedTours,...street,...rides,...locals])].slice(0,MAX_ACTORS);
   const moving=new Set(ambient.flatMap(actor=>actor.parking?[actor.parking.model]:[]));
   const keep=part=>!moving.has(part.parking);
   return {

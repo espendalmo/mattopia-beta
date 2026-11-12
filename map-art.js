@@ -2,7 +2,7 @@ import {isSlidePark,slideRiders} from './slide-parks.js';
 import {footballActors} from './map-life.js';
 import {box,rounded,tube,dome,beam,placeParts,pointOnSite,actor,coasterActor,visitor,swimmer} from './scenery.js';
 import {regionSurface,regionalPoint,resortShore} from './regions.js';
-import {airportRunway,COASTER_TRACK,planeModel,shuttleModel,ROCKET_PAD,WHEEL_HUB} from './world-landmarks.js';
+import {airportRunway,COASTER_TRACK,planeModel,lightPlaneModel,shuttleModel,ROCKET_PAD,WHEEL_HUB} from './world-landmarks.js';
 
 const paint='#e3ae55';
 const rust='#bf8651';
@@ -111,7 +111,9 @@ export function rideModels(plot,stages) {
     if (kind==='plane'||kind==='shuttle') {
       const runway=airportRunway(plot.airfield&&plot.kind==='airport'?'majorAirport':plot.kind);
       const [x,y,z]=pointOnSite([runway.x,runway.y,runway.z],plot);
-      return [{kind,x,y,z,yaw:plot.yaw+runway.yaw,runway:runway.length,delay,parts:kind==='shuttle'?shuttleModel():planeModel()}];
+      const lightAircraft=plot.kind==='airstrip';
+      return [{kind,x,y,z,yaw:plot.yaw+runway.yaw,runway:runway.length,delay,lightAircraft,
+        parts:kind==='shuttle'?shuttleModel():lightAircraft?lightPlaneModel():planeModel()}];
     }
     const [x,y,z]=pointOnSite(ROCKET_PAD,plot);
     const parts=placeParts(model,{x:-ROCKET_PAD[0],y:-ROCKET_PAD[1],z:-ROCKET_PAD[2]});

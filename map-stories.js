@@ -97,6 +97,21 @@ export const vehicleStories={
     'Skal levere en pakke på andre siden av elva. Pakken har mer reiselyst enn sjåføren.',
     'Har en veldig bestemt GPS. Den vil helst kjøre innom bakeriet.',
   ]],
+  compact:[['Bybønna','Lille Lomme','Park-Pia','Knerten'],[
+    'Får plass mellom to store biler. Sjåføren øver fortsatt på å rygge inn på første forsøk.',
+    'Skal hente én pose boller. Det er akkurat plass til en pose til.',
+    'Kjører forsiktig over fartsdumpen så den lille solsikken på dashbordet får stå i fred.',
+  ]],
+  delivery:[['Pakke-Pål','Frokostbudet','Frakt-Frida','Kassebilen'],[
+    'Leverer puter til hotellet. Sjåføren har allerede valgt den mykeste.',
+    'Den siste pakken sier mjau. Den skal til dyrebutikken.',
+    'Har en eske med glass og en egen spilleliste for humpete veier.',
+  ]],
+  motorcycle:[['Sving-Siri','Motorsykkelen Mio','Tohjuls-Turid','Hjelm-Henrik'],[
+    'Har bare to hjul, men eieren har tre hjelmer. Én av dem matcher sykkelen.',
+    'Kjører ned til vannet for å spise niste. Matboksen er spent godt fast.',
+    'Har nettopp pusset krommen. I dag kan føreren se sola i begge speilene.',
+  ]],
   'island-cart':[['Kokosbilen','Palme-pilen','Iskremtralla','Sandruta','Mango Mini'],[
     'Kjører forsiktig så kokosnøttene får en behagelig tur.',
     'Har kommet helt fra stranda. Sjåføren har fortsatt sand i skoene.',
@@ -123,6 +138,16 @@ export const vehicleStories={
     'Har kjørt på månen i en uke og fortsatt ikke funnet en bilvask.',
     'Frakter tre steiner og én matboks. Det er lett å blande dem.',
     'Kjører pent over humpene. En ekstra stor stein kaller den sjefen.',
+  ]],
+  'mini-rover':[['Minimånen','Støvlomma','Mini-Rulle','Kraterknerten'],[
+    'Skal hente en liten månestein. Større steiner må bestille en større rover.',
+    'Antennen fanger opp to kanaler. Den ene sender bare lyden av sin egen antenne.',
+    'Får parkere foran de store roverne. Der er det plass til både bilen og matpakka.',
+  ]],
+  'moon-trike':[['Tri-Komet','Trehjulingen Luna','Månespretten','Trike-Tiril'],[
+    'Har tre hjul, én fører og null plass til en glemt romhjelm.',
+    'Føreren øver på å svinge pent. Den bakre støvskyen har ennå ikke lært det.',
+    'Har med en termos til utsiktspunktet. Lokket er testet i lav tyngdekraft.',
   ]],
   'offroad-rover':[['Krater-Knut','Gropgribben','Rover Rav','Bakkebippen','Støvsnuseren'],[
     'Utforsker kratere. Den fineste steinen i samlingen heter Steinar.',
@@ -179,6 +204,11 @@ export const vehicleStories={
     'Tar en runde før landing. Piloten vil se om flagget ved rullebanen blafrer.',
     'Frakter et postkort til naboøya. Resten av lasten er solbriller.',
     'Skyene ligner på potetmos i dag. Piloten har blitt sulten.',
+  ]],
+  'light-plane':[['Propellknerten','Lille Ving','Skyspurven','Luftpost Mini'],[
+    'På vei med luftpost. Alle brevene får vindusplass.',
+    'Flyr en rolig runde. Piloten prøver å kjenne igjen favorittbilen sin der nede.',
+    'Har plass til piloten og én passasjer. I dag er passasjeren en sekk med niste.',
   ]],
   shuttle:[['Romferga Stjerneskudd','Månependel 7','Kometkofferten','Ferga Svev','Nedtur med stil'],[
     'Leverer romturister og forsyninger. Piloten har husket tannbørsten denne gangen.',

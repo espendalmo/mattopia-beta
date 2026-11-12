@@ -956,6 +956,19 @@ export function airportRunway(kind) {
     : {x:.06,y:.464,z:-.07,yaw:Math.PI/4,length:12.6,width:2.36};
 }
 
+export function lightPlaneModel() {
+  const body='#ecd3a3',trim='#b96c65',glass='#79a9b9';
+  return [
+    r(0,-.06,.55,2.08,.41,body,.14),d(0,.74,.53,.62,.31,body,.2),
+    r(0,.12,.43,.54,.2,glass,.45),r(0,.04,2.15,.55,.13,trim,.61),
+    b(0,-.91,1.07,.3,.08,trim,.36),b(0,-.86,.08,.34,.44,trim,.43),
+    t(0,1.046,.17,.12,.18,'#708089',.29,'z'),
+    beam([-.27,.16,1.13],[.27,.57,1.13],.071,'#454c57'),
+    ...pair.flatMap(side=>[beam([side*.19,.22,.3],[side*.85,.63,.04],.057,body),
+      beam([side*.16,.28,.29],[side*.31,.115,.46],.068,trim),t(side*.31,.46,.11,.25,.25,dark,.013,'x')]),
+  ];
+}
+
 export function planeModel() {
   return [r(0,0,.93,3.41,.52,'#eee5d6',.16),d(0,1.51,.87,1.12,.39,'#e7e4dc',.23),
     r(0,1.03,.81,.64,.31,'#649dae',.49),b(0,-1.31,.09,.61,.67,'#c87c7b',.44),
@@ -1013,7 +1026,7 @@ function regionalAirport(shuttle=false,tropical=false) {
 function airport(tiny=false) {
   const terminal=tiny?'#a9b99d':'#93b5b6',roofTone=tiny?'#9d796a':'#597b91';
   const runway=airportRunway(tiny?'airstrip':'airport'),site={...runway,y:0};
-  const [px,py,pz]=pointOnSite([0,0,1.08-runway.length/2],runway);
+  const [px,py,pz]=pointOnSite([0,0,(tiny?.74:1.08)-runway.length/2],runway);
   const x=tiny?-2.75:-3.13,z=tiny?-.86:2.71,w=tiny?3.52:3.45,d0=tiny?3.6:3.15;
   const strip=[b(0,0,runway.width,runway.length,.117,tiny?'#a59e7b':'#647b89',.346)];
   const markings=[...[-4.3,-2.86,-1.42,0,1.42,2.86,4.3].map(z=>b(0,z,.09,.72,.02,cream,.465)),
@@ -1027,7 +1040,7 @@ function airport(tiny=false) {
         r(3.48,-3.06,2.09,2.07,.19,roofTone,4.28),r(-3.08,4.54,3.43,.79,.24,'#d7c59f',.35)])],
     [...placeParts(markings,site),...(tiny?[]:helipadParts()),...glazing([x-1.08,x,x+1.08],[1.04],z+d0/2+.013,{w:.67,h:.81}),
       ...worldSign('plane',x,2.17,z+d0/2+.09,roofTone),
-      ...placeParts(planeModel(),{x:px,y:py,z:pz,yaw:runway.yaw}).map(part=>({...part,flight:'plane'}))],
+      ...placeParts(tiny?lightPlaneModel():planeModel(),{x:px,y:py,z:pz,yaw:runway.yaw}).map(part=>({...part,flight:'plane'}))],
   ];
 }
 

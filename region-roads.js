@@ -10,7 +10,8 @@ const STREET_TONES={
 const BRIDGE_TONES=['#d6bea3','#9f8775'];
 const key=({x,z})=>`${x}:${z}`;
 const length=(a,b)=>Math.hypot(b.x-a.x,b.z-a.z);
-const perpendicular=([ax,az],[bx,bz])=>ax*bx+az*bz===0;
+const perpendicular=([ax,az],[bx,bz])=>Math.abs(ax*bx+az*bz)<.0001;
+export const streetHalfWidth=theme=>theme==='island'?1.02:1.22;
 
 // The two street legs meet a circular bend at its tangents.
 function streetArc({x,z},[ax,az],[bx,bz],radius,offset=radius,segments=8) {
@@ -150,7 +151,8 @@ function streetFurniture(layout,plan,road,width,seed,gateway) {
       const ground=regionSurface(layout,x,z),y=ground.y;
       if (ground.water||ground.bank<.58||plan.inRoadTunnel?.(x,z)
         ||plan.plots.some(site=>site.halfWidth?regionalFootprint(site,x,z,.57):Math.hypot(x-site.x,z-site.z)<5.71)
-        ||plan.approaches?.some(access=>access.path.some(point=>Math.hypot(x-point.x,z-point.z)<1.1))) continue;
+        ||plan.approaches?.some(access=>access.path.some(point=>Math.hypot(x-point.x,z-point.z)<1.1))
+        ||plan.footpaths?.some(path=>path.some(point=>Math.hypot(x-point.x,z-point.z)<.72))) continue;
       if (avenue&&theme==='moon') {
         parts.push(tube(x,z,.47,.45,.23,'#8b8aa4',y),tube(x,z,.21,.22,1.69,'#a2a5c1',y+.17),
           {...dome(x,z,.44,.42,.63,'#95d4dc',y+1.48),life:[0,0,0,-2-i*.66]});
@@ -267,8 +269,20 @@ function intersections(layout,junctions,width) {
         return surface(ax*bz-az*bx<0?triangle:triangle.reverse(),road,4);
       });
     }));
+    if (connector&&arms.some((arm,i)=>arms.slice(i+1).some(next=>!perpendicular(arm,next)))) {
+      cap.push(roadCap(layout,node,width+.12,road));
+    }
     return cap;
   });
+}
+
+function roadCap(layout,{x,z},radius,color) {
+  const y=roadElevation(layout,x,z)+.012;
+  const outline=Array.from({length:12},(_,i)=>{
+    const angle=-i*Math.PI/6;
+    return [x+radius*Math.cos(angle),y,z+radius*Math.sin(angle)];
+  });
+  return surface(outline,color,4);
 }
 
 export function prepareRoadTunnels(layout,plan) {
@@ -330,7 +344,7 @@ export function prepareRoadTunnels(layout,plan) {
 }
 
 export function regionRoads(layout,plan,animate=false) {
-  const width=layout.theme==='island'?1.02:1.22;
+  const width=streetHalfWidth(layout.theme);
   const nodes=plan.junctions??[];
   const junctions=new Set(nodes.filter(node=>node.arms.length>=3||node.connector).map(key));
   const additions=new Map(animate?[...(plan.latestPaths??[])]:[]);
@@ -359,5 +373,11 @@ export function regionRoads(layout,plan,animate=false) {
       paths.push(part);
     }
   }
-  return [...paths,...intersections(layout,nodes,width)];
+  const bays=[...(plan.network?.nodes.values()??[])].filter(node=>node.access&&node.links.length===1)
+    .map(node=>{
+      const part=roadCap(layout,node,width+.42,STREET_TONES[layout.theme][1]);
+      const stage=additions.get(node.links[0].path);
+      return stage?{...part,roadBuild:(stage.index+1)/count}:part;
+    });
+  return [...paths,...intersections(layout,nodes,width),...bays];
 }

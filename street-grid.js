@@ -1,5 +1,6 @@
 import {connectWaterfront,regionalAnnex,regionalFootprint,regionSurface,riverAt,riverWidth,specialEntrances} from './regions.js';
 import {randomGenerator,REGION_PLACES,LARGE_REGION_PLACES} from './worlds.js';
+import {joinStreetPaths,streetNetwork} from './street-network.js';
 
 export const STREET_TURN_RADIUS=2.35;
 const streets=new WeakMap();
@@ -171,7 +172,7 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
   if (!graph) return null;
   const {nodes,edges,origin,available,links,connectorLayout}=graph;
   const reserveOrigin=starter&&available.length>requiredLots;
-  const open=new Map(), active=new Set(), connectors=[],connectedNodes=new Set(),plots=[];
+  const open=new Map(), active=new Set(), connectors=[],plots=[];
   const gateways=new Set();
   const usedLots=new Set(reserveOrigin?[origin]:[]);
   let latestPaths=new Map();
@@ -205,10 +206,7 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     for (const entry of entries) {
       const side=Math.sign(entry.x-special.x);
       const eligible=point=>kind!=='bridge'||(point.x-riverAt(layout,point.z))*side>riverWidth(layout,point.z)+.6;
-      const byDistance=(a,b)=>gap(a,entry)-gap(b,entry);
       const peer=special.airportDistrict&&plots.find(plot=>plot.airportDistrict)?.entries[0];
-      const starts=[...active].map(id=>nodes[id]).filter(eligible).sort(byDistance).slice(0,8);
-      if (peer&&connectors.some(path=>gap(path.at(-1),peer)<.01)) starts.unshift(peer);
       const connect=(start,street=[])=>{
         const path=connectWaterfront(connectorLayout,start,entry,kind==='bridge');
         if (!path||path.length<2) return false;
@@ -216,17 +214,19 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
         connectors.push(path);
         if (special.beach||special.spaceResort||special.airportDistrict) gateways.add(path);
         latestPaths.set(path,false);
-        if (Number.isInteger(start.id)) connectedNodes.add(start.id);
         return true;
       };
-      if (starts.some(start=>connect(start))) continue;
-      // Where reserved plots block a direct route, extend a regular street
-      // before making the last connection to the site.
-      const nearby=nodes.filter(point=>!active.has(point.id)&&links[point.id].length&&eligible(point)).sort(byDistance);
-      nearby.slice(0,16).some(start=>{
+      if (peer&&connectors.some(path=>gap(path.at(-1),peer)<.01)&&connect(peer)) continue;
+      // Open the grid right up to the destination. These streets can serve
+      // future plots, with only the last short stretch made to measure.
+      const score=point=>gap(point,entry)+.44*Math.min(Math.abs(point.x-entry.x),Math.abs(point.z-entry.z))
+        -(active.has(point.id)?2.4:0);
+      const nearby=nodes.filter(point=>links[point.id].length&&eligible(point)).sort((a,b)=>score(a)-score(b));
+      const connected=nearby.slice(0,18).some(start=>{
         const street=pathToStreet(links,[start.id],active);
         return street&&connect(start,street);
       });
+      if (!connected) nearby.filter(point=>active.has(point.id)).slice(0,8).some(start=>connect(start));
     }
     plots.push({...special,index,kind,entries});
   };
@@ -284,13 +284,11 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
   for (const {a,b} of open.values()) {
     openLinks[a].push(b);openLinks[b].push(a);
   }
+  const roads=joinStreetPaths([...open.values()].map(edge=>edge.points),connectors,latestPaths,gateways);
+  const network=streetNetwork(roads.paths,roads.accessPaths);
   return {
-    origin,starter:reserveOrigin?{x:origin.x,y:origin.y,z:origin.z,yaw:0}:null,plots,paths:[...open.values()].map(edge=>edge.points).concat(connectors),latestPaths,gateways,
-    junctions:[...active].filter(id=>openLinks[id].length>=2).map(id=>{
-      const {x,z}=nodes[id];
-      const arms=openLinks[id].map(neighbor=>[Math.sign(nodes[neighbor].x-x),Math.sign(nodes[neighbor].z-z)]);
-      return {x,z,arms,connector:connectedNodes.has(id)};
-    }),
+    origin,starter:reserveOrigin?{x:origin.x,y:origin.y,z:origin.z,yaw:0}:null,plots,...roads,
+    junctions:network.junctions,network,
     circuits:streetCircuits(nodes,open,openLinks,origin.ring),
   };
 }
