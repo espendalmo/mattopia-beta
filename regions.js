@@ -291,7 +291,7 @@ export function regionVisibility(plan,x,z,full=false) {
   const developed=full?clamp((EDGE+14-Math.hypot(x,z))/15,0,1):0;
   const distanceTo=(point)=>Math.hypot(point.x-x,point.z-z);
   let reach=Math.max(0,1-(distanceTo(plan.origin)-23)/21);
-  for (const plot of plan.plots) reach=Math.max(reach,1-(distanceTo(plot)-16)/24);
+  for (const plot of plan.plots) reach=Math.max(reach,1-(distanceTo(plot)-(plot.airfield?20:16))/24);
   for (const path of plan.paths) {
     for (let i=1;i<path.length;i+=4) reach=Math.max(reach,1-(distanceTo(path[i])-5.5)/17);
   }

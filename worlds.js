@@ -8,8 +8,8 @@ export const GRAND_REGION_PLACES=30;
 export const GRAND_REGION_CATALOG=44;
 export const LUNAR_REGION_CATALOG=48;
 export const LARGE_REGION_PLACES=40;
-export const LARGE_REGION_CATALOG=GRAND_REGION_CATALOG+6;
-export const LARGE_LUNAR_CATALOG=LUNAR_REGION_CATALOG+6;
+export const LARGE_REGION_CATALOG=GRAND_REGION_CATALOG+7;
+export const LARGE_LUNAR_CATALOG=LUNAR_REGION_CATALOG+7;
 export const largeRegion=map=>map?.layout===3&&map.catalog===4;
 export const grandCatalog=map=>map?.layout===3&&[3,4].includes(map.catalog);
 export const LEGACY_WORLD_STEPS=120;
@@ -108,7 +108,7 @@ export function worldAdvance(map,theme) {
 
 export function freshWorld(rng=Math.random,previous=null) {
   const seed=Math.floor(rng()*2**32)>>>0;
-  return {layout:3,catalog:4,seed:seed===previous?.seed?(seed+1)>>>0:seed,legacy:0,order:[],progress:0};
+  return {layout:3,catalog:4,starter:true,seed:seed===previous?.seed?(seed+1)>>>0:seed,legacy:0,order:[],progress:0};
 }
 
 function restoreWorld(raw,budget,first,theme) {
@@ -129,7 +129,7 @@ function restoreWorld(raw,budget,first,theme) {
   const progress=integer(raw.progress)?Math.min(raw.progress,budget-legacy,ids.length*WORLD_BUILD_STEPS+catchUp):0;
   // There can be at most one selected building beyond completed and in-progress buildings.
   const limit=catchUp&&progress===0?0:Math.floor(Math.max(0,progress-catchUp)/WORLD_BUILD_STEPS)+1;
-  return {...(layout>1?{layout,...catalog}:{}),seed:legacy?null:raw.seed,legacy,order:ids.slice(0,limit),progress};
+  return {...(layout>1?{layout,...catalog}:{}),...(layout===3&&raw.starter===true&&{starter:true}),seed:legacy?null:raw.seed,legacy,order:ids.slice(0,limit),progress};
 }
 
 export function restoreWorlds(raw, projects, total) {

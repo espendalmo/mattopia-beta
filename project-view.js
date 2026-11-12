@@ -552,7 +552,7 @@ export function projectCameras(scene,target=null,focusLatest=false,{compact=fals
   const point=target??scene.latestTarget??{x:average('x'),y:Math.max(0,average('y')-.6),z:average('z'),height:4.2};
   const height=point.height??6;
   const station=point.kind==='railwayStation'||point.kind==='monorailStation'||point.kind==='tramStation';
-  const framing=(station?23:height*1.13+3.2)*(compact?.91:1);
+  const framing=point.airfield?39:(station?23:height*1.13+3.2)*(compact?.91:1);
   const close={...initial,zoom:Math.min(maxZoom,scene.size/framing),anchorX:point.x,anchorZ:point.z,
     center:point.y+height*(height>10?.46:.37)};
   const neighbor=Object.values(scene.landmarks??{}).filter(other=>Math.hypot(other.x-point.x,other.z-point.z)>.7)
@@ -630,7 +630,7 @@ export function mountProjectView(container, scene, interactive=false, {
     : {x:0,y:Math.max(...scene.parts.map(part=>part.y+part.h)),z:0});
   const fireworkY=fireworkTarget.y+(fireworkTarget.height??0)+1.4;
   const mounted=performance.now();
-  const moveActors=createTraffic(scene.ambient??[],scene.junctions);
+  const moveActors=createTraffic(scene.ambient??[],scene.junctions,scene.trafficObstacles);
   if (target || closeUp && (!reveal || motion.matches || demo&&!scene.world || focusLatest&&!completedBuild&&!scene.roadBuild)) Object.assign(camera,detail);
   else if (reveal&&scene.world) Object.assign(camera,context);
   from={...camera};

@@ -458,6 +458,11 @@ export function worldBuildingOptions(id,map) {
     available.splice(available.indexOf(airport),1);
     available.unshift(airport);
   }
+  const driveThrough=id==='moon'?54:50;
+  if (worldStatus(map).built%8===4&&available.includes(driveThrough)) {
+    available.splice(available.indexOf(driveThrough),1);
+    available.unshift(driveThrough);
+  }
   const slide=id==='moon'?48:44;
   if (worldStatus(map).built%6===1 && available.includes(slide)) {
     available.splice(available.indexOf(slide),1);
@@ -689,7 +694,7 @@ export function projectScene(id, completed=0, season=seasonForDate()) {
   const project=projectById(id);
   if(!project) return null;
   if (isWorld(id)&&isRegion(completed)) {
-    const key=`${id}:${completed.layout}:${completed.catalog??1}:${completed.seed}:${completed.progress}:${completed.order.join(',')}:${season}`;
+    const key=`${id}:${completed.layout}:${completed.catalog??1}:${Number(completed.starter===true)}:${completed.seed}:${completed.progress}:${completed.order.join(',')}:${season}`;
     if (regionScenes.has(key)) return regionScenes.get(key);
     const scene=expandedWorldScene(id,completed,THEMES[id],index=>worldBuilding(id,index,completed),(index,site)=>regionLandmarkParts(id,index,site,completed),season);
     regionScenes.set(key,scene);

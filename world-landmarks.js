@@ -467,6 +467,7 @@ const LETTERS={
   K:['101','101','110','101','101'], L:['100','100','100','100','111'],
   M:['101','111','111','101','101'], N:['101','111','111','111','101'],
   O:['010','101','101','101','010'], P:['110','101','110','100','100'],
+  'Å':['010','000','010','101','111'], 'Ø':['011','101','111','101','110'], Q:['010','101','101','111','011'],
   R:['110','101','110','101','101'], S:['011','100','010','001','110'],
   T:['111','010','010','010','010'], U:['101','101','101','101','111'],
   V:['101','101','101','101','010'], Y:['101','101','010','010','010'],
@@ -738,6 +739,45 @@ function snackHouse(style) {
       ...umbrella(-2.8,2.57,awning),...umbrella(2.73,2.65,trim),
       ...(tropical?palm(-4.21,-1.81,2.57):shrub(4.19,-1.43,'#8aab98'))],
   ];
+}
+
+function driveThrough(theme) {
+  const moon=theme==='moon',island=theme==='island';
+  const trim=moon?'#68628a':island?'#368b82':'#a24841';
+  const wall=moon?'#a7aaca':island?'#f0ca81':'#edd7b0';
+  const lane=moon?'#64657f':'#666e70',stripe='#ffebac';
+  return [base(10.9,10.5,moon?'#a5a6c1':'#b7a995'),
+    [r(0,-2.23,7.5,4.55,2.35,wall,.35),r(0,-2.24,7.88,4.76,.35,trim,2.66),
+      r(0,1.63,10.28,1.84,.09,lane,.35),
+      ...pair.flatMap(side=>[b(side*4.26,3.44,1.78,4.2,.08,lane,.35),b(side*4.26,4.24,.09,1.35,.026,stripe,.44)]),
+      b(0,1.52,.87,.09,.026,stripe,.46)],
+    [b(0,.105,1.71,.15,.93,'#9ed3d2',1.01),b(0,.25,1.91,.43,.13,trim,.93),
+      r(0,.28,3.44,1.27,.17,trim,2.37),...nameplate(moon?'ROVER':island?'MANGO':'BURGER',0,2.94,.14,trim,.22),
+      ...(island?smoothie().map(part=>({...part,z:part.z-1.2})):burger(0,3.04,-2.1)),
+      ...pair.map(side=>t(side*4.96,2.13,.23,.23,.77,trim,.37))]];
+}
+
+export function regionalHeadquarters(theme) {
+  if (theme==='moon') {
+    return [...lunarArchitecture('haloTower',art.haloTower(),47).flat(),
+      ...nameplate('HQ',0,2.84,2.9,'#66548a',.32),
+      t(0,-1.28,.17,.17,4.4,'#a8acc9',3.4),d(0,-1.28,1.46,1.28,.45,'#a6dbe6',7.68)];
+  }
+  if (theme==='island') {
+    const wall='#efc6a0',trim='#fff1ce',roofTone='#418c84';
+    return [...base(10.62,9.5,'#d0b78c'),
+      r(0,-.74,8.8,5.4,3.25,wall,.35),r(0,-.74,9.18,5.75,.24,trim,3.52),
+      roof(0,-.76,9.43,5.92,1.14,roofTone,3.73),
+      r(0,-1.1,3.05,2.64,1.9,wall,4.4),roof(0,-1.1,3.42,2.98,1.19,roofTone,6.22),
+      t(0,-1.1,.15,.15,.8,'#b28553',7.39),b(.38,-1.1,.78,.09,.44,'#f2a77c',7.75),
+      ...glazing([-3.16,-1.68,1.68,3.16],[1,2.22],2.01,{w:.85,h:.69,color:'#74b7b5'}),
+      ...glazing([0],[5.25],.24,{w:.85,h:.72,color:'#74b7b5'}),...entrance(2.04,1.6,1.92),
+      r(0,2.83,5.6,1.68,.25,roofTone,2.89),
+      ...[-2.57,-1.72,1.72,2.57].map(x=>t(x,3.46,.22,.22,2.59,trim,.35)),
+      ...pair.flatMap(side=>palm(side*4.35,3.07,3.53)),
+      ...nameplate('PALMEØYA',0,3.04,3.72,'#34716b',.16)];
+  }
+  return [...civic(false).flat(),...nameplate('RÅDHUS',0,3.05,3.03,'#795642',.23)];
 }
 
 function hoverDealer() {
@@ -1409,7 +1449,7 @@ function earthAccents(theme,style,stages,index) {
 }
 
 const art={
-  hotel:()=>grandHotel(false),resort:()=>grandHotel(true),hall:()=>civic(false),bank:()=>civic(true),cinema,prison,
+  driveThrough,hotel:()=>grandHotel(false),resort:()=>grandHotel(true),hall:()=>civic(false),bank:()=>civic(true),cinema,prison,
   restaurant:theme=>dining(theme==='island'),garden:theme=>gardens(theme==='island'),bandstand:theme=>gardens(theme==='island',true),
   pier:(theme)=>harbor(theme,'pier'),quay:theme=>harbor(theme,'quay'),marina:theme=>harbor(theme,'marina'),
   bridge:(_,site)=>suspension(site?.span),wheel:theme=>ferris(theme==='island'),coaster,fitness,biodome,
@@ -1559,6 +1599,7 @@ export const GRAND_LANDMARKS={
     47:['Elveakvariet','En glasskuppel med fisk som er store nok til å se fra veien.','riverAquarium'],
     48:['Klokketårnet','Fire urskiver og et høyt kobberspir.','clockSpire'],
     49:['Glassverkstedet','Fem tak i ulike farger og en rekke håndblåste vaser.','glassWorks'],
+    50:['Elveburger','Sving innom hentevinduet for en burger.','driveThrough'],
   },
   moon:{
     37:['Målenåla','En restaurant som roterer over månebasen.','needleTower'],
@@ -1578,6 +1619,7 @@ export const GRAND_LANDMARKS={
     51:['Kraterkinoen','En filmkuppel med lysmaster og et stort KRATER-skilt.','craterCinema'],
     52:['Romposten','En rosa postkasse er stor nok for pakker fra hele solsystemet.','moonPost'],
     53:['Solspeilet','Et stort speil fanger lyset og sender det mellom to små kupler.','sunMirror'],
+    54:['Rover Burger','Rovere svinger innom og henter kratere med ekstra ost.','driveThrough'],
   },
   island:{
     37:['Korallfyret','Et korallrødt fyr viser vei mellom revene.','lighthouse'],
@@ -1593,6 +1635,7 @@ export const GRAND_LANDMARKS={
     47:['Korallakvariet','Fisk og korallfarger under en turkis glasskuppel.','coralAquarium'],
     48:['Kokosobservatoriet','Et teleskop stikker opp av en gigantisk kokosnøtt på stylter.','coconutTower'],
     49:['Ispalasset','Tre store iskremkjegler ruver over markisen.','icePalace'],
+    50:['Mango Express','Biler henter mangois og smoothie på vei til stranda.','driveThrough'],
   },
 };
 
@@ -1601,5 +1644,6 @@ export const landmarkStages=(theme,style,site,index=site?.index)=>{
   if (slide) return slide;
   const stages=art[style]?.(theme,site);
   if (!stages) return null;
+  if (style==='driveThrough') return stages;
   return theme==='moon'?lunarArchitecture(style,stages,index):earthAccents(theme,style,stages,index);
 };

@@ -376,10 +376,19 @@ export function actorPose(actor, seconds, distanceOverride) {
   }
   if (actor.kind==='plane'||actor.kind==='shuttle') return planePose(actor,seconds);
   if (actor.kind==='rocket'||actor.kind==='rocket-flame') return rocketPose(actor,seconds);
-  const {segments,length}=actor.route;
   const clock=walkingClock(seconds,actor.encounter);
   const traveled=distanceOverride??clock.time*actor.speed;
-  let distance=(traveled+(distanceOverride===undefined?length*actor.phase:0))%length;
+  let path=actor.route, at=traveled+(distanceOverride===undefined?path.length*actor.phase:0);
+  if (actor.wander&&distanceOverride===undefined) {
+    at%=actor.wander.length;
+    for (const trail of actor.wander.paths) {
+      path=trail;
+      if (at<path.length) break;
+      at-=path.length;
+    }
+  }
+  const {segments,length}=path;
+  let distance=at%length;
   if (distance<0) distance+=length;
   const segment=segments.find(part=>distance<part.end) ?? segments[0];
   const t=(distance-segment.start)/(segment.end-segment.start);
@@ -466,7 +475,7 @@ function passingPose(vehicle,pass,elapsed,seconds) {
     sound:.64,thrust:Number(pass.hover)}};
 }
 
-export function createTraffic(actors,junctions=[]) {
+export function createTraffic(actors,junctions=[],obstacles=[]) {
   const crossings=junctions.filter(point=>!point.arms||point.arms.length>=3||point.connector);
   const junctionAt=(vehicle,pose)=>{
     if (!['road','bus','hover'].includes(vehicle.actor.kind)) return null;
@@ -503,7 +512,8 @@ export function createTraffic(actors,junctions=[]) {
       const next=passingPose(vehicle,pass,t,seconds+t);
       const forward=next.pose.cos*pose.cos+next.pose.sin*pose.sin>(hover?-.12:.988);
       const overJunction=hover&&t>.29&&t<duration-.31;
-      if (!forward||junctionAt(vehicle,next.pose)&&!overJunction) return null;
+      const nearFind=obstacles.some(({x,z,radius})=>Math.hypot(x-next.pose.x,z-next.pose.z)<radius+Math.hypot(...size));
+      if (!forward||nearFind||junctionAt(vehicle,next.pose)&&!overJunction) return null;
       for (const other of vehicles) {
         if (other===vehicle) continue;
         const expected=actorPose(other.actor,seconds+t,other.distance+other.actor.speed*t);
@@ -592,6 +602,16 @@ export function createTraffic(actors,junctions=[]) {
           continue;
         }
         const actor=vehicle.actor;
+        if (actor.driveThrough) {
+          const near=Math.hypot(actor.driveThrough.x-vehicle.pose.x,actor.driveThrough.z-vehicle.pose.z)<.33;
+          if (near&&!vehicle.pickedUp) {
+            vehicle.pickedUp=true;
+            vehicle.holdUntil=seconds+1.65;
+            vehicle.pose={...vehicle.pose,sound:0};
+            continue;
+          }
+          if (!near) vehicle.pickedUp=false;
+        }
         if (actor.alternatives?.length&&seconds>=vehicle.nextTurn) {
           const near=vehicles.some(other=>other!==vehicle&&Math.hypot(other.pose.x-vehicle.pose.x,other.pose.z-vehicle.pose.z)<8);
           const pick=actor.alternatives[Math.floor(vehicle.rng()*actor.alternatives.length)];
@@ -782,43 +802,111 @@ function islandWaterLife(layout,plan,completed) {
   return beach;
 }
 
-function offroadRover(layout,plan,plots) {
-  const routes=plan.paths.flat();
+function terrainWander(layout,plan,completed,discoveries,driver) {
+  const rng=randomGenerator(layout.seed^(driver?0xa8125c1:0x4c5a021));
+  const roads=plan.paths.flat(),tracks=plan.transit??[];
   const safe=(x,z)=>{
     const ground=regionSurface(layout,x,z);
-    return ground.basin>-2.8&&regionVisibility(plan,x,z)>.59
-      &&plan.plots.every(plot=>Math.hypot(plot.x-x,plot.z-z)>7.1)
-      &&routes.every(point=>Math.hypot(point.x-x,point.z-z)>2.15);
+    return !ground.water&&ground.basin>-2.8&&regionVisibility(plan,x,z)>.56
+      &&plan.plots.every(plot=>Math.hypot(plot.x-x,plot.z-z)>(plot.airfield?16:7.1))
+      &&discoveries.every(site=>Math.hypot(site.x-x,site.z-z)>(site.type.mine?7.15:6.25))
+      &&roads.every(point=>Math.hypot(point.x-x,point.z-z)>2.9)
+      &&tracks.every(point=>Math.hypot(point.x-x,point.z-z)>2.6);
   };
-  for (const crater of layout.basins) {
-    const points=Array.from({length:9},(_,i)=>{
-      const angle=i*Math.PI*2/9;
-      const radius=i===2?.57:i===3?.74:1.16;
-      return [crater.x+Math.cos(angle)*crater.w*radius,crater.z+Math.sin(angle)*crater.d*radius];
-    });
-    if (!points.every(([x,z])=>safe(x,z))) continue;
-    const rover=actor(vehicle('rover','#caa18f'),points,{kind:'offroad-rover',speed:1.5,phase:.22,corner:1.35,
-      elevation:(x,z)=>regionSurface(layout,x,z).y+.043});
-    if (rover.route.segments.every(({x,z,dx,dz})=>safe(x,z)&&safe(x+dx*.5,z+dz*.5))) return rover;
-  }
-  for (const plot of plots.slice().reverse()) {
-    for (let direction=0;direction<8;direction++) {
-      const angle=direction*Math.PI/4, reach=15.3+(direction%2)*1.5;
-      const x=plot.x+Math.cos(angle)*reach,z=plot.z+Math.sin(angle)*reach;
-      const loop=Array.from({length:7},(_,i)=>{
-        const t=i*Math.PI*2/7;
-        return [x+Math.cos(t)*3.85,z+Math.sin(t)*2.95];
-      });
-      if (!loop.every(([a,b])=>safe(a,b))) continue;
-      const rover=actor(vehicle('rover','#caa18f'),loop,{kind:'offroad-rover',speed:1.45,phase:.22,corner:1.5,
-        elevation:(x,z)=>regionSurface(layout,x,z).y+.043});
-      if (rover.route.segments.every(part=>safe(part.x,part.z))) return rover;
+  const joins=([a,b],[x,z])=>{
+    const length=Math.hypot(x-a,z-b);
+    return Array.from({length:Math.ceil(length/.7)+1},(_,i)=>i/Math.ceil(length/.7||1))
+      .every(t=>safe(a+(x-a)*t,b+(z-b)*t));
+  };
+  const moon=layout.theme==='moon';
+  const anchors=[...(moon?layout.basins:[]),...completed.slice().reverse(),plan.origin];
+  for (const anchor of anchors) {
+    for (let attempt=0;attempt<12;attempt++) {
+      const angle=rng()*Math.PI*2,reach=anchor.w??(10+rng()*13);
+      const start=[anchor.x+Math.cos(angle)*reach,anchor.z+Math.sin(angle)*reach];
+      if (!safe(...start)) continue;
+      const points=[start];
+      for (let i=0;i<42&&points.length<20;i++) {
+        const [x,z]=points.at(-1);
+        const turn=rng()*Math.PI*2,step=2.8+rng()*5.1;
+        const next=[x+Math.cos(turn)*step,z+Math.sin(turn)*step];
+        if (points.slice(-5).some(([a,b])=>Math.hypot(a-next[0],b-next[1])<2.3)||!joins([x,z],next)) continue;
+        points.push(next);
+      }
+      if (points.length<5) continue;
+      const end=points.at(-1),returnAt=points.findIndex((point,i)=>i<points.length-3&&joins(end,point));
+      const loop=returnAt<0?points.concat(points.slice(1,-1).reverse()):points.slice(returnAt);
+      const person=moon?'alien':'human';
+      const traveler=actor(driver?vehicle('rover','#caa18f'):visitor(person,'#9d86bb',undefined,false,.83,layout.seed%8),loop,
+        {kind:driver?'offroad-rover':'walk',speed:driver?1.45:.71,phase:.22,corner:.72,
+          elevation:(x,z)=>regionSurface(layout,x,z).y+.055,voice:driver?undefined:moon?'alien':'people'});
+      const usable=trail=>trail.segments.every(({x,z,dx,dz})=>joins([x,z],[x+dx,z+dz]));
+      if (!usable(traveler.route)) continue;
+      const variations=[];
+      // Alternate trails share the first and last stretches. Crossing the
+      // seam or joining a different branch doesn't jump the figure.
+      for (let trial=0;trial<22&&variations.length<2;trial++) {
+        if (loop.length<7) break;
+        const i=2+Math.floor(rng()*(loop.length-4));
+        const a=loop[i-1],b=loop[i+1];
+        const angle=rng()*Math.PI*2,reach=3.4+rng()*3.7;
+        const fork=[loop[i][0]+Math.cos(angle)*reach,loop[i][1]+Math.sin(angle)*reach];
+        if (!joins(a,fork)||!joins(fork,b)) continue;
+        const variant=route(loop.map((point,j)=>j===i?fork:point),.72);
+        if (usable(variant)) variations.push(variant);
+      }
+      if (driver) return {...traveler,alternatives:[traveler.route,...variations]};
+      const paths=variations.length?[traveler.route,...variations,traveler.route,...variations.slice().reverse()]:[];
+      const wander=paths.length?{paths,length:paths.reduce((sum,path)=>sum+path.length,0)}:null;
+      return {...traveler,wander,offroadExplorer:true,characterSlot:901};
     }
   }
   return null;
 }
 
-export function regionActors(theme,layout,plan,completed) {
+export function driveThroughApproach(plot) {
+  const entry=plot.entries?.[0]??plot;
+  const reach=Math.max(5.8,Math.hypot(entry.x-plot.x,entry.z-plot.z));
+  const world=(x,z,y=0)=>pointOnSite([x,y,z],plot);
+  return {reach,world};
+}
+
+function driveThroughTraffic(plot,theme,elevation,circuits) {
+  const {reach,world}=driveThroughApproach(plot);
+  const right=reach+.61,left=reach-.61;
+  const span=plot.streetSpan??13.4;
+  const bend=Math.max(5.65,span*.45);
+  const localX=({x,z})=>(x-plot.x)*Math.cos(plot.yaw)-(z-plot.z)*Math.sin(plot.yaw);
+  const localZ=({x,z})=>(x-plot.x)*Math.sin(plot.yaw)+(z-plot.z)*Math.cos(plot.yaw);
+  const pullIn=[[-4.26,left],[-4.26,1.63],[4.26,1.63],[4.26,left]];
+  const convert=([x,z])=>{ const [a,,b]=world(x,z); return [a,b]; };
+  let stops=[[-bend,left],...pullIn,[bend,left],[bend,right],[-bend,right]].map(convert);
+  for (const circuit of circuits) {
+    const edge=circuit.findIndex((a,i)=>{
+      const b=circuit[(i+1)%circuit.length];
+      return Math.abs(localZ(a)-reach)<.85&&Math.abs(localZ(b)-reach)<.85
+        &&Math.min(localX(a),localX(b))< -4.9&&Math.max(localX(a),localX(b))>4.9;
+    });
+    if (edge<0) continue;
+    const street=circuit.slice(edge).concat(circuit.slice(0,edge));
+    const detour=localX(street[0])<localX(street[1])?pullIn:pullIn.slice().reverse();
+    stops=[[street[0].x,street[0].z],...detour.map(convert),...street.slice(1).map(({x,z})=>[x,z])];
+    break;
+  }
+  const local=(x,z)=>(x-plot.x)*Math.sin(plot.yaw)+(z-plot.z)*Math.cos(plot.yaw);
+  const car=actor(vehicle(theme==='moon'?'rover':theme==='island'?'pickup':'car','#d5a961'),stops,{
+    kind:'road',speed:1.68,phase:.07,corner:.58,
+    elevation:(x,z)=>{
+      const depth=local(x,z);
+      const inside=Math.abs(localX({x,z}))<5.35&&depth>=.71&&depth<reach;
+      const blend=inside?Math.max(0,Math.min(1,(depth-4.78)/(reach-4.78))):1;
+      return (plot.y+.46)*(1-blend)+elevation(x,z)*blend;
+    }});
+  const [x,,z]=world(0,1.63);
+  return {...car,driveThrough:{x,z},...(theme==='island'&&{islandVehicle:'pickup'})};
+}
+
+export function regionActors(theme,layout,plan,completed,discoveries=[]) {
   if (!completed.length&&!plan.circuits?.length) return [];
   const actors=[], moon=theme==='moon';
   const paths=plan.paths.filter(path=>path.length>=4);
@@ -838,10 +926,13 @@ export function regionActors(theme,layout,plan,completed) {
   const colors=['#deaa73','#8eb1c6','#d27d84','#e0bb83'];
   const walkers=moon?['astronaut','alien']:['human'];
   if (theme==='island') actors.push(...islandWaterLife(layout,plan,completed));
+  if (completed.length) {
+    const walker=terrainWander(layout,plan,completed,discoveries,false);
+    if (walker) actors.push(walker);
+  }
   if (moon) {
-    const rover=completed.length&&offroadRover(layout,plan,completed);
-    if (rover) actors.push(rover,{...rover,kind:'walk',offroadExplorer:true,characterSlot:901,
-      parts:visitor('alien','#9d86bb',undefined,false,.83,layout.seed%4),speed:.58,phase:.73,voice:'alien'});
+    const rover=completed.length&&terrainWander(layout,plan,completed,discoveries,true);
+    if (rover) actors.push(rover);
     if (circuits.length||paths.length) {
       const circuit=circuits[1]??circuits[0];
       const points=circuit?lane(circuit):laneLoop(paths.at(-1),.78);
@@ -851,6 +942,9 @@ export function regionActors(theme,layout,plan,completed) {
         {kind:'bus',speed:1.94,phase:.47+(layout.seed%7)*.018,corner:STREET_TURN_RADIUS,elevation}),
         lunarBus:true,...(circuit&&{alternatives})});
     }
+  }
+  for (const shop of completed.filter(plot=>plot.kind==='driveThrough')) {
+    actors.push(driveThroughTraffic(shop,theme,elevation,circuits));
   }
   const station=completed.find(plot=>plot.kind==='busStation');
   if (station&&paths.length) {

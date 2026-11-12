@@ -471,21 +471,22 @@ function subwayPlan(layout,plan,route,lots,tunnel,built,moon) {
   return fallback;
 }
 
-function placeRailPlatform(route,preferred,layout,lots,allowed,moon) {
+function placeRailPlatform(route,preferred,layout,lots,allowed,moon,compact=false) {
   const {sample,length}=route;
   for (let attempt=0;attempt<=46;attempt++) {
     const shift=Math.ceil(attempt/2)*.93*(attempt%2?1:-1);
     const distance=(preferred+shift+length)%length;
     if (!allowed(distance)) continue;
-    const [a,ay,b]=sample(distance-2.64),[c,cy,d]=sample(distance+2.64);
+    const scale=compact?.61:1;
+    const [a,ay,b]=sample(distance-2.64*scale),[c,cy,d]=sample(distance+2.64*scale);
     const dx=c-a,dz=d-b,chord=Math.hypot(dx,dz);
-    if (chord<5.21||Math.abs(cy-ay)>.49) continue;
-    const test=[-1.76,-.88,0,.88,1.76].map(shift=>sample(distance+shift));
+    if (chord<5.21*scale||Math.abs(cy-ay)>.49) continue;
+    const test=[-1.76,-.88,0,.88,1.76].map(shift=>sample(distance+shift*scale));
     if (test.some(([x,y,z])=>Math.abs((x-a)*dz-(z-b)*dx)/chord>.091
       ||Math.abs(y-ay-(cy-ay)*((x-a)*dx+(z-b)*dz)/(chord*chord))>.16)) continue;
     const [x,y,z]=sample(distance),yaw=Math.atan2(dx,dz);
     for (const turn of [yaw,yaw+Math.PI]) {
-      const parts=placeParts(railPlatform(moon),{x,y,z,yaw:turn});
+      const parts=placeParts(railPlatform(moon).map(part=>({...part,z:part.z*scale,d:part.d*scale})),{x,y,z,yaw:turn});
       const bounds=footprint(parts);
       const foot=[x+Math.cos(turn)*1.82,z-Math.sin(turn)*1.82];
       if (overlapsLot(bounds,lots)||regionSurface(layout,...foot).water) continue;
@@ -653,8 +654,10 @@ export function districtRail(layout,plot,plan,developments=[],built=plan.plots.l
       const [x,y,z]=sample(distance);
       const [a,ay,b]=sample(distance-.38),[c,cy,d]=sample(distance+.38);
       const visible=!inside(distance,1.7)&&!(between(subway,distance)&&subwayDepth(distance)<-.55);
-      return pose(x,visible?y:-540,z,Math.atan2(c-a,d-b),!carriage&&visible&&progress>0,
+      const model=pose(x,visible?y:-540,z,Math.atan2(c-a,d-b),!carriage&&visible&&progress>0,
         Math.atan2(cy-ay,Math.hypot(c-a,d-b)));
+      return !carriage&&visible&&t>=leg.depart&&t<leg.depart+.72
+        ? {...model,cue:moon?'monorail-start':'train-start',sound:.9}:model;
     },
   })));
   return {parts,portals,points:points.map(([x,y,z])=>({x,y,z})),actors,entries,undergroundStops,surfaceStops};
@@ -729,6 +732,11 @@ export function districtTram(layout,plot,plan,developments=[]) {
   for (const fraction of length>138?[0,.25,.51,.77]:[0,.32,.66]) {
     const platform=placeRailPlatform({sample,length},fraction*length,layout,lots,distance=>
       stops.every(stop=>Math.min(Math.abs(distance-stop),length-Math.abs(distance-stop))>9),false);
+    if (platform) { parts.push(...platform.parts); stops.push(platform.distance); }
+  }
+  for (let distance=0;stops.length<3&&distance<length;distance+=4.35) {
+    const platform=placeRailPlatform({sample,length},distance,layout,lots,candidate=>
+      stops.every(stop=>Math.min(Math.abs(candidate-stop),length-Math.abs(candidate-stop))>6.8),false,true);
     if (platform) { parts.push(...platform.parts); stops.push(platform.distance); }
   }
   const start=stops[0]??0;

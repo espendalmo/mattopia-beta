@@ -157,12 +157,13 @@ function streetCircuits(nodes,open,links,starter) {
   return result;
 }
 
-export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Object.keys(layout.berths).length) {
-  const graph=layoutStreets(layout,requiredLots);
+export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Object.keys(layout.berths).length,{starter=false}={}) {
+  const graph=layoutStreets(layout,requiredLots+Number(starter))??layoutStreets(layout,requiredLots);
   if (!graph) return null;
   const {nodes,edges,origin,available,links,connectorLayout}=graph;
+  const reserveOrigin=starter&&available.length>requiredLots;
   const open=new Map(), active=new Set(), connectors=[],connectedNodes=new Set(),plots=[];
-  const usedLots=new Set();
+  const usedLots=new Set(reserveOrigin?[origin]:[]);
   let latestPaths=new Map();
   let track=false;
   const add=edge=>{
@@ -271,7 +272,7 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     openLinks[a].push(b);openLinks[b].push(a);
   }
   return {
-    origin,plots,paths:[...open.values()].map(edge=>edge.points).concat(connectors),latestPaths,
+    origin,starter:reserveOrigin?{x:origin.x,y:origin.y,z:origin.z,yaw:0}:null,plots,paths:[...open.values()].map(edge=>edge.points).concat(connectors),latestPaths,
     junctions:[...active].filter(id=>openLinks[id].length>=2).map(id=>{
       const {x,z}=nodes[id];
       const arms=openLinks[id].map(neighbor=>[Math.sign(nodes[neighbor].x-x),Math.sign(nodes[neighbor].z-z)]);

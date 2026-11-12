@@ -41,6 +41,9 @@ function mine(moon,variant) {
       [tone(palette[j]),tone(palette[j+1]),tone(palette[j+1]),tone(palette[j])]));
     return [rim,...walls];
   });
+  const shadow=ribs[1].map(([x,y])=>[x*1.045,y+.01,.73]);
+  const darkness=shadow.map((_,i)=>groundFace([[0,.65,.73],shadow[i],shadow[(i+1)%shadow.length]],'#111017',
+    [tone('#0b0a10'),tone('#26232c'),tone('#26232c')]));
   const rear=ribs.at(-1);
   const center=[0,.56,-1.01];
   const ground=[
@@ -53,7 +56,7 @@ function mine(moon,variant) {
     rock(.31,-.72,3.19,2.94,.83,palette[0],1.41,variant+3),
     rock(-1.88,1.41,1.1,1.84,.89,palette[0],-.43,variant+.6),
     rock(1.87,1.77,1.25,1.74,.78,palette[1],-.35,variant)];
-  const entry=[...shell,...ground,...banks];
+  const entry=[...shell,...ground,...banks,...darkness];
   if (moon) {
     const colors=[['#9adcdd','#ab9be4'],['#e6a9d9','#ab82d9'],['#e9c1a4','#9fbcde']][variant];
     return [...entry,...[-1,1].flatMap((side,i)=>[
@@ -378,7 +381,7 @@ export function discoveryGuides(walkers,sites,layout,plan) {
   const occupied=new Set();
   const max=plan.plots.length>=14?2:1;
   const guided=walkers.map(walker=>{
-    if (occupied.size>=max||walker.kind!=='walk'||!walker.voice||!walker.route) return walker;
+    if (occupied.size>=max||walker.kind!=='walk'||!walker.voice||!walker.route||walker.wander) return walker;
     const match=nearbyFind(walker,sites.filter(site=>!occupied.has(site.key)),layout);
     if (!match) return walker;
     occupied.add(match.site.key);
@@ -416,7 +419,13 @@ export function terrainDiscoveries(layout,plan,full) {
   const options=catalog[layout.theme];
   const seed=(layout.seed^0x607d08ef)>>>0;
   const finds=[];
-  const routes=[...plan.paths.flat(),...(plan.transit??[])];
+  const roads=plan.paths.flatMap(path=>path.slice(1).map((b,i)=>[path[i],b]));
+  const nearRoad=(x,z,clearance)=>roads.some(([a,b])=>{
+    const dx=b.x-a.x,dz=b.z-a.z;
+    const t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/(dx*dx+dz*dz||1)));
+    return Math.hypot(x-a.x-dx*t,z-a.z-dz*t)<clearance;
+  });
+  const tracks=plan.transit??[];
   const plots=[...plan.plots,...Object.values(layout.berths),...(layout.airfield?[layout.airfield]:[])];
   for (let band=0;band<15;band++) {
     const radius=10+band*3.95;
@@ -430,7 +439,7 @@ export function terrainDiscoveries(layout,plan,full) {
       if (Math.abs(x)>63||Math.abs(z)>61||regionVisibility(plan,x,z,full)<.66) continue;
       if (finds.some(site=>Math.hypot(x-site.x,z-site.z)<7.3)) continue;
       if (plots.some(plot=>Math.hypot(x-plot.x,z-plot.z)<(plot.airfield?15:(plot.span??9.1)))) continue;
-      if (routes.some(point=>Math.hypot(x-point.x,z-point.z)<4.9)) continue;
+      if (nearRoad(x,z,type.mine?7.15:6.25)||tracks.some(point=>Math.hypot(x-point.x,z-point.z)<5.3)) continue;
       const samples=[[-2.5,-2.5],[-2.5,2.5],[2.5,-2.5],[2.5,2.5],[0,0]]
         .map(([dx,dz])=>regionSurface(layout,x+dx,z+dz));
       if (samples.some(tile=>tile.water||tile.bank<.55||layout.theme==='moon'&&tile.basin< -1.9)) continue;
