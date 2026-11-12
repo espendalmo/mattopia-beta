@@ -552,9 +552,9 @@ export function projectCameras(scene,target=null,focusLatest=false,{compact=fals
   const point=target??scene.latestTarget??{x:average('x'),y:Math.max(0,average('y')-.6),z:average('z'),height:4.2};
   const height=point.height??6;
   const station=point.kind==='railwayStation'||point.kind==='monorailStation'||point.kind==='tramStation';
-  const framing=point.airfield?39:(station?23:height*1.13+3.2)*(compact?.91:1);
-  const close={...initial,zoom:Math.min(maxZoom,scene.size/framing),anchorX:point.x,anchorZ:point.z,
-    center:point.y+height*(height>10?.46:.37)};
+  const framing=point.beach?44:point.airfield?39:point.spaceResort?31:(station?23:height*1.13+3.2)*(compact?.91:1);
+  const close={...initial,zoom:Math.min(maxZoom,scene.size/framing),anchorX:point.x+(point.beach?Math.sin(point.yaw)*5:0),anchorZ:point.z+(point.beach?Math.cos(point.yaw)*5:0),
+    center:point.y+height*(point.beach?.24:height>10?.46:.37)};
   const neighbor=Object.values(scene.landmarks??{}).filter(other=>Math.hypot(other.x-point.x,other.z-point.z)>.7)
     .reduce((nearest,other)=>!nearest||Math.hypot(other.x-point.x,other.z-point.z)<Math.hypot(nearest.x-point.x,nearest.z-point.z)?other:nearest,null);
   const context={...initial,zoom:clamp(scene.size/41,1,maxZoom),center:point.y+1.35,

@@ -34,7 +34,7 @@ export function mapCharacterInfo(scene,key,discovery) {
   const seed=mapStorySeed(scene.seed,key);
   const lunar=scene.id==='moon';
   const dog=actor?.parts.some(piece=>piece.animalKind==='dog');
-  if (!dog&&(actor?.kind==='walk'||key.startsWith('resident:')||actor?.footballPlayer||actor?.kind==='slide')) {
+  if (!dog&&(actor?.kind==='walk'||actor?.dustBather||key.startsWith('resident:')||actor?.footballPlayer||actor?.kind==='slide')) {
     const kind=part?.characterKind??(lunar?'astronaut':'human');
     const {first,last,stories}=personStories[kind]??personStories.human;
     const name=lunar&&['alien','astronaut'].includes(kind)?lunarName(scene,key,actor,kind,first,last)
@@ -47,6 +47,7 @@ export function mapCharacterInfo(scene,key,discovery) {
     if (actor?.kind==='slide') story=lunar
       ? 'Skal slå sin egen rekord i støvrutsjebanen. Må bare finne ut hvor støvet har gjemt stoppeklokka.'
       : 'Har tenkt å ta rutsjebanen én gang til. Det har visst vært planen hele ettermiddagen.';
+    if (actor?.dustBather) story='Tar et månestøvbad. Hotellgjestene får låne en støvkost i stedet for et håndkle.';
     if (actor?.peeking) story='Leker gjemsel bak steinen. Har blitt veldig flink til å gjemme alt unntatt antennene.';
     if (actor?.footballPlayer) {
       const team=lunar?'Månespark':'Elvespark';

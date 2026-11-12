@@ -176,7 +176,7 @@ const buildingKinds={
   work:['mill','factory','sawmill','moonWorkshop','moonCargo','oxygen','generator','refinery','supplyDepot','cargoDepot'],
   signal:['solar','solarGarden','telescope','telescopeArray','craterLab','radioTower','lunarRadio','prismTower','novaTower','haloTower'],
   dining:['restaurant','bistro','coralCafe','tikiBar','dustCafe','moonBurger','cosmicIce','needleTower'],
-  hotel:['hotel','resort','sunsetHotel','moonHotel','auroraHotel','megaResort','glassHotel'],
+  hotel:['hotel','resort','sunsetHotel','moonHotel','auroraHotel','megaResort','glassHotel','lunarResort'],
 };
 const buildingVoices=Object.fromEntries(Object.entries(buildingKinds)
   .flatMap(([voice,kinds])=>kinds.map(kind=>[kind,voice])));

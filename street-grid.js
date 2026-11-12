@@ -1,7 +1,6 @@
-import {connectWaterfront,regionalAnnex,regionSurface,riverAt,riverWidth,specialEntrances} from './regions.js';
+import {connectWaterfront,regionalAnnex,regionalFootprint,regionSurface,riverAt,riverWidth,specialEntrances} from './regions.js';
 import {randomGenerator,REGION_PLACES,LARGE_REGION_PLACES} from './worlds.js';
 
-const WIDTH=11;
 export const STREET_TURN_RADIUS=2.35;
 const streets=new WeakMap();
 const gap=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
@@ -14,11 +13,13 @@ function interpolate(a,b,step=1.9) {
   }));
 }
 
-function streetGraph(layout,spacing,shift) {
+function streetGraph(layout,spacing,shift,maxGrade=2.15) {
+  const width=layout.grand?13:11;
+  const center=(width-1)/2;
   const rng=randomGenerator(layout.seed^0x5c14a537^Math.imul(shift,0x47c82f31));
   const shiftX=(rng()-.5)*8,shiftZ=(rng()-.5)*8;
-  const nodes=Array.from({length:WIDTH*WIDTH},(_,id)=>{
-    const x=(id%WIDTH-5)*spacing+shiftX,z=(Math.floor(id/WIDTH)-5)*spacing+shiftZ;
+  const nodes=Array.from({length:width*width},(_,id)=>{
+    const x=(id%width-center)*spacing+shiftX,z=(Math.floor(id/width)-center)*spacing+shiftZ;
     return {id,x,z,...regionSurface(layout,x,z)};
   });
   const links=nodes.map(()=>[]);
@@ -28,6 +29,7 @@ function streetGraph(layout,spacing,shift) {
     const crossRiver=layout.theme==='city'&&nodes[a].z===nodes[b].z
       &&Math.abs(nodes[a].z-layout.berths.bridge.z)>6.4;
     if (points.some(point=>{
+      if (layout.regionalSites.some(site=>regionalFootprint(site,point.x,point.z,1.65))) return true;
       const surface=regionSurface(layout,point.x,point.z);
       if (surface.water) return !crossRiver||Math.abs(point.x-riverAt(layout,point.z))>riverWidth(layout,point.z)+.2;
       return layout.theme==='moon'&&surface.basin< -1.65;
@@ -38,18 +40,19 @@ function streetGraph(layout,spacing,shift) {
   };
   for (const node of nodes) {
     if (node.water) continue;
-    const {id}=node, col=id%WIDTH,row=Math.floor(id/WIDTH);
-    if (row<WIDTH-1&&!nodes[id+WIDTH].water) connect(id,id+WIDTH);
-    if (col<WIDTH-1) {
+    const {id}=node, col=id%width,row=Math.floor(id/width);
+    if (row<width-1&&!nodes[id+width].water) connect(id,id+width);
+    if (col<width-1) {
       const next=nodes[id+1];
       if (!next.water) connect(id,id+1);
-      else if (layout.theme==='city'&&col<WIDTH-2&&!nodes[id+2].water) connect(id,id+2);
+      else if (layout.theme==='city'&&col<width-2&&!nodes[id+2].water) connect(id,id+2);
     }
   }
   const lots=[];
-  for (let row=0;row<WIDTH-1;row++) {
-    for (let col=0;col<WIDTH-1;col++) {
-      const nw=row*WIDTH+col, ring=[nw,nw+1,nw+WIDTH+1,nw+WIDTH];
+  const districtAccess=layout.regionalSites.flatMap(site=>specialEntrances(site));
+  for (let row=0;row<width-1;row++) {
+    for (let col=0;col<width-1;col++) {
+      const nw=row*width+col, ring=[nw,nw+1,nw+width+1,nw+width];
       const x=nodes[nw].x+spacing/2,z=nodes[nw].z+spacing/2;
       if (Math.abs(x)>(layout.grand?73:67)||Math.abs(z)>(layout.grand?72:66)) continue;
       const perimeter=ring.map((id,i)=>edges.get(edgeKey(id,ring[(i+1)%ring.length])));
@@ -58,7 +61,9 @@ function streetGraph(layout,spacing,shift) {
       const corners=[[0,0],[5.4,0],[-5.4,0],[0,5.3],[0,-5.3],[4.1,4.1],[-4.1,4.1],[4.1,-4.1],[-4.1,-4.1]];
       const ground=corners.map(([a,b])=>regionSurface(layout,x+a,z+b));
       const low=Math.min(...ground.map(tile=>tile.y)), high=Math.max(...ground.map(tile=>tile.y));
-      if (ground.some(tile=>tile.water||tile.bank<.26||layout.theme==='moon'&&tile.basin<-.65)||high-low>2.15) continue;
+      if (ground.some(tile=>tile.water||tile.bank<.26||layout.theme==='moon'&&tile.basin<-.65)||high-low>maxGrade) continue;
+      if (layout.regionalSites.some(site=>regionalFootprint(site,x,z,6.05))
+        ||districtAccess.some(entry=>Math.hypot(entry.x-x,entry.z-z)<6.5)) continue;
       if (Object.entries(layout.berths).some(([kind,site])=>kind!=='lighthouse'&&gap(site,{x,z})<(site.span?site.span*.66+3:8.7))) continue;
       lots.push({x,z,y:high+.045,ring,perimeter,front,west,weight:rng()*4.8,westFirst:rng()>.5});
     }
@@ -86,14 +91,18 @@ function layoutStreets(layout,requiredLots) {
   if (layout.grand) attempts.push([12.9,0],[12.9,1],[12.9,2],[12.9,3],[12.9,4]);
   if (requiredLots>=LARGE_REGION_PLACES) {
     attempts.push(...Array.from({length:12},(_,i)=>[12.9,5+i]));
+    if (layout.theme==='island') attempts.push(...Array.from({length:16},(_,i)=>[12.9,i,3.25]));
   }
-  for (const [spacing,shift] of attempts) {
-    const candidate=streetGraph(layout,spacing,shift);
+  for (const [spacing,shift,maxGrade] of attempts) {
+    const candidate=streetGraph(layout,spacing,shift,maxGrade);
     if (candidate?.available.length>=requiredLots) { graph=candidate; break; }
   }
   if (graph) {
     const reserved=graph.available.slice(0,(layout.grand?requiredLots:REGION_PLACES)+4);
-    graph.connectorLayout={...layout,grid:layout.grid.map(tile=>({...tile,blocked:reserved.some(site=>gap(site,tile)<5.5)}))};
+    const blockedRoad=(x,z)=>reserved.some(site=>Math.hypot(site.x-x,site.z-z)<5.5)
+      ||layout.regionalSites.some(site=>regionalFootprint(site,x,z,.8));
+    graph.connectorLayout={...layout,blockedRoad,
+      grid:layout.grid.map(tile=>({...tile,blocked:blockedRoad(tile.x,tile.z)}))};
   }
   versions.set(requiredLots,graph??null);
   streets.set(layout,versions);
@@ -163,6 +172,7 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
   const {nodes,edges,origin,available,links,connectorLayout}=graph;
   const reserveOrigin=starter&&available.length>requiredLots;
   const open=new Map(), active=new Set(), connectors=[],connectedNodes=new Set(),plots=[];
+  const gateways=new Set();
   const usedLots=new Set(reserveOrigin?[origin]:[]);
   let latestPaths=new Map();
   let track=false;
@@ -190,29 +200,43 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
   const balanceBanks=layout.theme==='city'&&varied;
   const bankOf=site=>site.x<riverAt(layout,site.z)?0:1;
 
+  const attach=(special,index,kind)=>{
+    const entries=specialEntrances(special,kind);
+    for (const entry of entries) {
+      const side=Math.sign(entry.x-special.x);
+      const eligible=point=>kind!=='bridge'||(point.x-riverAt(layout,point.z))*side>riverWidth(layout,point.z)+.6;
+      const byDistance=(a,b)=>gap(a,entry)-gap(b,entry);
+      const peer=special.airportDistrict&&plots.find(plot=>plot.airportDistrict)?.entries[0];
+      const starts=[...active].map(id=>nodes[id]).filter(eligible).sort(byDistance).slice(0,8);
+      if (peer&&connectors.some(path=>gap(path.at(-1),peer)<.01)) starts.unshift(peer);
+      const connect=(start,street=[])=>{
+        const path=connectWaterfront(connectorLayout,start,entry,kind==='bridge');
+        if (!path||path.length<2) return false;
+        for (let i=1;i<street.length;i++) add(edges.get(edgeKey(street[i-1],street[i])));
+        connectors.push(path);
+        if (special.beach||special.spaceResort||special.airportDistrict) gateways.add(path);
+        latestPaths.set(path,false);
+        if (Number.isInteger(start.id)) connectedNodes.add(start.id);
+        return true;
+      };
+      if (starts.some(start=>connect(start))) continue;
+      // Where reserved plots block a direct route, extend a regular street
+      // before making the last connection to the site.
+      const nearby=nodes.filter(point=>!active.has(point.id)&&links[point.id].length&&eligible(point)).sort(byDistance);
+      nearby.slice(0,16).some(start=>{
+        const street=pathToStreet(links,[start.id],active);
+        return street&&connect(start,street);
+      });
+    }
+    plots.push({...special,index,kind,entries});
+  };
+
   for (const {index,kind} of buildings) {
     latestPaths=new Map();
-    const annex=regionalAnnex(layout,kind);
-    const special=annex?null:layout.berths[kind];
-    if (special) {
-      const entries=specialEntrances(special,kind);
-      for (const entry of entries) {
-        let candidates=[...active].map(id=>nodes[id]);
-        if (kind==='bridge') {
-          const side=Math.sign(entry.x-special.x);
-          const onBank=point=>(point.x-riverAt(layout,point.z))*side>riverWidth(layout,point.z)+.6;
-          candidates=candidates.filter(onBank);
-          if (!candidates.length) candidates=nodes.filter(point=>!point.water&&onBank(point)&&links[point.id].length);
-        }
-        if (!candidates.length) continue;
-        const start=candidates.reduce((near,point)=>gap(point,entry)<gap(near,entry)?point:near);
-        const path=connectWaterfront(connectorLayout,start,entry,kind==='bridge');
-        connectors.push(path);
-        latestPaths.set(path,false);
-        connectedNodes.add(start.id);
-        active.add(start.id);
-      }
-      plots.push({...special,index,kind,entries});
+    const special=regionalAnnex(layout,kind)??layout.berths[kind];
+    const reserveLot=special&&kind==='lighthouse';
+    if (special&&!reserveLot) {
+      attach(special,index,kind);
       continue;
     }
 
@@ -252,27 +276,16 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     const offset=varied&&!ringRoad?Math.min(.58,Math.max(0,gap(nodes[lot.ring[0]],nodes[lot.ring[1]])*.5-6.32)):0;
     const x=lot.x-Math.sin(yaw)*offset,z=lot.z-Math.cos(yaw)*offset;
     const entry=yaw===0?{x,z:nodes[lot.ring[2]].z}:{x:nodes[lot.ring[3]].x,z};
-    if (annex) {
-      // Keep its original lot reserved so later parcels in saved towns stay put.
-      const entries=specialEntrances(annex,kind);
-      const candidates=[...active].map(id=>nodes[id]);
-      const start=candidates.reduce((near,node)=>gap(node,entries[0])<gap(near,entries[0])?node:near);
-      const shoreRoad=connectWaterfront(connectorLayout,start,entries[0],false);
-      connectors.push(shoreRoad);
-      latestPaths.set(shoreRoad,false);
-      connectedNodes.add(start.id);
-      plots.push({...annex,index,kind,entries});
-    } else {
-      plots.push({x,y:lot.y,z,yaw,index,kind,entries:[entry],
-        streetSpan:gap(nodes[lot.ring[0]],nodes[lot.ring[1]])});
-    }
+    if (reserveLot) attach(special,index,kind);
+    else plots.push({x,y:lot.y,z,yaw,index,kind,entries:[entry],
+      streetSpan:gap(nodes[lot.ring[0]],nodes[lot.ring[1]])});
   }
   const openLinks=nodes.map(()=>[]);
   for (const {a,b} of open.values()) {
     openLinks[a].push(b);openLinks[b].push(a);
   }
   return {
-    origin,starter:reserveOrigin?{x:origin.x,y:origin.y,z:origin.z,yaw:0}:null,plots,paths:[...open.values()].map(edge=>edge.points).concat(connectors),latestPaths,
+    origin,starter:reserveOrigin?{x:origin.x,y:origin.y,z:origin.z,yaw:0}:null,plots,paths:[...open.values()].map(edge=>edge.points).concat(connectors),latestPaths,gateways,
     junctions:[...active].filter(id=>openLinks[id].length>=2).map(id=>{
       const {x,z}=nodes[id];
       const arms=openLinks[id].map(neighbor=>[Math.sign(nodes[neighbor].x-x),Math.sign(nodes[neighbor].z-z)]);

@@ -1,5 +1,5 @@
 import {beam,box,dome,tube,tunnelLandform} from './scenery.js';
-import {regionSurface,roadElevation,riverAt,riverWidth} from './regions.js';
+import {regionSurface,roadElevation,regionalFootprint,riverAt,riverWidth} from './regions.js';
 import {STREET_TURN_RADIUS} from './street-grid.js';
 
 const STREET_TONES={
@@ -135,32 +135,41 @@ function roadSeed(layout,road) {
   return (layout.seed^Math.imul(Math.round(a.x*13+b.z*71),0x45d9f3b)^Math.imul(Math.round(a.z*19+b.x*89),0x27d4eb2d))>>>0;
 }
 
-function streetFurniture(layout,plan,road,width,seed) {
+function streetFurniture(layout,plan,road,width,seed,gateway) {
   const total=road.at(-1).distance, parts=[];
   const theme=layout.theme;
-  const avenue=plan.plots.length>=6&&total>9&&plan.plots.filter(p=>Math.hypot(p.x-road[0].x,p.z-road[0].z)<23).length>=4;
-  for (let distance=4.15+(seed%4)*.62,i=0;distance<total-2.9;distance+=7.7,i++) {
-    const side=(seed+i)%2===0?1:-1;
+  const middle=roadPoint(road,total*.5);
+  const nearby=plan.plots.filter(p=>Math.hypot(p.x-middle.x,p.z-middle.z)<21).length;
+  const avenue=total>8.8&&(gateway||plan.plots.length>=3&&nearby>=2&&(nearby>2||seed%4!==0));
+  const spacing=avenue?5.45:7.7;
+  for (let distance=3.65+(seed%4)*.42,i=0;distance<total-2.9;distance+=spacing,i++) {
     const center=roadPoint(road,distance);
-    const {x,z}=offsetPoint(center,side*(width+.83));
-    const ground=regionSurface(layout,x,z),y=ground.y;
-    if (ground.water||ground.bank<.58||plan.inRoadTunnel?.(x,z)||plan.plots.some(site=>Math.hypot(x-site.x,z-site.z)<5.96)) continue;
-    if (avenue&&theme==='moon') {
-      parts.push(tube(x,z,.47,.45,.23,'#8b8aa4',y),tube(x,z,.21,.22,1.69,'#a2a5c1',y+.17),
-        {...dome(x,z,.44,.42,.63,'#95d4dc',y+1.48),life:[0,0,0,-2-i*.66]});
-    } else if (theme!=='moon'&&(avenue||(seed+i*5)%4===1)) {
-      const tropical=theme==='island';
-      parts.push(tube(x,z,.21,.23,1.54,'#977b61',y),
-        dome(x,z,tropical?1.75:1.38,1.3,tropical?.44:1.22,tropical?'#72a676':'#789d6d',y+1.48),
-        dome(x+.26,z-.16,1.04,.85,.56,'#8bb081',y+1.81));
-    }
-    if (avenue||theme==='moon'||(seed+i*5)%4!==1) {
-      const top=y+(theme==='moon'?1.45:2.43),[u,v]=center.tangent;
-      const lx=x+u*(avenue?.67:0),lz=z+v*(avenue?.67:0);
-      const hx=lx+v*side*.47,hz=lz-u*side*.47;
-      const metal=theme==='moon'?'#8995b0':'#72817e';
-      parts.push(tube(lx,lz,.22,.22,.11,metal,y),tube(lx,lz,.106,.105,top-y,metal,y),
-        beam([lx,top-.22,lz],[hx,top,hz],.083,metal),box(hx,hz,.34,.25,.10,'#f6e2a9',top-.035));
+    const sides=avenue?[-1,1]:[(seed+i)%2===0?1:-1];
+    for (const side of sides) {
+      const {x,z}=offsetPoint(center,side*(width+(avenue?1.04:.83)));
+      const ground=regionSurface(layout,x,z),y=ground.y;
+      if (ground.water||ground.bank<.58||plan.inRoadTunnel?.(x,z)
+        ||plan.plots.some(site=>site.halfWidth?regionalFootprint(site,x,z,.57):Math.hypot(x-site.x,z-site.z)<5.71)
+        ||plan.approaches?.some(access=>access.path.some(point=>Math.hypot(x-point.x,z-point.z)<1.1))) continue;
+      if (avenue&&theme==='moon') {
+        parts.push(tube(x,z,.47,.45,.23,'#8b8aa4',y),tube(x,z,.21,.22,1.69,'#a2a5c1',y+.17),
+          {...dome(x,z,.44,.42,.63,'#95d4dc',y+1.48),life:[0,0,0,-2-i*.66]});
+      } else if (theme!=='moon'&&(avenue||(seed+i*5)%4===1)) {
+        const tropical=theme==='island';
+        parts.push(tube(x,z,.21,.23,1.54,'#977b61',y),
+          dome(x,z,tropical?1.75:1.38,1.3,tropical?.44:1.22,tropical?'#72a676':'#789d6d',y+1.48),
+          dome(x+.26,z-.16,1.04,.85,.56,'#8bb081',y+1.81));
+      }
+      if (avenue||theme==='moon'||(seed+i*5)%4!==1) {
+        const [u,v]=center.tangent;
+        const lamp=offsetPoint(center,side*(width+.68));
+        const lx=lamp.x+u*(avenue?.86:0),lz=lamp.z+v*(avenue?.86:0);
+        const base=regionSurface(layout,lx,lz).y,top=base+(theme==='moon'?1.45:2.43);
+        const hx=lx+v*side*.47,hz=lz-u*side*.47;
+        const metal=theme==='moon'?'#8995b0':'#72817e';
+        parts.push(tube(lx,lz,.22,.22,.11,metal,base),tube(lx,lz,.106,.105,top-base,metal,base),
+          beam([lx,top-.22,lz],[hx,top,hz],.083,metal),box(hx,hz,.34,.25,.10,'#f6e2a9',top-.035));
+      }
     }
   }
   return parts;
@@ -186,7 +195,7 @@ function bridgeSpan(a,b,width,pier) {
   return parts;
 }
 
-function pavedRoute(layout,path,width,{junctions,plan,stage}={}) {
+function pavedRoute(layout,path,width,{junctions,plan,stage,gateway}={}) {
   const road=measureRoad(layout,path,plan?.streetElevation);
   if (road.length<2) return [];
   const [curb,asphalt,mark]=STREET_TONES[layout.theme];
@@ -238,7 +247,7 @@ function pavedRoute(layout,path,width,{junctions,plan,stage}={}) {
   }
   if (layout.theme!=='island') paint(laneMarkings(road,mark,allowed,edgeStart,edgeEnd),1);
   for (const crossing of allowed) paint(zebra(road,crossing,width,mark),1);
-  if (plan&&total>6.8) paint(streetFurniture(layout,plan,road,width,seed),1);
+  if (plan&&total>6.8) paint(streetFurniture(layout,plan,road,width,seed,gateway),1);
   return parts;
 }
 
@@ -340,7 +349,7 @@ export function regionRoads(layout,plan,animate=false) {
         return t===1?point:{x:before.x+(point.x-before.x)*t,z:before.z+(point.z-before.z)*t};
       });
     }):path;
-    return pavedRoute(layout,fine,width,{junctions,plan:plan.plots?plan:null,stage});
+    return pavedRoute(layout,fine,width,{junctions,plan:plan.plots?plan:null,stage,gateway:plan.gateways?.has(plan.paths[i])});
   });
   for (const {path,drive,latest} of plan.approaches??[]) {
     const road=measureRoad(layout,path),half=drive?.61:.38,color=drive?'#a7a699':'#d3c09e';

@@ -553,10 +553,21 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
     if (expand) {
       let fullScreen=false;
       let previousScroll=0;
+      const viewport=window.visualViewport;
+      const events=new AbortController();
+      const syncViewport=()=>{
+        if (!viewport?.width||!viewport.height) return;
+        dialog.style.setProperty('--map-viewport-left',`${viewport.offsetLeft}px`);
+        dialog.style.setProperty('--map-viewport-top',`${viewport.offsetTop}px`);
+        dialog.style.setProperty('--map-viewport-width',`${viewport.width}px`);
+        dialog.style.setProperty('--map-viewport-height',`${viewport.height}px`);
+      };
+      const stopPageGesture=event=>{ if (fullScreen&&event.cancelable) event.preventDefault(); };
       const showFullScreen=enabled=>{
         fullScreen=enabled;
         if (enabled) previousScroll=dialog.scrollTop;
         dialog.classList.toggle('project-fullscreen',enabled);
+        if (enabled) syncViewport();
         if (demoControls) {
           if (enabled) stage.append(demoControls);
           else viewer.prepend(demoControls);
@@ -569,6 +580,13 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         expand.focus({preventScroll:true});
       };
       expand.addEventListener('click',()=>showFullScreen(!fullScreen));
+      for (const name of ['scroll','resize']) {
+        viewport?.addEventListener(name,()=>{ if (fullScreen) syncViewport(); },{signal:events.signal});
+      }
+      for (const name of ['gesturestart','gesturechange','wheel']) {
+        dialog.addEventListener(name,stopPageGesture,{passive:false,signal:events.signal});
+      }
+      dialog.addEventListener('close',()=>events.abort(),{once:true});
       dialog.addEventListener('cancel',event=>{
         if (!fullScreen) return;
         event.preventDefault();

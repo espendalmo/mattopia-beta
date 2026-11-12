@@ -453,10 +453,15 @@ export function worldBuildingOptions(id,map) {
     available.splice(available.indexOf(RAIL_PLACE),1);
     available.unshift(RAIL_PLACE);
   }
-  const airport=id==='city'?37:id==='moon'?44:null;
+  const airport=id==='city'?37:id==='moon'?44:25;
   if (worldStatus(map).built%7===3 && available.includes(airport)) {
     available.splice(available.indexOf(airport),1);
     available.unshift(airport);
+  }
+  const resort=id==='island'?27:id==='moon'?55:null;
+  if (worldStatus(map).built%6===0&&available.includes(resort)) {
+    available.splice(available.indexOf(resort),1);
+    available.unshift(resort);
   }
   const driveThrough=id==='moon'?54:50;
   if (worldStatus(map).built%8===4&&available.includes(driveThrough)) {
@@ -504,7 +509,9 @@ function regionLandmarkParts(id,index,site,map) {
 export function worldBuildingPreview(id,index,map=null) {
   const info=worldBuilding(id,index,map);
   if (!info) return null;
-  const staged=isRegion(map)?regionLandmarkParts(id,index,null,map).flat():landmark(id,index,PLACES[id][index],[0,0]).flatMap(step=>step.parts);
+  const previewSite=grandCatalog(map)&&(info.kind==='airport'||info.kind==='megaResort')
+    ?{airfield:info.kind==='airport',beach:info.kind==='megaResort'}:null;
+  const staged=isRegion(map)?regionLandmarkParts(id,index,previewSite,map).flat():landmark(id,index,PLACES[id][index],[0,0]).flatMap(step=>step.parts);
   const vehicle=transitVehiclePreview(info.kind);
   const parts=vehicle?[...staged.filter(part=>!part.transitPreview),...vehicle]
     :staged.map(part=>['plane','shuttle'].includes(part.flight)?{...part,x:part.x-.9,y:part.y+1.3,z:part.z+3.25}:part);

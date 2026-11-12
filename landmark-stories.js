@@ -78,6 +78,7 @@ const moonStories={
   prismTower:'Fra krystallspiret kan du se neste krater. Vaktmesteren har verdens lengste støvkost.',
   novaTower:'Den store ringen er ikke en hulahoppring. Astronautene har prøvd. Det gikk ikke.',
   haloTower:'Tallerkentakene har utsikt i alle retninger. Kjøkkenet savner fortsatt de store lokkene sine.',
+  lunarResort:'Gjester får med seg en liten kost fra bassenget. Hotellet har foreløpig måttet avlyse all vannsprut.',
   auroraHotel:'Toppetasjen har tallerkenrestaurant. Gjestene spør alltid om hele hotellet kan fly.',
   spaceField:'Laget Månespark trener her. En ball i hjelmen gir av og til en liten privat stjernehimmel.',
 };
@@ -192,6 +193,7 @@ const construction={
 };
 
 const openings={
+  lunarResort:'Bassengvakta har satt fram støvkoster. De to første gjestene har allerede badet seg grå.',
   moonBurger:'Første burger er klar. Kokken har festet ekstra måneost så den holder seg på plass.',
   spaceField:'Laget Månespark er klart. Hjelmene er på og ballen har lovet å oppføre seg.',
   airport:'Rullebanen er klar. Piloten øver på å lande uten å søle kakao.',

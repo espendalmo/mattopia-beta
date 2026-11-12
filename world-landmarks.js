@@ -1,5 +1,5 @@
 import {lunarArchitecture} from './lunar-architecture.js';
-import {box as b,rounded as r,dome as d,tube as t,roof,beam,worldSign,pointOnSite,placeParts,vehicle} from './scenery.js';
+import {box as b,rounded as r,dome as d,tube as t,roof,beam,worldSign,pointOnSite,placeParts,parkedVehicle} from './scenery.js';
 import {transitStation,helipadParts,REGIONAL_HELIPAD} from './transport.js';
 import {slidePark} from './slide-parks.js';
 
@@ -788,7 +788,7 @@ function hoverDealer() {
       ...pair.map(s=>t(s*2.25,1.66,3.24,2.92,.205,'#b4b3c4',.35))],
     [...pair.flatMap((s,i)=>[
       t(s*2.25,1.66,2.49,2.41,.048,'#80c9ce',.55),
-      ...placeParts(vehicle('hover',i?'#e29d71':'#c2729b'),{x:s*2.25,y:.73,z:1.62,yaw:s*.38})]),
+      ...parkedVehicle('hover',i?'#e29d71':'#c2729b',{x:s*2.25,y:.73,z:1.62,yaw:s*.38})]),
       ...[-3.96,-2.39,-.83,.72,2.29].map(x=>b(x,-.75,.087,.078,1.91,cream,.62)),
       ...pair.map(s=>beam([s*.72+2.08,.34,-.95],[s*.72+2.08,4.08,-.95],.2,slate)),
       ...nameplate('MOON MOTORS',2.08,4.07,-.94,'#af6e8d',.126),
@@ -847,7 +847,7 @@ function moonWorks(style) {
       ...[-1.91,1.9].flatMap((x,i)=>[r(x,1.51,2.06,.1,1.58,dark,.38),
         r(x,1.59,1.89,.088,.23,'#83bed0',1.53),b(x,1.73,2.12,.39,.116,'#d2d9e0',.38),
         b(x,2.56,.075,1.78,.014,i?cream:'#e2b685',.38)]),
-      ...(garage?pair.flatMap((s,i)=>placeParts(vehicle('rover',i?'#6e9fb6':'#d7aa78'),{x:s*2.12,y:.37,z:2.93,yaw:s*.2}))
+      ...(garage?pair.flatMap((s,i)=>parkedVehicle('rover',i?'#6e9fb6':'#d7aa78',{x:s*2.12,y:.37,z:2.93,yaw:s*.2}))
         :workshop?[r(2.85,2.78,1.35,.92,.51,'#a292b1',.36),t(2.85,2.75,.51,.56,.17,brass,.83),
           ...pair.map(s=>beam([2.9+s*.48,.37,3.48],[2.9+s*.48,1.6,3.48],.12,tint))]
         :containers),
@@ -860,14 +860,14 @@ function pool(x,z,w,depth) {
     b(x-w*.21,z+depth*.32,w*.44,.044,.01,'#a9e4e0',.625)];
 }
 
-function megaResort() {
+function megaResort(site) {
   const creamWall='#dec0a1',pink='#c48e84',water='#5e9fa4';
   const towers=pair.flatMap(s=>[
     r(s*3.66,-1.92,2.91,4.85,6.35,pink,.36),
     r(s*3.66,-2.37,2.81,3.5,1.91,creamWall,6.67),
     roof(s*3.66,-2.36,3.13,3.82,1.04,'#668d8c',8.55),
   ]);
-  return [base(10.92,10.02,'#d6bd93'),
+  const stages=[base(10.92,10.02,'#d6bd93'),
     [r(0,-2.15,5.81,4.59,4.82,creamWall,.35),r(0,-2.28,6.11,4.67,.28,pink,5.13),
       r(0,-2.19,4.36,3.26,1.36,creamWall,5.36),r(0,-2.22,4.55,3.42,.22,water,6.69),
       ...towers,...pool(-1.77,2.41,3.27,2.58),...pool(2.03,2.68,3.47,2.27)],
@@ -880,6 +880,58 @@ function megaResort() {
         ...glazing([s*3.66],[7.27],-.58,{w:1.09,h:.76}),
         ...palm(s*4.68,2.87,2.87),...umbrella(s*.8,4.03,s<0?'#e3a28c':'#78b6ae')]),
       ...entrance(.24,1.81,1.19),...nameplate('LAGUNE',0,5.94,-.45,'#68848c',.176)],
+  ];
+  if (!site?.beach) return stages;
+  const widen=([x,y,z])=>[x*1.5,y,z*1.22];
+  return stages.map(parts=>parts.map(part=>({
+    ...part,x:part.x*1.5,z:part.z*1.22,
+    ...(part.w!==undefined&&{w:part.w*1.5,d:part.d*1.22}),
+    ...(part.from&&{from:widen(part.from),to:widen(part.to)}),
+    ...(part.outline&&{outline:part.outline.map(widen)}),
+  })));
+}
+
+function lunarResort() {
+  const pearl='#d2c9d6',violet='#665c8c',gold='#e9bd80',aqua='#90d3df';
+  const dust='#b3a8c5',terrace='#b9b2c9';
+  const towers=pair.flatMap(side=>{
+    const x=side*5.2,z=-2.86;
+    const upper=side>0?5.75:6.65;
+    return [r(x,z,4.87,5.12,2.23,pearl,.35),t(x,z,3.97,4.35,upper-2.42,pearl,2.57),
+      t(x,z,4.06,4.46,.68,'#77a6bd',upper+.15),t(x,z,4.61,4.9,.22,gold,upper+.81),
+      d(x,z,4.64,4.92,.68,violet,upper+.98),d(x,z,1.31,1.36,.31,aqua,upper+1.61)];
+  });
+  const arcs=pair.flatMap(side=>[1.18,2.07,3.18,4.24].flatMap(y=>
+    glazing([side*5.2-.85,side*5.2+.86],[y],y>2.4?-.72:-.29,{w:.66,h:.49,color:'#86bdd0'})));
+  const lounges=pair.flatMap(side=>[1.52,4.1].flatMap((z,i)=>{
+    const x=side*(5.45+i*.42),stripe=side>0?'#aa83b8':'#64aab6';
+    return [t(x+.77*side,z,.13,.13,1.97,pearl,.37),
+      d(x+.77*side,z,2.48,2.24,.46,stripe,2.22),d(x+.77*side,z,1.22,1.13,.2,gold,2.51),
+      r(x-.58*side,z+.43,.88,1.86,.21,violet,.37),
+      r(x-.58*side,z+.67,.71,1.17,.13,stripe,.59),
+      beam([x-.58*side,.6,z+.16],[x-.58*side,.95,z-.44],.51,stripe),
+      d(x+1.67*side,z+.69,.48,.46,.39,'#a7cfd9',.38)];
+  }));
+  const rim=[
+    r(0,2.9,9.6,5.16,.25,'#eee1d5',.35),
+    r(0,2.9,8.98,4.48,.075,dust,.575),
+    ...[-3.1,-1.74,-.48,1.36,2.89].map((x,i)=>d(x,2.62+(i%3)*.69,1.95,2.02,.094,
+      ['#bfb3cc','#c7bbd2','#a89db9'][i%3],.64)),
+    ...pair.flatMap(side=>[-2.91,-1.45,.08,1.62,3.11].map(x=>
+      b(x,2.9+side*2.38,.46,.1,.052,'#b2e3e1',.597))),
+  ];
+  return [base(16.8,12.52,terrace),
+    [r(0,-3.48,6.22,4.04,4.68,pearl,.34),r(0,-3.51,6.48,4.15,.26,violet,5.01),
+      t(0,-3.49,4.47,3.66,2.32,pearl,5.24),t(0,-3.49,4.91,4.12,.58,'#71acbf',7.34),
+      t(0,-3.49,6.48,5.29,.24,gold,7.89),d(0,-3.49,5.57,4.75,.92,violet,8.07),
+      t(0,-3.48,.15,.16,1.34,pearl,8.77),d(0,-3.48,.69,.65,.31,aqua,10.04),
+      ...pair.flatMap(side=>[b(side*3.48,-2.84,3.7,1.23,.85,'#89b8c8',3.05),
+        b(side*3.48,-2.84,3.88,1.38,.14,violet,3.84)]),
+      ...towers,...rim],
+    [...arcs,...glazing([-2.02,-.84,.84,2.02],[1.18,2.46,3.74],-1.37,{w:.66,h:.64,color:'#7caec6'}),
+      ...entrance(-1.37,1.49,1.61),...nameplate('LUNA',0,4.56,-1.37,violet,.205),
+      ...lounges,...pair.flatMap(side=>[-3.25,.45,4.85].map(z=>t(side*7.48,z,.17,.19,.53,gold,.35))),
+      ...pair.flatMap(side=>[-3.47,3.48].map(x=>d(x,5.71,.57,.54,.22,aqua,.38)))],
   ];
 }
 
@@ -929,13 +981,13 @@ export function shuttleModel() {
     ]), t(0,.83,.14,.21,.21,graphite,.04,'x')];
 }
 
-function regionalAirport(shuttle=false) {
+function regionalAirport(shuttle=false,tropical=false) {
   const runway=airportRunway(shuttle?'shuttlePort':'majorAirport');
   const strip={...runway,y:0};
   const [x,y,z]=pointOnSite([0,0,1.32-runway.length*.5],runway);
-  const color=shuttle?'#a6a2bf':'#a3bbc0';
-  const hangar=shuttle?'#7e79a1':'#577b90';
-  const terminal=shuttle?'#658ba5':'#577e8b';
+  const color=shuttle?'#a6a2bf':tropical?'#edc79d':'#a3bbc0';
+  const hangar=shuttle?'#7e79a1':tropical?'#4e9388':'#577b90';
+  const terminal=shuttle?'#658ba5':tropical?'#4e8c89':'#577e8b';
   const marks=Array.from({length:13},(_,i)=>(i-6)*1.42);
   return [
     base(21.65,13.65,shuttle?'#bdb8c8':'#c9c6aa'),
@@ -999,7 +1051,7 @@ function hangar(theme) {
       r(-.7,2.37,5.92,.22,1.74,dark,.41),r(3.66,-.39,1.49,3.1,1.65,paint,.34)],
     [...[-2.95,-2.12,-1.29,-.46,.37,1.2,2.03].map(x=>b(x,2.5,.63,.07,1.55,'#81999f',.53)),
       ...worldSign('plane',-.7,2.74,2.43,paint),
-      ...placeParts(theme==='moon'?vehicle('rover','#b48ca3'):planeModel(),{x:3.37,y:.37,z:2.23,yaw:.27}),
+      ...(theme==='moon'?parkedVehicle('rover','#b48ca3',{x:3.37,y:.37,z:2.23,yaw:.27}):placeParts(planeModel(),{x:3.37,y:.37,z:2.23,yaw:.27})),
       ...[-2,-1,0,1,2].map(x=>b(x,3.2,.17,.66,.018,brass,.378))],
   ];
 }
@@ -1249,7 +1301,7 @@ function roverWash() {
       ...[.83,2.17].map(z=>beam([x-1.4,1.76,z],[x+1.4,1.76,z],.25,cyan))]),
     d(0,-2.53,2.37,2.16,1.84,'#7ca8bc',.35),d(0,-2.52,2.26,2.17,.56,cyan,1.95),
   ],[
-    ...placeParts(vehicle('rover','#d49e80'),{x:-2.37,z:2.48,y:.34,yaw:.1}),
+    ...parkedVehicle('rover','#d49e80',{x:-2.37,z:2.48,y:.34,yaw:.1}),
     ...[-2.4,2.4].flatMap(x=>[-.93,.93].flatMap(dx=>[t(x+dx,2.12,.12,.12,1.37,stone,.35),
       d(x+dx,2.12,.37,.39,.29,cyan,1.51)])),
     ...nameplate('VASK',0,2.65,-.97,purple,.22),...[-.9,-.2,.61].map((x,i)=>d(x,.78,.68,.62,.43,cyan,1.23+i*.39)),
@@ -1317,7 +1369,7 @@ function riverShop(kind) {
     r(-.76,1.49,3.61,.16,2.13,dark,.36),
     ...Array.from({length:7},(_,i)=>b(-.76,1.59,3.53,.06,.105,'#8798a7',.54+i*.25)),
     ...glazing([1.93,2.9],[1.28],1.49,{w:.66,h:.81}),
-    ...placeParts(vehicle('car','#e1aa71'),{x:2.09,z:2.85,y:.34,yaw:1.04}),
+    ...parkedVehicle('car','#e1aa71',{x:2.09,z:2.85,y:.34,yaw:1.04}),
   ]:[
     ...entrance(1.52,1.35,1.62),...glazing([-2.66,1.64],[.92],1.54,{w:1.57,h:1.03}),
     ...Array.from({length:13},(_,i)=>b(-.55+(i-6)*.46,1.97,.452,1.01,.12,i%2?tile:trim,2.15)),
@@ -1449,7 +1501,7 @@ function earthAccents(theme,style,stages,index) {
 }
 
 const art={
-  driveThrough,hotel:()=>grandHotel(false),resort:()=>grandHotel(true),hall:()=>civic(false),bank:()=>civic(true),cinema,prison,
+  driveThrough,lunarResort,hotel:()=>grandHotel(false),resort:()=>grandHotel(true),hall:()=>civic(false),bank:()=>civic(true),cinema,prison,
   restaurant:theme=>dining(theme==='island'),garden:theme=>gardens(theme==='island'),bandstand:theme=>gardens(theme==='island',true),
   pier:(theme)=>harbor(theme,'pier'),quay:theme=>harbor(theme,'quay'),marina:theme=>harbor(theme,'marina'),
   bridge:(_,site)=>suspension(site?.span),wheel:theme=>ferris(theme==='island'),coaster,fitness,biodome,
@@ -1461,7 +1513,7 @@ const art={
   ringHabitat,lunarArcade:arcade,moonGarden:greatPark,auroraHotel:()=>glassTower('auroraHotel'),
   solarGarden,lunarRadio:()=>radioTower(true),dustCafe:()=>snackHouse('dustCafe'),cargoDepot:()=>moonWorks('cargoDepot'),
   roverGarage:()=>moonWorks('roverGarage'),moonWorkshop:()=>moonWorks('moonWorkshop'),moonCargo:()=>moonWorks('moonCargo'),
-  tikiBar:()=>snackHouse('tikiBar'),airport:(theme,site)=>theme==='city'&&(!site||site.airfield)?regionalAirport():airport(),shuttlePort:()=>regionalAirport(true),islandArcade:arcade,megaResort,glassHotel:()=>glassTower('glassHotel'),
+  tikiBar:()=>snackHouse('tikiBar'),airport:(theme,site)=>site?.airfield||theme==='city'&&!site?regionalAirport(false,theme==='island'):airport(),shuttlePort:()=>regionalAirport(true),islandArcade:arcade,megaResort:(_,site)=>megaResort(site),glassHotel:()=>glassTower('glassHotel'),
   beachCamp:camping,tropicalMarket:market,coralCafe:()=>snackHouse('coralCafe'),
   islandTower:()=>glassTower('lookout'),palmGarden:greatPark,airstrip:()=>airport(true),tropicalPools,
   railwayStation:()=>transitStation(false),monorailStation:()=>transitStation(true),
@@ -1572,7 +1624,7 @@ export const EXPANDED_LANDMARKS={
     24:['Tiki Smoothie','En tropisk bar med bambusstolper og en smoothie på taket.','tikiBar'],
     25:['Palmeflyplassen','Fly som letter og lander, og en egen landingsplass for helikopter.','airport','flight'],
     26:['Strandarkaden','Spill, lys og en stor joystick på taket.','islandArcade'],
-    27:['Laguneressorten','En stor resort med to tårn, balkonger og to basseng.','megaResort','resort'],
+    27:['Laguneressorten','En stor resort med bassenger, solsenger og en badestrand.','megaResort','resort'],
     28:['Glasshotellet','Et høyt hotell med glassvegger og basseng i hagen.','glassHotel','resort'],
     29:['Strandcampen','Fargerike telt, en campingvogn og et bål under palmene.','beachCamp'],
     30:['Bambusmarkedet','Et åpent marked med fruktboder og parasoller.','tropicalMarket'],
@@ -1620,6 +1672,7 @@ export const GRAND_LANDMARKS={
     52:['Romposten','En rosa postkasse er stor nok for pakker fra hele solsystemet.','moonPost'],
     53:['Solspeilet','Et stort speil fanger lyset og sender det mellom to små kupler.','sunMirror'],
     54:['Rover Burger','Rovere svinger innom og henter kratere med ekstra ost.','driveThrough'],
+    55:['Luna Grand Resort','Et romhotell med panoramatårn, solsenger og et basseng fylt med mykt månestøv.','lunarResort'],
   },
   island:{
     37:['Korallfyret','Et korallrødt fyr viser vei mellom revene.','lighthouse'],
@@ -1644,6 +1697,6 @@ export const landmarkStages=(theme,style,site,index=site?.index)=>{
   if (slide) return slide;
   const stages=art[style]?.(theme,site);
   if (!stages) return null;
-  if (style==='driveThrough') return stages;
+  if (style==='driveThrough'||style==='lunarResort') return stages;
   return theme==='moon'?lunarArchitecture(style,stages,index):earthAccents(theme,style,stages,index);
 };
