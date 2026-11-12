@@ -705,7 +705,7 @@ export function districtRail(layout,plot,plan,developments=[],built=plan.plots.l
       const key=`subway:${i}`;
       entries[key]={name:moon?['Kraterpassasjen','Støvtunnelen'][i]:['Elvepassasjen','Byporten'][i],
         status:moon?'Underjordisk månestopp':'T-banestopp',x,z,sound:'vehicle',voice:layout.seed%12+i,
-        story:moon?'Følg trappa ned til månetoget. Her er det parkering for romstøvler.':'Toget stopper under gata. Noen tar banen bare for å telle ekkoene i tunnelen.'};
+        story:moon?'Følg trappen ned til månetoget. Her er det parkering for romstøvler.':'Toget stopper under gaten. Noen tar banen bare for å telle ekkoene i tunnelen.'};
       parts.push(...entrance.map(part=>({...part,entity:key})));
       parts.push(...railWalkway(layout,walk));
       walkways.push(walk);

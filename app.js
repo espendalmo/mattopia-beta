@@ -118,7 +118,7 @@ function projectCongratulations(id) {
   const messages={
     city:'Gratulerer! Rundene dine ble til en hel by. Nå kan du ta en siste titt på alt du fikk til.',
     moon:'Hele månebasen er ferdig! Se hvor mye du fikk til, ett byggesteg om gangen.',
-    island:'Gratulerer! Se for ei flott ferieøy du har bygd. Jeg har lyst til å dra på ferie dit.',
+    island:'Gratulerer! Se for en flott ferieøy du har bygd. Jeg har lyst til å dra på ferie dit.',
   };
   return eploNote(messages[id]??'Du fullførte superhelten! Se alle delene du fikk på plass, én runde om gangen.',true);
 }
@@ -514,7 +514,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
   const latest = () => `<strong>${scene.last ? escapeHtml(scene.last) : msg('map.ready')}</strong>`;
   const milestone = () => progress().full ? 'Hele byggeprosjektet er ferdig!'
     : scene.next ? `Neste byggesteg er «${scene.next}».`
-    : isRegion(map) && map.progress===0 ? 'Bygg videre for å se hva som skjuler seg i tåka.' : 'Velg neste bygg før en ny runde.';
+    : isRegion(map) && map.progress===0 ? 'Bygg videre for å se hva som skjuler seg i tåken.' : 'Velg neste bygg før en ny runde.';
   const roundAction=scene.world&&!demo&&!archivedMap&&!fromCollection;
   showDialog(`<div class="dialog-header"><div><h2 id="dialog-title" tabindex="-1" autofocus>${escapeHtml(title)}</h2>
       <p data-demo-progress>${demo ? 'Byggedemo · ' : target ? project.name+' · ' : ''}${projectProgress(progress())}</p></div><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggeprosjektet">${icon('close')}</button></div>

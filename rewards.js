@@ -94,7 +94,7 @@ export const BUILD_MODELS = [
     {x:42,y:69,w:57,h:71,color:'teal',shape:'roof'},
     {x:102,y:58,w:47,h:82,color:'red',shape:'roof'},
   ]},
-  { id:'owl', name:'en ugle', done:'Ugla er ferdig!', pieces:[
+  { id:'owl', name:'en ugle', done:'Uglen er ferdig!', pieces:[
     {x:49,y:168,w:99,h:22,color:'tan',print:'paws'},
     {x:55,y:117,w:85,h:51,color:'orange',print:'feathers'},
     {x:27,y:124,w:29,h:37,color:'purple'},

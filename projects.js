@@ -113,8 +113,8 @@ const THEMES = {
 
 const PLACES = {
   city:[
-    ['Bakeriet','house','#edba66','#bd635a'],['Skolen','school','#e2a36e','#8f625c'],['Mølla','mill','#e5c27c','#b47b52'],['Fotballbanen','field','#58a067'],
-    ['Biblioteket','school','#e9c58e','#648eae'],['Hotellet','tower','#94abc8','#596f9b'],['Kirka','church','#e9e4d3','#718491'],['Parken','park','#85ac75'],
+    ['Bakeriet','house','#edba66','#bd635a'],['Skolen','school','#e2a36e','#8f625c'],['Møllen','mill','#e5c27c','#b47b52'],['Fotballbanen','field','#58a067'],
+    ['Biblioteket','school','#e9c58e','#648eae'],['Hotellet','tower','#94abc8','#596f9b'],['Kirken','church','#e9e4d3','#718491'],['Parken','park','#85ac75'],
     ['Butikken','house','#82b0a5','#5c7fa1'],['Brannstasjonen','school','#d4796d','#774b59'],['Torget','square','#cfbd9c'],['Svømmehallen','pool','#73bed4'],
     ['Verkstedet','house','#9eb59a','#676c86'],['Kafeen','house','#e7a295','#ad6365'],['Kulturhuset','tower','#99a6c9','#646a91'],['Elveparken','park','#85ac75'],
   ],
@@ -393,7 +393,7 @@ function worldDetail(theme,i) {
     return stage(theme==='moon'?'Et nytt lyspunkt':'Et nytt hvilested',...beacon(xPos,z,'#f6d997').map(part=>({...part,y:part.y+y})),
       box(xPos+.88,z,.92,1.39,.26,color,y+.09),box(xPos+.88,z-.53,.94,.22,.36,p.dark,y+.24));
   }
-  return stage(theme==='moon'?'En liten forsyningsstasjon':theme==='island'?'En palme ved stien':'Et tre langs elva',
+  return stage(theme==='moon'?'En liten forsyningsstasjon':theme==='island'?'En palme ved stien':'Et tre langs elven',
     theme==='moon' ? [rounded(xPos,z,1.94,1.72,.76,color,y),dome(xPos,z,1.18,1.28,.34,p.white,y+.76)]
       : tree(xPos,z,theme).map(part=>({...part,y:part.y+y})));
 }
@@ -416,15 +416,15 @@ const DETAILS = {
   city:['Brødskilt og stripete markise.','Et sted å lære med lyse vinduer.','En vindmølle med store vinger.','Mål, midtsirkel og tribune.',
     'Bøker og vinduer i blått.','Et hotell med flere etasjer.','Et lite tårn over hustakene.','Trær, benker og en fontene.',
     'En butikk med kurv på skiltet.','Rød fasade og flammeskilt.','Et torg med plass til folk.','Basseng med baner.',
-    'Et verksted med tannhjul på veggen.','Kaffekopp på skiltet og en koselig inngang.','Musikkskilt og mange vinduer.','Et grønt pust ved elva.'],
+    'Et verksted med tannhjul på veggen.','Kaffekopp på skiltet og en koselig inngang.','Musikkskilt og mange vinduer.','Et grønt pust ved elven.'],
   moon:['Rakett, landingsmerker og lys.','En stor kuppel å bo i.','Solpaneler som gir strøm.','Et hjem til månebilene.',
     'En grønn kuppel for planter.','Beholdere for vann.','Et laboratorium med instrumenter.','Et sted å se ut i rommet.',
     'Antenner til meldinger hjem.','Utstyr til å reparere ting.','Paneler og batterier til basen.','Et område for forsøk.',
     'Et sted å ta imot forsyninger.','Lager for is og vann.','Et tårn med radiosignal.','En ekstra rakettplass.'],
-  island:['Hotell med balkong ved stranden.','Iskjegleskilt og stripete markise.','En badeplass med basseng.','Surfebrett på skiltet og planter ved døra.',
-    'Et sted å spise på øya.','Palmer og skygge.','Et dansegulv med fargede ruter.','En molo med plass til en båt.',
+  island:['Hotell med balkong ved stranden.','Iskjegleskilt og stripete markise.','En badeplass med basseng.','Surfebrett på skiltet og planter ved døren.',
+    'Et sted å spise på øyen.','Palmer og skygge.','Et dansegulv med fargede ruter.','En molo med plass til en båt.',
     'Et torg for kveldsmarkedet.','Et hotell med utsikt.','En kafé ved vannet.','En rolig plass å bade.',
-    'Et høyt tårn å se øya fra.','En grønn hage under palmene.','En liten bod med fruktskilt.','Et torg der øya kan møtes.'],
+    'Et høyt tårn å se øyen fra.','En grønn hage under palmene.','En liten bod med fruktskilt.','Et torg der øyen kan møtes.'],
 };
 
 function catalogBuilding(id,index,map) {

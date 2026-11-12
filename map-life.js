@@ -46,10 +46,10 @@ export function mapCharacterInfo(scene,key,discovery) {
       sound:kind,voice:seed%24};
     const status=kind==='alien'?'En venn fra verdensrommet':kind==='astronaut'?'På månebesøk':'På oppdagelsestur';
     let story=stories[(seed>>>16)%stories.length];
-    if (actor?.transitPassenger) story=lunar?'På vei ned til månetoget. Billetten ligger i den eneste lomma uten månestøv.':
-      'Skal ta T-banen til neste stopp. Har gått ned trappa så ofte at trinnene nesten kan telles med lukkede øyne.';
+    if (actor?.transitPassenger) story=lunar?'På vei ned til månetoget. Billetten ligger i den eneste lommen uten månestøv.':
+      'Skal ta T-banen til neste stopp. Har gått ned trappen så ofte at trinnene nesten kan telles med lukkede øyne.';
     if (actor?.kind==='slide') story=lunar
-      ? 'Skal slå sin egen rekord i støvrutsjebanen. Må bare finne ut hvor støvet har gjemt stoppeklokka.'
+      ? 'Skal slå sin egen rekord i støvrutsjebanen. Må bare finne ut hvor støvet har gjemt stoppeklokken.'
       : 'Har tenkt å ta rutsjebanen én gang til. Det har visst vært planen hele ettermiddagen.';
     if (actor?.dustBather) story='Tar et månestøvbad. Hotellgjestene får låne en støvkost i stedet for et håndkle.';
     if (actor?.peeking) story='Leker gjemsel bak steinen. Har blitt veldig flink til å gjemme alt unntatt antennene.';

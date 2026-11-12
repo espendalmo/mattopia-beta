@@ -484,7 +484,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   if (plan.starter) {
     discoveries.info.headquarters={...plan.starter,status:'Startbygg',sound:'discovery',
       name:id==='city'?'Elveby rådhus':id==='moon'?'Månekommandoen':'Palmeøyas hovedhus',
-      story:id==='city'?'Her planlegges nye gater og bygg. Rådhusklokka går på bytid.':id==='moon'?'Herfra holder månebasen kontakt med jorda. Antenna fanger også opp fotballkamper.':'Her tegnes de første kartene over øya, med plass til både palmer og isboder.'};
+      story:id==='city'?'Her planlegges nye gater og bygg. Rådhusklokken går på bytid.':id==='moon'?'Herfra holder månebasen kontakt med jorden. Antennen fanger også opp fotballkamper.':'Her tegnes de første kartene over øyen, med plass til både palmer og isboder.'};
     discoveries.parts.push(...placeParts(regionalHeadquarters(id),plan.starter)
       .flatMap(part=>terrainFoundation(layout,part,map.seed)).map(part=>({...part,entity:'headquarters'})));
   }
