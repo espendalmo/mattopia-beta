@@ -207,14 +207,14 @@ function lunarResortDistrict(layout) {
   const w=10.15+(layout.seed%7)*.37,d=6.55+((layout.seed>>>5)%7)*.29;
   for (let i=0;i<42;i++) {
     const angle=layout.phase+(i*.381966%1)*Math.PI*2;
-    const yaw=Math.round((angle+Math.PI)/(Math.PI/2))*(Math.PI/2);
     for (const reach of [58,51,44,38]) {
-      const site={...polar(angle,reach),yaw,halfWidth:8.6,halfDepth:6.45,spaceResort:true};
+      const site={...polar(angle,reach),yaw:0,halfWidth:8.6,halfDepth:6.45,spaceResort:true};
       if (airSites.some(other=>distance(site,other)<27)) continue;
       const ground=districtGround(layout,site,site.halfWidth,site.halfDepth);
       if (!ground.dry||ground.grade>2.6) continue;
       const basin=Math.min(...layout.basins.map(crater=>distance(site,crater)-Math.max(crater.w,crater.d)));
-      const lake=regionalPoint(site,Math.sin(angle*2.31)*1.7,-site.halfDepth-d*1.12-1.8);
+      // East of the hotel, with enough southerly offset to stay in the foreground of the fixed map view.
+      const lake={x:site.x+5.7+Math.sin(angle*2.31)*1.35,z:site.z+site.halfDepth+d*1.12+1.8};
       const edge=Math.max(Math.abs(lake.x),Math.abs(lake.z));
       const airPenalty=airSites.reduce((sum,other)=>sum+Math.max(0,26-distance(lake,other))*2,0);
       candidates.push({site:{...site,y:ground.y},lake:{...lake,w,d},
@@ -406,7 +406,7 @@ function ordinaryEntrance(site,target) {
 export function specialEntrances(site,kind) {
   if (site.airportDistrict) return [regionalPoint(site,0,site.airfield?8.9:6.05)];
   if (site.beach) return [regionalPoint(site,0,-8.1)];
-  if (site.spaceResort) return [regionalPoint(site,0,8.25)];
+  if (site.spaceResort) return [regionalPoint(site,-5.4,8.25)];
   if (kind==='bridge') return [-1,1].map(side=>({x:site.x+side*site.span*.5,y:site.y+.514,z:site.z}));
   const land=polar(site.yaw+Math.PI,site.lighthouse?5.4:3.4);
   return [{x:site.x+land.x,z:site.z+land.z}];

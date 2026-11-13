@@ -554,9 +554,12 @@ export function projectCameras(scene,target=null,focusLatest=false,{compact=fals
   const point=target??scene.latestTarget??{x:average('x'),y:Math.max(0,average('y')-.6),z:average('z'),height:4.2};
   const height=point.height??6;
   const largeStation=point.kind==='railwayStation'||point.kind==='monorailStation';
-  const framing=point.beach?44:point.airfield?39:point.spaceResort?31:point.kind==='residence'?(point.residence?22.5:18.5)
+  const lake=point.spaceResort?scene.discoveries?.['moon-lake']:null;
+  const framing=point.beach?44:point.airfield?39:lake?38:point.kind==='residence'?(point.residence?22.5:18.5)
     :(largeStation?28:point.kind==='tramStation'?23:height*1.13+3.2)*(compact?.91:1);
-  const close={...initial,zoom:Math.min(maxZoom,scene.size/framing),anchorX:point.x+(point.beach?Math.sin(point.yaw)*5:0),anchorZ:point.z+(point.beach?Math.cos(point.yaw)*5:0),
+  const anchorX=point.x+(lake?(lake.x-point.x)*.26:point.beach?Math.sin(point.yaw)*5:0);
+  const anchorZ=point.z+(lake?(lake.z-point.z)*.26:point.beach?Math.cos(point.yaw)*5:0);
+  const close={...initial,zoom:Math.min(maxZoom,scene.size/framing),anchorX,anchorZ,
     center:point.y+height*(point.beach?.24:height>10?.46:.37)};
   const neighbor=Object.values(scene.landmarks??{}).filter(other=>Math.hypot(other.x-point.x,other.z-point.z)>.7)
     .reduce((nearest,other)=>!nearest||Math.hypot(other.x-point.x,other.z-point.z)<Math.hypot(nearest.x-point.x,nearest.z-point.z)?other:nearest,null);
