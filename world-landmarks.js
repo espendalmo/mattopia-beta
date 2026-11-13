@@ -1,5 +1,5 @@
 import {lunarArchitecture} from './lunar-architecture.js';
-import {box as b,rounded as r,dome as d,tube as t,roof,beam,worldSign,pointOnSite,placeParts,parkedVehicle,SERVICE_STOPS} from './scenery.js';
+import {box as b,rounded as r,dome as d,tube as t,roof,beam,worldSign,pointOnSite,placeParts,parkedVehicle,SERVICE_STOPS,WASH_BAY} from './scenery.js';
 import {transitStation,helipadParts,REGIONAL_HELIPAD} from './transport.js';
 import {slidePark} from './slide-parks.js';
 import {detailFacades} from './facades.js';
@@ -544,10 +544,10 @@ function nameplate(text,x,y,z,background,scale=.14,ink=cream) {
   }))];
 }
 
-function walkway(points,color='#d8c8a3',width=.76) {
+function walkway(points,color='#d8c8a3',width=.76,base=.354) {
   return points.slice(1).map(([x,z],i)=>{
     const [a,c]=points[i], dx=x-a,dz=z-c;
-    return {...b((x+a)/2,(z+c)/2,Math.hypot(dx,dz)+.27,width,.059,color,.354),angle:Math.atan2(dz,dx)};
+    return {...b((x+a)/2,(z+c)/2,Math.hypot(dx,dz)+.27,width,.059,color,base),angle:Math.atan2(dz,dx)};
   });
 }
 
@@ -1104,7 +1104,7 @@ function moonWorks(style) {
       ...[-1.91,1.9].flatMap((x,i)=>[r(x,1.51,2.06,.1,1.58,dark,.38),
         r(x,1.59,1.89,.088,.23,'#83bed0',1.53),b(x,1.73,2.12,.39,.116,'#d2d9e0',.38),
         b(x,2.56,.075,1.78,.014,i?cream:'#e2b685',.38)]),
-      ...(garage?pair.flatMap((s,i)=>parkedVehicle('rover',i?'#6e9fb6':'#d7aa78',{x:s*2.12,y:.37,z:2.93,yaw:s*.2}))
+      ...(garage?pair.flatMap((s,i)=>parkedVehicle('rover',i?'#6e9fb6':'#d7aa78',{x:s*2.12,y:.377,z:2.93,yaw:s*.2}))
         :workshop?[r(2.85,2.78,1.35,.92,.51,'#a292b1',.36),t(2.85,2.75,.51,.56,.17,brass,.83),
           ...pair.map(s=>beam([2.9+s*.48,.37,3.48],[2.9+s*.48,1.6,3.48],.12,tint))]
         :containers),
@@ -1209,7 +1209,7 @@ function lagoonPark() {
   return [base(10.52,9.67,'#aab685'),[
     r(0,0,10.19,9.36,.073,green,.34),t(-.95,-.48,6.66,4.83,.15,'#d0c391',.407),
     t(-.95,-.48,6.29,4.46,.051,'#5ba9ae',.556),t(-1.65,-.96,2.78,1.94,.019,'#82c7bd',.606),
-    ...walkway([[.25,4.29],[2.68,3.1],[3.71,1.7],[3.96,-.4],[3.37,-2.38],[1.27,-3.7],[-1.19,-3.76],[-3.17,-2.88]],path),
+    ...walkway([[.25,4.29],[2.68,3.1],[3.71,1.7],[3.96,-.4],[3.37,-2.38],[1.27,-3.7],[-1.19,-3.76],[-3.17,-2.88]],path,.76,.41),
     b(-.73,-.13,1.11,3.33,.12,'#c1a37d',.63),b(-.73,-.14,1.33,1.39,.13,'#d1b28a',.72),
   ],[
     ...[-1.94,-1.29,.38,1.21].flatMap((z,i)=>pair.map(s=>t(-.73+s*.63,z,.12,.13,.74,'#a88f70',.39+i*.01))),
@@ -1404,7 +1404,7 @@ function hangar(theme) {
       r(-.7,2.37,5.92,.22,1.74,dark,.41),r(3.66,-.39,1.49,3.1,1.65,paint,.34)],
     [...[-2.95,-2.12,-1.29,-.46,.37,1.2,2.03].map(x=>b(x,2.5,.63,.07,1.55,'#81999f',.53)),
       ...worldSign('plane',-.7,2.74,2.43,paint),
-      ...(theme==='moon'?parkedVehicle('rover','#b48ca3',{x:3.37,y:.37,z:2.23,yaw:.27}):placeParts(planeModel(),{x:3.37,y:.37,z:2.23,yaw:.27})),
+      ...(theme==='moon'?parkedVehicle('rover','#b48ca3',{x:3.37,y:.377,z:2.54,yaw:.27}):placeParts(planeModel(),{x:3.37,y:.37,z:2.23,yaw:.27})),
       ...[-2,-1,0,1,2].map(x=>b(x,3.2,.17,.66,.018,brass,.378))],
   ];
 }
@@ -1665,17 +1665,34 @@ function cometCafe() {
   ]];
 }
 
-function roverWash() {
-  const purple='#8273a2',cyan='#93d7d6';
-  return [base(10.65,9.37,'#b0b2c5'),[
-    ...[-2.4,2.4].flatMap(x=>[r(x,-.86,3.15,5.63,1.62,purple,.36),r(x,1.88,2.26,.13,1.39,dark,.46),
-      ...[.83,2.17].map(z=>beam([x-1.4,1.76,z],[x+1.4,1.76,z],.25,cyan))]),
-    d(0,-2.53,2.37,2.16,1.84,'#7ca8bc',.35),d(0,-2.52,2.26,2.17,.56,cyan,1.95),
+function carWash(theme) {
+  const moon=theme==='moon',island=theme==='island';
+  const [wall,trim,pavement,accent]=moon?['#8273a2','#93d7d6','#9ca0b5','#c6a9e2']
+    :island?['#487f7c','#f3d0a5','#a49a87','#ef9f6f']:['#527684','#d8e3ce','#93978e','#e4b46f'];
+  const {lane,deck,apron,waiting}=WASH_BAY;
+  const driveways=pair.map(side=>b(side*lane,.67,2.17,2*(apron-.67),deck-.377,pavement,.377));
+  const exit=b(0,-3.29,2*lane+2.17,2.25,deck-.375,pavement,.377);
+  const bays=pair.flatMap(side=>{
+    const x=side*lane;
+    return [
+      ...pair.flatMap(s=>[-1.71,1.64].map(z=>b(x+s*1.16,z,.24,.26,1.83,wall,deck))),
+      b(x,-.09,2.65,3.78,.17,wall,2.15),
+      ...[1.76,-1.83].flatMap(z=>[b(x,z,2.62,.21,.21,trim,2.03),b(x,z+.11,1.68,.058,.07,accent,2.08)]),
+      ...(island?[roof(x,-.09,2.78,3.82,.42,'#b97859',2.29)]
+        :moon?[d(x,-.09,2.65,3.68,.47,'#a292bf',2.27)]:[b(x,-.09,2.64,3.77,.1,accent,2.30)]),
+    ];
+  });
+  return [[...base(10.65,9.54,moon?'#b0b2c5':island?'#d8c392':'#b0b2a0'),...driveways,exit],[
+    ...bays,r(0,-.43,1.06,2.57,1.74,wall,.377),r(0,-.45,1.21,2.73,.15,trim,2.03),
   ],[
-    ...parkedVehicle('rover','#d49e80',{x:-2.37,z:2.48,y:.34,yaw:.1}),
-    ...[-2.4,2.4].flatMap(x=>[-.93,.93].flatMap(dx=>[t(x+dx,2.12,.12,.12,1.37,stone,.35),
-      d(x+dx,2.12,.37,.39,.29,cyan,1.51)])),
-    ...nameplate('VASK',0,2.65,-.97,purple,.22),...[-.9,-.2,.61].map((x,i)=>d(x,.78,.68,.62,.43,cyan,1.23+i*.39)),
+    ...nameplate('VASK',0,2.68,1.58,wall,.183),
+    ...pair.flatMap(side=>[...[-.83,.61].map(z=>t(side*(lane+.81),z,.42,.44,1.05,accent,.66)),
+      b(side*lane,3.93,.65,.08,.017,trim,deck+.013),
+      b(side*(lane+.97),3.56,.059,1.57,.021,trim,deck+.007)]),
+    ...[[-.53,.38,.41],[.37,.58,.58],[.14,1.17,.33]].map(([x,z,size],i)=>
+      d(x,1.83+z*.22,size,size,size*.81,i%2?accent:trim,2.82+z)),
+    ...parkedVehicle(moon?'rover':island?'classic':'compact',moon?'#d49e80':island?'#d68b65':'#719eae',
+      {x:-lane,z:waiting,y:deck,yaw:Math.PI}),
   ]];
 }
 
@@ -1740,7 +1757,8 @@ function riverShop(kind) {
     r(-.76,1.49,3.61,.16,2.13,dark,.36),
     ...Array.from({length:7},(_,i)=>b(-.76,1.59,3.53,.06,.105,'#8798a7',.54+i*.25)),
     ...glazing([1.93,2.9],[1.28],1.49,{w:.66,h:.81}),
-    ...parkedVehicle('car','#e1aa71',{x:2.09,z:2.85,y:.34,yaw:1.04}),
+    r(2.09,2.85,2.61,2.62,.026,'#b9ada2',.377),
+    ...parkedVehicle('car','#e1aa71',{x:2.09,z:2.85,y:.403,yaw:1.04}),
   ]:[
     ...entrance(1.52,1.35,1.62),...glazing([-2.66,1.64],[.92],1.54,{w:1.57,h:1.03}),
     ...Array.from({length:13},(_,i)=>b(-.55+(i-6)*.46,1.97,.452,1.01,.12,i%2?tile:trim,2.15)),
@@ -1768,20 +1786,41 @@ function schoolhouse() {
   ]];
 }
 
+function openServiceBay({x,y},front,back,width,top,trim) {
+  const end=4.53;
+  return [
+    ...[[back,front],[front,end]].map(([a,bound])=>
+      b(x,(a+bound)*.5,width+.17,bound-a,.069,'#7a8086',y-.069)),
+    b(x,back+.035,width,.082,top-y,'#4d525d',y),
+    ...pair.flatMap(side=>[
+      b(x+side*(width*.5+.045),front+.055,.105,.13,top-y+.055,trim,y),
+      b(x+side*(width*.5-.095),2.58,.052,1.85,.012,'#e5d5a9',y+.006),
+    ]),
+    b(x,front+.065,width+.24,.21,.19,trim,top),
+    ...[.038,.1].map(height=>b(x,front+.178,width+.11,.034,.025,'#abb5b7',top+height)),
+    b(x,back+.16,width*.61,.19,.06,'#f6dfa7',top-.16),
+  ];
+}
+
 function firehouse() {
   const red='#ab625d',roofColor='#754f61';
+  const bay=SERVICE_STOPS.fireStation;
+  const width=2.2,half=width*.5,left=bay.x-half,right=bay.x+half;
+  const edge=4.005,front=1.25;
   return [base(10.34,9.34,'#bcb19f'),[
-    r(0,-1.21,8.01,4.92,3.28,red,.35),r(0,-1.2,8.31,5.14,.28,cream,3.59),
+    b((left-edge)*.5,-1.21,left+edge,4.92,3.28,red,.35),b((right+edge)*.5,-1.21,edge-right,4.92,3.28,red,.35),
+    b(bay.x,-3.53,width,.28,3.28,red,.35),b(bay.x,-1.21,width,4.92,1.11,red,2.52),
+    r(0,-1.2,8.31,5.14,.28,cream,3.59),
     r(-2.71,-2.03,2.27,2.31,2.15,red,3.84),roof(-2.71,-2.02,2.65,2.71,1.22,roofColor,5.96),
     r(1.69,-1.44,3.44,3.21,.29,roofColor,3.85),
   ],[
-    ...[-2.35,0,2.35].flatMap(x=>[r(x,1.28,1.95,.14,2.21,'#934a52',.35),
-      ...[.68,1.01,1.34,1.67,2.0].map(y=>b(x,1.36,1.82,.06,.053,'#d39b8d',y)),
-      b(x,1.4,1.4,.053,.43,'#7d9ca8',1.96)]),
+    ...[-2.42,-.13].flatMap(x=>[b(x,front+.093,1.95,.16,2.18,'#ead1b9',.36),
+      b(x,front+.192,1.76,.064,2.04,'#934a52',.419),
+      ...[.69,.99,1.29,1.59,1.89].map(y=>b(x,front+.241,1.72,.034,.041,'#d39b8d',y)),
+      b(x,front+.241,1.4,.046,.31,'#7d9ca8',2.02)]),
     ...glazing([-2.71],[4.53],-.84,{w:.67,h:.89}),
     ...nameplate('BRANN',0,3.02,1.31,roofColor,.215),...worldSign('flame',-2.68,5.46,-.78,red),
-    b(2.43,3.0,2.1,3.26,.043,'#7b8588',.364),
-    ...pair.flatMap(s=>[.03,1.47,3.39].map(z=>b(2.43+s*.96,z,.09,.49,.025,'#ead7ad',.411))),
+    ...openServiceBay(bay,front,-3.37,width,2.52,'#dfb6a0'),
     ...stationVehicle('fireStation'),
   ]];
 }
@@ -1792,6 +1831,7 @@ function policeStation(theme) {
   const wall=moon?'#aaa9cb':island?'#efd0a8':'#b5c0c2';
   const window=moon?'#81cad2':island?'#81b6b5':'#77a4b4';
   const crest='#f1cc78';
+  const bay=SERVICE_STOPS.policeStation;
   const badge={shape:'plate',x:-1.75,y:3.25,z:1.92,w:1.4,d:.011,h:1.45,color:crest,
     profile:[[-.62,.51],[.62,.51],[.56,-.17],[0,-.68],[-.56,-.17]]};
   const main=moon?[r(-1.73,-.67,5.45,4.57,3.04,wall,.35),d(-1.73,-.68,5.53,4.58,1.4,navy,3.31),
@@ -1800,8 +1840,8 @@ function policeStation(theme) {
       ...(island?[roof(-1.72,-.71,5.87,5.08,1.46,navy,3.31)]
         :[b(-1.73,-.72,5.67,4.93,.22,navy,3.28),b(-2.86,-1.14,2.32,3.39,1.38,navy,3.44)])];
   return [base(10.47,9.42,'#b4b4ac'),[
-    ...main,r(2.67,-1.11,3.15,4.37,1.91,wall,.34),r(2.67,-1.09,3.28,4.52,.28,navy,2.2),
-    b(2.5,2.85,2.04,3.35,.074,'#747b88',.344),
+    ...main,b(1.3075,-1.11,.425,4.37,1.91,wall,.34),b(3.8625,-1.11,.765,4.37,1.91,wall,.34),
+    b(bay.x,-3.16,1.96,.27,1.91,wall,.34),r(2.67,-1.09,3.28,4.52,.28,navy,2.23),
     r(-1.75,1.83,4.91,.26,.21,navy,2.71),
   ],[
     badge,b(-1.75,1.962,.16,.055,.48,navy,3.03),b(-1.75,1.962,.47,.055,.14,navy,3.19),
@@ -1809,8 +1849,7 @@ function policeStation(theme) {
     ...placeParts(entrance(1.74,1.44,1.72),{x:-1.73,y:0,z:0}),
     ...glazing([-3.43,.03],[.98,1.86],1.7,{w:.84,h:.62,color:window}),
     ...glazing([-3.02,-1.28],[3.72],.6,{w:.52,h:.51,color:window}),
-    r(2.52,1.11,2.04,.16,1.53,navy,.35),
-    ...[.66,.91,1.16,1.41,1.66].map(y=>b(2.52,1.21,1.87,.038,.061,'#acbac9',y)),
+    ...openServiceBay(bay,1.075,-3.02,1.96,2.14,navy),
     ...pair.flatMap(s=>[t(2.5+s*.99,3.54,.13,.13,.48,navy,.34),b(2.5+s*.94,2.97,.067,.68,.016,crest,.425)]),
     ...stationVehicle('policeStation',theme),
   ]];
@@ -2012,8 +2051,8 @@ function residence(theme,site) {
     ...(estate?[]:[t(-1.53,-4.65,2.13,.65,.115,trim,.423),t(-1.53,-4.65,1.91,.49,.019,water,.54)]),
     ...pair.flatMap((side,i)=>[
       ...parkedVehicle(i?(moon?'rover':'compact'):moon?'hover':island?'classic':'sport',i?'#739dbe':'#ba646a',
-        estate?{x:side*RESIDENCE_PLOT.bayX,y:RESIDENCE_PLOT.deck+(!i&&moon?.17:0),z:RESIDENCE_PLOT.bayZ,yaw:Math.atan2(-side*1.82,.75)}
-          :{x:side*3.36,y:.484+(!i&&moon?.17:0),z:3.31,yaw:Math.PI}),
+        estate?{x:side*RESIDENCE_PLOT.bayX,y:RESIDENCE_PLOT.deck+(!i&&moon?.17:0),z:RESIDENCE_PLOT.bayZ,yaw:Math.atan2(-side*1.82,.75),driver:i===0}
+          :{x:side*3.36,y:.482+(!i&&moon?.17:0),z:3.31,yaw:Math.PI,driver:i===0}),
       ...(!estate?[-2.87,-.94,1.14,3.09]:[]).flatMap((z,j)=>island?palm(side*4.88,z,2.45+j*.2)
         :moon?[d(side*4.88,z,.91,.89,.36,'#a8bdca',.39),...[-1,1].map(n=>t(side*4.88+n*.17,z,.23,.23,.38+j*.1,n<0?'#9cd7d6':'#cba9d7',.56))]
         :shrub(side*4.88,z,j%2?'#719261':'#577e62',.64+j*.11)),
@@ -2050,7 +2089,7 @@ const art={
   batteryVault:plasmaBattery,gravityPark:greatPark,iceVault:craterLab,satelliteHub:()=>radioTower(true),cometPort:()=>rocketPort(true),
   breadWorks,bookCastle,riverAquarium:()=>waterGallery(false),clockSpire,glassWorks,
   surfMuseum,sunhatHotel,coralAquarium:()=>waterGallery(true),coconutTower,icePalace,
-  cometCafe,roverWash,craterCinema,moonPost,sunMirror,
+  cometCafe,carWash,roverWash:carWash,craterCinema,moonPost,sunMirror,
 };
 
 export const RAIL_LANDMARKS={
@@ -2191,6 +2230,7 @@ export const GRAND_LANDMARKS={
     50:['Elveburger','Sving innom hentevinduet for en burger.','driveThrough'],
     51:['Elveby politistasjon','Patruljebilen står klar til utrykning med blålys.','policeStation'],
     52:['Granittfyret','Et høyt steinfyr med messinglanterne og utsiktsgang.','stoneLighthouse','lighthouse'],
+    53:['Elveby bilvask','Biler kjører gjennom vaskebåsen og kommer ut blanke og fine.','carWash'],
   },
   moon:{
     37:['Målenåla','En restaurant som roterer over månebasen.','needleTower'],
@@ -2211,7 +2251,7 @@ export const GRAND_LANDMARKS={
     52:['Romposten','En rosa postkasse er stor nok for pakker fra hele solsystemet.','moonPost'],
     53:['Solspeilet','Et stort speil fanger lyset og sender det mellom to små kupler.','sunMirror'],
     54:['Rover Burger','Rovere svinger innom og henter kratere med ekstra ost.','driveThrough'],
-    55:['Luna Grand Resort','Et romhotell med panoramatårn, solsenger og et basseng fylt med mykt månestøv.','lunarResort'],
+    55:['Luna Grand Resort','Et romhotell ved Månestøvsjøen, med panoramatårn og et basseng fylt med mykt månestøv.','lunarResort'],
     56:['Kraterpatruljen','Et kuppelformet politihus med en egen månepatrulje.','policeStation'],
   },
   island:{
@@ -2231,6 +2271,7 @@ export const GRAND_LANDMARKS={
     50:['Mango Express','Biler henter mangois og smoothie på vei til stranden.','driveThrough'],
     51:['Palmeøyens politistasjon','Et politihus med grønt tak og en patruljebil til øyens gater.','policeStation'],
     52:['Stormfyret','Et klassisk, høyt steinfyr med gyllen lampe og veranda rundt lykten.','stoneLighthouse','lighthouse'],
+    53:['Kokosvasken','En vaskehall med palmegrønne søyler og skum til sandete biler.','carWash'],
   },
 };
 

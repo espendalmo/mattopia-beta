@@ -1,7 +1,8 @@
-import {connectWaterfront,regionalAnnex,regionalFootprint,regionalPoint,regionSurface,riverAt,riverWidth,
+import {connectWaterfront,insideIslandBelt,regionalAnnex,regionalFootprint,regionalPoint,regionSurface,riverAt,riverWidth,
   roadElevation,specialEntrances,RESIDENCE_PLOT} from './regions.js';
 import {randomGenerator,REGION_PLACES,LARGE_REGION_PLACES} from './worlds.js';
 import {joinStreetPaths,streetNetwork} from './street-network.js';
+import {isCarWash} from './scenery.js';
 
 export const STREET_TURN_RADIUS=2.35;
 const streets=new WeakMap();
@@ -16,7 +17,7 @@ function interpolate(a,b,step=1.9) {
   }));
 }
 
-function streetGraph(layout,spacing,shift,maxGrade=2.15) {
+function streetGraph(layout,spacing,shift,maxGrade=2.15,earthworks=false) {
   const width=layout.grand?13:11;
   const center=(width-1)/2;
   const rng=randomGenerator(layout.seed^0x5c14a537^Math.imul(shift,0x47c82f31));
@@ -35,7 +36,13 @@ function streetGraph(layout,spacing,shift,maxGrade=2.15) {
       if (layout.regionalSites.some(site=>regionalFootprint(site,point.x,point.z,1.65))) return true;
       const surface=regionSurface(layout,point.x,point.z);
       if (surface.water) return !crossRiver||Math.abs(point.x-riverAt(layout,point.z))>riverWidth(layout,point.z)+.2;
-      return layout.theme==='moon'&&surface.basin< -1.65;
+      if (layout.theme!=='moon'||surface.basin>=-1.65) return false;
+      // A short, shallow dip may be filled if the usual routes cannot
+      // connect enough lots. Keep the large craters clear.
+      const aGround=nodes[a],bGround=nodes[b];
+      const t=gap(aGround,point)/gap(aGround,bGround);
+      return !earthworks||surface.basin< -2.55||Math.min(aGround.basin,bGround.basin)<-.45
+        ||(aGround.y+(bGround.y-aGround.y)*t)-surface.y>1.48;
     })) return;
     const key=edgeKey(a,b);
     edges.set(key,{a,b,points,key});
@@ -98,6 +105,10 @@ function layoutStreets(layout,requiredLots) {
   }
   for (const [spacing,shift,maxGrade] of attempts) {
     const candidate=streetGraph(layout,spacing,shift,maxGrade);
+    if (candidate?.available.length>=requiredLots) { graph=candidate; break; }
+  }
+  if (!graph&&layout.theme==='moon') for (const [spacing,shift,maxGrade] of attempts) {
+    const candidate=streetGraph(layout,spacing,shift,maxGrade,true);
     if (candidate?.available.length>=requiredLots) { graph=candidate; break; }
   }
   if (graph) {
@@ -353,11 +364,12 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
         const imbalance=banks[bank]-banks[1-bank];
         const riverBias=usedLots.size>=3&&imbalance>1 ? imbalance*9 : 0;
         const middle=edge.points[Math.floor(edge.points.length/2)];
-        const slope=kind==='residence'||kind==='busStation'
+        const slope=kind==='residence'||kind==='busStation'||isCarWash(kind)
           ?lot.grade*10+Math.abs(lot.y+.43-roadElevation(layout,middle.x,middle.z))*18:0;
         const distance=gap(lot,origin);
         const outer=outskirts.has(kind)?Math.max(0,31-distance)*1.6:0;
-        const score=path.length*6+distance*.18+outer+lot.weight+starter+riverBias+slope+(lot.westFirst===(yaw!==0)?0:.65);
+        const coast=kind==='tramStation'&&layout.theme==='island'&&!insideIslandBelt(layout,origin,middle.x,middle.z,.66)?65:0;
+        const score=path.length*6+distance*.18+outer+coast+lot.weight+starter+riverBias+slope+(lot.westFirst===(yaw!==0)?0:.65);
         if (!choice||score<choice.score) choice={lot,edge,yaw,path,score};
       }
     }

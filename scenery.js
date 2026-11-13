@@ -15,10 +15,17 @@ export const beam = (from,to,width,color) => ({
 });
 export const MAX_ACTORS=54;
 export const EMERGENCY_LIGHT=-1001;
+export const RESIDENCE_DRIVER='residence-driver';
 export const SERVICE_STOPS={
-  busStation:{model:'bus',color:'#4c8f8c',x:0,z:3.05,y:.406,yaw:Math.PI*.5,delay:3.4,rest:4.2},
-  fireStation:{model:'fire-engine',color:'#b95553',x:2.43,z:1.9,y:.419,yaw:0,delay:21,rest:32},
-  policeStation:{model:'police',color:'#3f6597',x:2.5,z:1.8,y:.419,yaw:0,delay:16,rest:25},
+  busStation:{model:'bus',color:'#4c8f8c',x:0,z:3.05,y:.404,yaw:Math.PI*.5,delay:3.4,rest:4.2},
+  fireStation:{model:'fire-engine',color:'#b95553',x:2.43,z:-.26,y:.419,yaw:0,delay:21,rest:32},
+  policeStation:{model:'police',color:'#3f6597',x:2.5,z:-.34,y:.419,yaw:0,delay:16,rest:25},
+};
+export const WASH_BAY={lane:2.38,deck:.424,apron:4.5,waiting:3.36,stop:1.17};
+export const isCarWash=kind=>kind==='carWash'||kind==='roverWash';
+const smoothStep=value=>{
+  const t=Math.max(0,Math.min(1,value));
+  return t*t*(3-2*t);
 };
 
 export function pointOnSite([a,b,d],{x,y,z,yaw=0}) {
@@ -194,11 +201,13 @@ export function vehicle(kind,color) {
   if (kind==='sport') {
     return [...[-.59,.59].flatMap(x=>[-.78,.78].flatMap(z=>wheel(x,z,.49,0))),
       rounded(0,0,1.26,2.45,.36,color,.24),dome(0,.58,1.26,1.32,.24,color,.46),
-      dome(0,-.19,1.01,1.31,.53,'#386270',.57),rounded(0,.76,.14,.31,.026,'#f1d198',.697),
+      rounded(0,-.22,.99,1.18,.08,ink,.57),rounded(0,.31,.93,.075,.32,'#83afbf',.66),
+      rounded(0,-.52,.71,.18,.28,ink,.60),rounded(0,.76,.14,.31,.026,'#f1d198',.697),
       rounded(0,-.86,.14,.32,.026,'#f1d198',.603),
       rounded(0,-.99,1.35,.24,.11,'#3d4d59',.68),rounded(0,1.21,.78,.11,.13,'#3d4d59',.27),
+      ...at(visitor('human','#7b9da1','#c89168',true,.43,2),-.23,.73,-.17),
       ...[-1,1].flatMap(s=>[rounded(s*.46,1.16,.23,.14,.10,'#fff0ae',.48),
-        rounded(s*.44,-1.22,.25,.10,.13,'#ed8e8d',.45),rounded(s*.53,-.23,.19,.25,.12,color,.79)])];
+        rounded(s*.44,-1.22,.25,.10,.13,'#ed8e8d',.45),rounded(s*.53,-.23,.19,.74,.13,color,.54)])];
   }
   if (['police','lunar-police','island-police','fire-engine'].includes(kind)) {
     const fire=kind==='fire-engine',lunar=kind==='lunar-police',island=kind==='island-police';
@@ -348,8 +357,17 @@ export function visitor(kind,coat,skin,seated=false,scale=.83,variant=0) {
 
 export function parkedVehicle(kind,color,site) {
   const parking={kind,color,...site};
-  const parts=kind==='hover'?occupiedHovercar(false,color).filter(part=>part.life?.[3]!==-1):vehicle(kind,color);
-  return placeParts(parts.filter(part=>part.life?.[3]!==EMERGENCY_LIGHT),site).map(part=>({...part,parking}));
+  const parts=parkingModel(parking).filter(part=>![-1,EMERGENCY_LIGHT].includes(part.life?.[3]));
+  return placeParts(parts,site).map(part=>({...part,parking}));
+}
+
+function parkingModel({kind,color,driver},passenger=false) {
+  const parts=kind==='hover'?occupiedHovercar(passenger,color):vehicle(kind,color);
+  return driver?parts.map(part=>({...part,entity:RESIDENCE_DRIVER})):parts;
+}
+
+function parkingBay(plot,spot) {
+  return {...regionalPoint(plot,spot.x,spot.z),y:plot.y+spot.y,yaw:plot.yaw+spot.yaw};
 }
 
 function occupiedHovercar(passenger=false,color='#b982ac') {
@@ -487,11 +505,25 @@ export function actorPose(actor, seconds, distanceOverride) {
     const turn=Math.max(0,Math.min(1,(actor.parking.reverseUntil-distance)/2.1));
     yaw+=Math.PI*turn*turn*(3-2*turn);
   }
-  if (actor.parking?.reverseFrom!==undefined&&distance>=actor.parking.reverseFrom) yaw+=Math.PI;
+  const reverseFrom=actor.parking?.reverseFrom;
+  if (reverseFrom!==undefined) {
+    const backing=smoothStep((distance-reverseFrom+1.65)/1.65);
+    if (backing>0) {
+      const face=actor.parking.bay.yaw-yaw;
+      yaw+=Math.atan2(Math.sin(face),Math.cos(face))*backing;
+    }
+  }
   const walking=actor.kind==='walk';
   const nearestRoad=Math.min(...actor.roads.map(row=>Math.abs(row-z)));
-  const y=actor.kind==='coaster'?segment.y+segment.dy*t:
+  const bay=actor.parking?.bay;
+  const approach=bay?smoothStep(Math.min(distance,length-distance)/1.35):1;
+  if (approach<1) {
+    const turn=yaw-bay.yaw;
+    yaw=bay.yaw+Math.atan2(Math.sin(turn),Math.cos(turn))*approach;
+  }
+  const height=actor.kind==='coaster'?segment.y+segment.dy*t:
     actor.elevation?.(x,z)??(actor.ground+actor.roadRise*Math.max(0,1-Math.max(0,nearestRoad-.85)/.61));
+  const y=approach<1?bay.y+(height-bay.y)*approach:height;
   const pitch=actor.elevation&&engineKinds.has(actor.kind)
     ? Math.atan2(actor.elevation(x+Math.sin(yaw)*.7,z+Math.cos(yaw)*.7)
         -actor.elevation(x-Math.sin(yaw)*.7,z-Math.cos(yaw)*.7),1.4)
@@ -504,7 +536,7 @@ export function actorPose(actor, seconds, distanceOverride) {
   const sound=engineKinds.has(actor.kind)?Number(cycle%9.5<3.35)
     :actor.kind==='coaster'?Number(segment.dy<-.1&&cycle%7.4<4.3)
     :actor.voice?Number(cycle%14.5<2.4)*.8:0;
-  return {x,y:y+bob,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking&&!clock.thinking?Math.sin(traveled*6)*.17:0,rollCos:1,rollSin:0,pitch,sound,thought:Number(clock.thinking),thrust:Number(actor.kind==='hover')};
+  return {x,y:y+bob*approach,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking&&!clock.thinking?Math.sin(traveled*6)*.17:0,rollCos:1,rollSin:0,pitch:pitch*approach,sound,thought:Number(clock.thinking),thrust:Number(actor.kind==='hover')};
 }
 
 const streetKinds=new Set(['road','bus','hover','offroad-rover','jetski']);
@@ -587,6 +619,8 @@ function passingPose(vehicle,pass,elapsed,seconds) {
     y:pose.y+enter*exit*(pass.hover?2.15:0),rollCos:Math.cos(roll),rollSin:Math.sin(roll),
     sound:.64,thrust:Number(pass.hover)}};
 }
+
+const WASH_DURATION=3.8;
 
 export function createTraffic(actors,junctions=[],obstacles=[],roadworks=[]) {
   const crossings=new Map();
@@ -805,6 +839,19 @@ export function createTraffic(actors,junctions=[],obstacles=[],roadworks=[]) {
           }
           if (!near) vehicle.pickedUp=false;
         }
+        if (actor.carWash) {
+          const {x,z}=actor.carWash;
+          const atWash=Math.hypot(x-vehicle.pose.x,z-vehicle.pose.z)<.22;
+          if (atWash&&!vehicle.washed) {
+            vehicle.washed=true;
+            vehicle.washStarted=seconds;
+            vehicle.washUntil=seconds+WASH_DURATION;
+            vehicle.holdUntil=vehicle.washUntil;
+            vehicle.pose={...vehicle.pose,sound:0,thrust:0};
+            continue;
+          }
+          if (!atWash) vehicle.washed=false;
+        }
         if (actor.alternatives?.length&&seconds>=vehicle.nextTurn) {
           const near=vehicles.some(other=>other!==vehicle&&Math.hypot(other.pose.x-vehicle.pose.x,other.pose.z-vehicle.pose.z)<8);
           const pick=actor.alternatives[Math.floor(vehicle.rng()*actor.alternatives.length)];
@@ -859,7 +906,12 @@ export function createTraffic(actors,junctions=[],obstacles=[],roadworks=[]) {
         }
       }
     }
+    const washes=new Map();
+    for (const vehicle of vehicles) {
+      if (vehicle.washUntil>seconds) washes.set(vehicle.actor.carWash.plot,{age:seconds-vehicle.washStarted,y:vehicle.pose.y});
+    }
     return actors.map((actor,i)=>{
+      if (actor.washBubble) return actor.pose(seconds,washes.get(actor.washBubble.plot));
       const vehicle=byIndex.get(i);
       if (!vehicle) return actor.route&&streetKinds.has(actor.kind)
         ? {...actorPose(actor,seconds),y:-540,sound:0} : actorPose(actor,seconds);
@@ -1010,10 +1062,9 @@ function residenceTours(layout,plan,plot,spots) {
     const returning=[throat,[0,front-3.48],[side*1.66,5.72],[side*4.14,5.51],[side*4.62,4.52],[side*4.34,3.58]];
     const points=leaving.map(point).concat(street,returning.map(point));
     const hover=spot.kind==='hover';
-    const model=hover?occupiedHovercar(false,spot.color):vehicle(spot.kind,spot.color);
-    const car=actor(model,points,{kind:hover?'hover':'road',speed:hover?2.34:2.16,corner:STREET_TURN_RADIUS,
+    const car=actor(parkingModel(spot),points,{kind:hover?'hover':'road',speed:hover?2.34:2.16,corner:STREET_TURN_RADIUS,
       elevation:hover?(x,z)=>elevation(x,z)+.17:elevation,exactStart:true});
-    return {...car,vehicleModel:spot.kind,parking:{model:spot,plot:plot.index,delay:8+i*11,rest:15+i*6,
+    return {...car,vehicleModel:spot.kind,parking:{model:spot,bay:parkingBay(plot,spot),plot:plot.index,delay:8+i*11,rest:15+i*6,
       merge:drivewayMerge(car.route,plot,entry,front)}};
   });
 }
@@ -1036,28 +1087,87 @@ function serviceTour(layout,plan,plot,spot) {
   const width=layout.theme==='island'?1.02:1.22;
   const height=(x,z)=>plan.streetElevation?.(x,z)??roadElevation(layout,x,z);
   const deck=plot.y+spot.y;
-  const deckZ=bus?4.71:4.49;
+  const deckZ=serviceDriveways(plot)[0].z-.1,curb=front-width+.13;
   const elevation=(x,z)=>{
     const a=x-plot.x,b=z-plot.z,depth=a*sin+b*cos,across=a*cos-b*sin;
-    if (Math.abs(across)>5.35||depth<1.17||depth>=front-width+.13) return height(x,z);
-    const mix=Math.max(0,Math.min(1,(depth-deckZ)/(front-width+.13-deckZ)));
+    if (Math.abs(across)>5.35||depth<spot.z-1.8||depth>=curb) return height(x,z);
+    const mix=smoothStep((depth-deckZ)/Math.max(.4,curb-deckZ));
     return deck+(height(x,z)-deck)*mix;
   };
-  const car=actor(vehicle(spot.kind,spot.color),leaving.map(toWorld).concat(street,returning.map(toWorld)),
+  const car=actor(parkingModel(spot),leaving.map(toWorld).concat(street,returning.map(toWorld)),
     {kind:bus?'bus':'road',speed:bus?2.26:2.68,elevation,corner:bus?1.42:1.04,exactStart:true});
   const merge=drivewayMerge(car.route,plot,access,front);
   // The long bus pulls up just far enough to keep its nose behind the curb.
   if (bus) merge.stop=Math.max(0,merge.stop-.46);
   const last=car.route.segments.at(-1);
   return [{...car,service:plot.kind,response:!bus,vehicleModel:spot.kind,parking:{
-    model:spot,plot:plot.index,delay:service.delay,rest:service.rest,
+    model:spot,bay:parkingBay(plot,spot),plot:plot.index,delay:service.delay,rest:service.rest,
     merge,...(!bus&&{reverseFrom:last.start}),
   }}];
 }
 
+function washTour(layout,plan,plot,spot) {
+  const {lane,apron}=WASH_BAY,entry=plot.entries[0];
+  const sin=Math.sin(plot.yaw),cos=Math.cos(plot.yaw);
+  const depth=(x,z)=>(x-plot.x)*sin+(z-plot.z)*cos;
+  const front=depth(entry.x,entry.z);
+  const toWorld=([x,z])=>{const point=regionalPoint(plot,x,z);return [point.x,point.z];};
+  const exitSide=regionalPoint(plot,lane,front);
+  const street=parkingStreet(plan,exitSide,plot);
+  if (!street||front<=apron+.65) return [];
+  street[street.length-1]=toWorld([-lane,front-.87]);
+  const leaving=[[spot.x,spot.z],[-lane,1.9],[-lane,-2.42],[-1.2,-3.48],[1.2,-3.48],
+    [lane,-2.42],[lane,apron-.22],[lane,front-.94]];
+  const returning=[[-lane,front-.94],[-lane,apron-.20]];
+  const elevation=(x,z)=>{
+    const street=plan.streetElevation?.(x,z)??roadElevation(layout,x,z);
+    const localX=(x-plot.x)*cos-(z-plot.z)*sin;
+    if (Math.abs(localX)>lane+1.14) return street;
+    const curb=front-(layout.theme==='island'?1.02:1.22)+.13;
+    const blend=smoothStep((depth(x,z)-apron+.18)/Math.max(.34,curb-apron+.18));
+    return plot.y+spot.y+(street-plot.y-spot.y)*blend;
+  };
+  const points=leaving.map(toWorld).concat(street,returning.map(toWorld))
+    .filter((point,i,all)=>!i||Math.hypot(point[0]-all[i-1][0],point[1]-all[i-1][1])>.008);
+  const car=actor(parkingModel(spot),points,{kind:'road',speed:1.89,corner:.95,elevation,exactStart:true});
+  return [{...car,vehicleModel:spot.kind,carWash:{...regionalPoint(plot,-lane,WASH_BAY.stop),yaw:plot.yaw,plot:plot.index},
+    parking:{model:spot,bay:parkingBay(plot,spot),plot:plot.index,delay:.75,rest:5.1,
+      merge:drivewayMerge(car.route,plot,exitSide,front)},
+    washEntries:[-lane,lane].map(x=>({
+      path:Array.from({length:7},(_,i)=>{
+        const t=i/6;
+        const position=regionalPoint(plot,x,apron-.1+(front-.69-apron)*t);
+        return {...position,y:elevation(position.x,position.z)-.012};
+      }),drive:true,width:.84,
+    })),
+  }];
+}
+
+export function washBubbles(carWash) {
+  const colors=['#9fdcd8','#d2eff0','#e3d4f6','#b2dbe8'];
+  const staticSite={...carWash,y:0};
+  return Array.from({length:5},(_,i)=>{
+    const angle=i*2.39996;
+    const radius=.15+(i%3)*.045,delay=i*.14;
+    const parts=[
+      dome(0,0,2*radius,2*radius,radius*1.7,colors[i%colors.length],-radius*.65),
+      dome(-radius*.29,.08,radius*.68,radius*.65,radius*.29,'#f2fbef',radius*.78),
+    ];
+    return {kind:'wash-bubble',parts,washBubble:{plot:carWash.plot},pose(seconds,wash){
+      if (!wash) return {x:carWash.x,y:-540,z:carWash.z,cos:1,sin:0,stride:0,rollCos:1,rollSin:0,sound:0};
+      const t=wash.age-delay;
+      const life=t%1.38;
+      const height=t>=0&&life<1.15&&wash.age<WASH_DURATION-.24?wash.y+.72+life*1.37:-540;
+      const sway=.57+Math.sin(seconds*3.2+i)*.17;
+      const [x,,z]=pointOnSite([Math.cos(angle)*sway,0,.52+Math.sin(angle)*.93],staticSite);
+      return {x,y:height,z,cos:1,sin:0,stride:0,rollCos:1,rollSin:0,sound:0};
+    }};
+  });
+}
+
 export function serviceDriveways(plot) {
   if (!SERVICE_STOPS[plot.kind]) return [];
-  if (plot.kind==='busStation') return [-3.67,3.67].map(x=>({x,z:4.78,y:.406,width:1.1}));
+  if (plot.kind==='busStation') return [-3.67,3.67].map(x=>({x,z:4.78,y:SERVICE_STOPS.busStation.y,width:1.1}));
   const {x,y}=SERVICE_STOPS[plot.kind];
   return [{x,z:4.53,y,width:.88}];
 }
@@ -1069,12 +1179,15 @@ export function parkingTours(layout,plan,plot,stages) {
   if (!spots.length) return [];
   if (plot.residence) return residenceTours(layout,plan,plot,spots);
   if (SERVICE_STOPS[plot.kind]) return serviceTour(layout,plan,plot,spots[0]);
+  if (isCarWash(plot.kind)) return washTour(layout,plan,plot,spots[0]);
   const cos=Math.cos(plot.yaw),sin=Math.sin(plot.yaw);
   const front=(entry.x-plot.x)*sin+(entry.z-plot.z)*cos;
+  const privateHome=plot.kind==='residence';
+  const curb=front-(layout.theme==='island'?1.02:1.22)+.11;
   return spots.flatMap((spot,i)=>{
-    const apron=plot.airportDistrict?spot.x*.31:spot.x;
+    const apron=privateHome?0:plot.airportDistrict?spot.x*.31:spot.x;
     const access=regionalPoint(plot,apron,front);
-    const street=parkingStreet(plan,access,plot.kind==='residence'?plot:null)??parkingStreet(plan,entry);
+    const street=parkingStreet(plan,access,privateHome?plot:null)??parkingStreet(plan,entry);
     if (!street||front<spot.z+1.5) return [];
     const bay=regionalPoint(plot,spot.x,spot.z);
     const fromDeck=regionalPoint(plot,spot.x,Math.min(front-.84,spot.z+1.48));
@@ -1083,20 +1196,22 @@ export function parkingTours(layout,plan,plot,stages) {
     const points=[bay,fromDeck,driveway].map(toArray).concat(street,[driveway,fromDeck].map(toArray));
     const height=spot.kind==='hover'?.17:0;
     const deck=plot.y+spot.y-height;
-    const edge=Math.min(front-1.05,Math.max(plot.kind==='residence'?spot.z+.74:0,(plot.halfDepth??4.6)-.28));
+    const edge=Math.min(curb-.42,Math.max(spot.z+1.03,(plot.halfDepth??4.6)-.28));
     const elevation=(x,z)=>{
       const a=x-plot.x,b=z-plot.z;
       const localX=a*cos-b*sin,depth=a*sin+b*cos;
       const street=plan.streetElevation?.(x,z)??roadElevation(layout,x,z);
-      if (Math.abs(localX-spot.x)>4.7||depth<spot.z-.5||depth>=front) return street+height;
-      const t=Math.max(0,Math.min(1,(depth-edge)/Math.max(.5,front-edge)));
+      if (Math.abs(localX-spot.x)>4.7||depth<spot.z-1.65||depth>=curb) return street+height;
+      const t=smoothStep((depth-edge)/(curb-edge));
       return deck+(street-deck)*t+height;
     };
-    const car=actor(spot.kind==='hover'?occupiedHovercar(plot.kind!=='residence'&&i===0,spot.color):vehicle(spot.kind,spot.color),points,
+    const car=actor(parkingModel(spot,!privateHome&&i===0),points,
       {kind:spot.kind==='hover'?'hover':'road',speed:spot.kind==='hover'?2.38:1.76,corner:STREET_TURN_RADIUS,elevation,exactStart:true});
-    return [{...car,...(plot.kind==='residence'&&{vehicleModel:spot.kind}),parking:{
-      model:spot,plot:plot.index,delay:7+(plot.index*3+i*12)%18,rest:18+(plot.index+i*9)%15,reverseUntil:front-spot.z+.65,
-      ...(plot.kind==='residence'&&{merge:drivewayMerge(car.route,plot,access,front)}),
+    const reversing=Math.cos(spot.yaw)<0;
+    return [{...car,vehicleModel:spot.kind,parking:{
+      model:spot,bay:parkingBay(plot,spot),plot:plot.index,delay:7+(plot.index*3+i*12)%18,rest:18+(plot.index+i*9)%15,
+      ...(reversing?{reverseUntil:front-spot.z+.65}:{reverseFrom:car.route.segments.at(-1).start}),
+      ...(privateHome&&{merge:drivewayMerge(car.route,plot,access,front)}),
       access:Array.from({length:7},(_,j)=>{
         const t=j/6,depth=edge+(front-.55-edge)*t;
         const point=regionalPoint(plot,spot.x+(apron-spot.x)*t,depth);

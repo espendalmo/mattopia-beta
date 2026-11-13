@@ -114,6 +114,7 @@ const districtStories={
   dustSlides:'Ingen trenger badebukse her. De fleste trenger en støvsuger etterpå.',
   cometCafe:'Kakaokoppen har lokk. Sist var det selve kometen som ikke klarte å holde på marshmallowene.',
   roverWash:'En rover kom inn med så mye støv at de trodde den var et helt nytt krater.',
+  carWash:'En bil kom inn full av sand. Da den kjørte ut, manglet vaskehallen bare en badevakt.',
   craterCinema:'Her svever popkornet mot taket. Bakerste rad har med seg hov.',
   moonPost:'Merk pakken med planet og krater. «Ved siden av en stor stein» har vist seg å være litt upresist.',
   sunMirror:'Solspeilet er stort nok til at alle i byen kan sjekke romhjelmen sin samtidig.',
