@@ -124,7 +124,7 @@ function originalLandmarkStory(theme,index,kind) {
   if (districtStories[kind]) return districtStories[kind];
   if (theme==='moon'&&moonStories[kind]) return moonStories[kind];
   if (kind==='railwayStation') return 'Toget stopper på perrongen. Se om du får øye på toget igjen på den andre siden av tunnelen.';
-  if (kind==='monorailStation') return 'Månetoget trenger bare én skinne. Det glir over gatene, gjennom tunnelen og tilbake til stasjonen.';
+  if (kind==='monorailStation') return 'Månetogene møtes under det buede taket. På perrong tre må konduktøren minne romvesenene om at antenner også må innenfor dørene.';
   if (kind==='tramStation') return 'Du kan ta trikken hele veien rundt og ende på samme sted. Hvor mange stopp finner du?';
   if (kind==='needleTower') return 'Restauranten snurrer sakte, så alle bord får utsikt i alle retninger.';
   if (kind==='residence') return theme==='moon'?'Et hus verdig en mattemester. I oppkjørselen står en rover og en svevebil. Selv bilen kan løfte seg et hakk.':

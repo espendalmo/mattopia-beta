@@ -1,6 +1,6 @@
 import {connectWaterfront,insideIslandBelt,regionalAnnex,regionalFootprint,regionalPoint,regionSurface,riverAt,riverWidth,
   roadElevation,specialEntrances,RESIDENCE_PLOT} from './regions.js';
-import {randomGenerator,REGION_PLACES,LARGE_REGION_PLACES} from './worlds.js';
+import {randomGenerator,REGION_PLACES,LARGE_REGION_PLACES,EXTENDED_REGION_PLACES} from './worlds.js';
 import {joinStreetPaths,streetNetwork} from './street-network.js';
 import {isCarWash} from './scenery.js';
 
@@ -102,6 +102,11 @@ function layoutStreets(layout,requiredLots) {
   if (requiredLots>=LARGE_REGION_PLACES) {
     attempts.push(...Array.from({length:12},(_,i)=>[12.9,5+i]));
     if (layout.theme==='island') attempts.push(...Array.from({length:16},(_,i)=>[12.9,i,3.25]));
+  }
+  if (requiredLots>=EXTENDED_REGION_PLACES) {
+    for (const spacing of [12.6,12.35]) {
+      attempts.push(...Array.from({length:16},(_,i)=>[spacing,i,3.25]));
+    }
   }
   for (const [spacing,shift,maxGrade] of attempts) {
     const candidate=streetGraph(layout,spacing,shift,maxGrade);

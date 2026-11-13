@@ -8,21 +8,23 @@ export const GRAND_REGION_PLACES=30;
 export const GRAND_REGION_CATALOG=44;
 export const LUNAR_REGION_CATALOG=48;
 export const LARGE_REGION_PLACES=40;
+export const EXTENDED_REGION_PLACES=50;
 export const LARGE_REGION_CATALOG=54;
 export const LARGE_LUNAR_CATALOG=57;
 // Keep saved residences separate from the expandable building catalogs.
 export const RESIDENCE_PLACE=1000;
 export const largeRegion=map=>map?.layout===3&&map.catalog===4;
-export const grandCatalog=map=>map?.layout===3&&[3,4].includes(map.catalog);
+export const grandCatalog=map=>map?.layout===3&&[3,4,5].includes(map.catalog);
 export const LEGACY_WORLD_STEPS=120;
 export const isWorld=id=>WORLD_IDS.includes(id);
 export const isRegion=map=>map?.layout===2||map?.layout===3;
 export function worldCapacity(map) {
+  if (map?.layout===3&&map.catalog===5) return EXTENDED_REGION_PLACES;
   if (largeRegion(map)) return LARGE_REGION_PLACES;
   if (grandCatalog(map)) return GRAND_REGION_PLACES;
   return !map||isRegion(map)?REGION_PLACES:WORLD_PLACES;
 }
-export const hasExpandedCatalog=map=>map?.layout===3&&[2,3,4].includes(map.catalog);
+export const hasExpandedCatalog=map=>map?.layout===3&&[2,3,4,5].includes(map.catalog);
 export function worldPoolSize(map,theme) {
   if (grandCatalog(map)) return theme==='moon'?LARGE_LUNAR_CATALOG:LARGE_REGION_CATALOG;
   return hasExpandedCatalog(map)?REGION_CATALOG_PLACES:worldCapacity(map);
@@ -116,7 +118,7 @@ export function worldAdvance(map,theme) {
 
 export function freshWorld(rng=Math.random,previous=null) {
   const seed=Math.floor(rng()*2**32)>>>0;
-  return {layout:3,catalog:4,starter:true,seed:seed===previous?.seed?(seed+1)>>>0:seed,legacy:0,order:[],progress:0};
+  return {layout:3,catalog:5,starter:true,seed:seed===previous?.seed?(seed+1)>>>0:seed,legacy:0,order:[],progress:0};
 }
 
 function restoreWorld(raw,budget,first,theme) {

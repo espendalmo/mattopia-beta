@@ -1325,7 +1325,7 @@ canvas.lunar-starfield,
   }
 }
 .eplo-hint-name { display: block; margin-bottom: 2px; font-size: .78rem; }
-.demo-shortcuts { display: flex; justify-content: flex-end; margin: 0 0 8px; }
+.demo-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin: 0 0 8px; }
 .demo-shortcuts .secondary { min-height: 44px; border-color: #e4d4a2; background: #fff8df; }
 [data-demo-finale][hidden] { display: none; }
 

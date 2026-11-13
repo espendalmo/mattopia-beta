@@ -117,13 +117,21 @@ function regionGround(layout,plan,sky,full,horizon,season,discoveries) {
   const coords=[...extension.map(distance=>-edge-distance).reverse(),...layout.grid.slice(0,inner).map(tile=>tile.x),
     ...extension.map(distance=>edge+distance)];
   const relief=horizon?distantRelief(layout):null;
-  const airfields=plan.plots.filter(plot=>plot.airfield);
+  const airfields=plan.plots.filter(plot=>plot.airfield||plot.airportDistrict);
   const resort=plan.plots.find(plot=>plot.beach);
   const estate=plan.plots.find(plot=>plot.residence&&plot.gradeCut>.012);
   const beachSand=rgb('#ebd1a2');
   const mines=discoveries.filter(site=>site.type.mine);
   const lake=layout.moonLake,reach=lake&&lake.w*1.17+3;
   const outerRoads=horizon?[...plan.paths.flat(),...(plan.transit??[])].filter(p=>Math.max(Math.abs(p.x),Math.abs(p.z))>59):[];
+  const apronSites=airfields.map(site=>({...site,c:Math.cos(site.yaw),s:Math.sin(site.yaw),
+    width:site.airfield?12.4:site.halfWidth+.75,depth:site.airfield?8.4:site.halfDepth+.75}));
+  const cutAprons=(x,z)=>apronSites.flatMap(site=>{
+    const a=x-site.x,b=z-site.z;
+    if (Math.abs(a)>19||Math.abs(b)>19) return [];
+    const beyond=Math.max(Math.abs(a*site.c-b*site.s)-site.width,Math.abs(a*site.s+b*site.c)-site.depth);
+    return beyond<4?[{cut:smooth((4-beyond)/4),level:site.y-.14}]:[];
+  });
   const vertex=(x,z,tile)=>{
     const angle=Math.atan2(z,x);
     const radius=112+7*Math.sin(angle*3+layout.phase)+4.5*Math.cos(angle*5-layout.phase);
@@ -139,22 +147,20 @@ function regionGround(layout,plan,sky,full,horizon,season,discoveries) {
       const sand=smooth((16.9-side)/4)*smooth((seaward-5.4)/3.5)*smooth((10-tile.bank)/6.5);
       base=blend(base,beachSand,sand);
     }
+    const apronCuts=cutAprons(x,z);
+    const airfieldCut=apronCuts.reduce((max,{cut})=>Math.max(max,cut),0);
     const distant=relief?.(x,z,tile);
-    const color=distant?.tint?blend(base,distant.color,distant.tint*horizon):base;
+    const color=distant?.tint?blend(base,distant.color,distant.tint*horizon*(1-airfieldCut)):base;
     let ground=groundLevel(plan,x,z,tile.y);
     const reliefFactor=distant?.height&&outerRoads.length
       ?smooth((Math.sqrt(outerRoads.reduce((near,p)=>Math.min(near,(x-p.x)**2+(z-p.z)**2),100))-3.3)/5.4):1;
-    ground+=(distant?.height??0)*horizon*reliefFactor;
+    ground+=(distant?.height??0)*horizon*reliefFactor*(1-airfieldCut);
     if (estate&&ground>estate.y+.012) {
       const dx=x-estate.x,dz=z-estate.z,turned=Math.abs(Math.sin(estate.yaw))>.5;
       const beyond=Math.max(Math.abs(turned?dz:dx)-estate.halfWidth,Math.abs(turned?dx:dz)-estate.halfDepth);
       ground-=(ground-estate.y-.012)*smooth(1-Math.max(0,beyond)/2.15);
     }
-    for (const site of airfields) {
-      const a=x-site.x,b=z-site.z,c=Math.cos(site.yaw),s=Math.sin(site.yaw);
-      const beyond=Math.max(Math.abs(a*c-b*s)-12.4,Math.abs(a*s+b*c)-8.4);
-      ground-=Math.max(0,ground-(site.y-.14))*smooth((4-beyond)/4);
-    }
+    for (const {level,cut} of apronCuts) ground-=Math.max(0,ground-level)*cut;
     return {point:[x,ground,z],color:blend(background,color,visibility),visibility,lake:tile.moonLake&&tile.bank<-.14};
   };
   const grid=Array.from({length:row*row},(_,i)=>{
@@ -178,15 +184,21 @@ function regionGround(layout,plan,sky,full,horizon,season,discoveries) {
     const nearby=mines.filter(site=>site.x>a.point[0]-6&&site.x<b.point[0]+6&&site.z>a.point[2]-6&&site.z<c.point[2]+6);
     const lakeCell=lake&&lake.x>a.point[0]-reach&&lake.x<b.point[0]+reach
       &&lake.z>a.point[2]-reach&&lake.z<c.point[2]+reach;
-    if (!nearby.length&&!lakeCell) {
+    const airfieldCell=airfields.some(site=>{
+      const extent=site.airfield?18:12;
+      return site.x>a.point[0]-extent&&site.x<b.point[0]+extent
+        &&site.z>a.point[2]-extent&&site.z<c.point[2]+extent;
+    });
+    if (!nearby.length&&!lakeCell&&!airfieldCell) {
       addTriangle([a,c,b]); addTriangle([b,c,d]);
       continue;
     }
     const refined=Array.from({length:25},(_,j)=>{
       const u=(j%5)/4,v=Math.floor(j/5)/4;
       const x=lerp(a.point[0],b.point[0],u),z=lerp(a.point[2],c.point[2],v);
-      const tile=lakeCell?regionSurface(layout,x,z):null;
-      if (tile&&j%5>0&&j%5<4&&j>=5&&j<20) return vertex(x,z,tile);
+      const tile=lakeCell||airfieldCell?regionSurface(layout,x,z):null;
+      const innerPoint=j%5>0&&j%5<4&&j>=5&&j<20;
+      if (tile&&(innerPoint||airfieldCell&&cutAprons(x,z).length)) return vertex(x,z,tile);
       const base=lerp(lerp(a.point[1],b.point[1],u),lerp(c.point[1],d.point[1],u),v);
       const offset=nearby.reduce((height,site)=>height+mineTerrain(site,x,z),0);
       const color=blend(blend(a.color,b.color,u),blend(c.color,d.color,u),v);

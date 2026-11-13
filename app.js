@@ -12,7 +12,7 @@ import { AVATARS, AVATAR_GROUPS, GRADES, NAME_LIMIT, PROFILE_KEY, chosenProfileN
 import { rewardIllustration } from './illustrations.js';
 import { curriculumTopic, levelForGrade, levelsForGrade } from './curriculum.js';
 import { PROJECTS, projectById, projectScene, worldBuilding, worldBuildingOptions, worldBuildingPreview } from './projects.js';
-import { isWorld, isRegion, currentWorld, worldStatus, worldCompletedPlaces, worldSelect, worldAdvance, freshWorld, replaceCurrentWorld, startNewWorld, WORLD_IDS, REGION_PLACES } from './worlds.js';
+import { isWorld, isRegion, currentWorld, worldStatus, worldCompletedPlaces, worldSelect, worldAdvance, freshWorld, replaceCurrentWorld, startNewWorld, WORLD_IDS, REGION_PLACES, RESIDENCE_PLACE, WORLD_BUILD_STEPS } from './worlds.js';
 import { mountProjectView } from './project-view.js';
 import { seasonForDate, seasonMark } from './seasons.js';
 
@@ -504,6 +504,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
   const project = projectById(id);
   if (!project || (demo && CHANNEL !== 'preview')) return;
   let trail = demo && isWorld(id) ? [freshWorld()] : null;
+  const demoOwner=trail&&(chosenProfileName(profile)||'Spiller 1');
   let completed = demo ? 0 : state.projects[id] || 0;
   let map = trail ? trail[0] : archivedMap || currentWorld(state,id);
   const progress = () => ({mode:id,...(map ? worldStatus(map) : {completed,total:project.total,full:completed===project.total})});
@@ -525,7 +526,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         <p data-demo-status aria-live="polite">${latest()}</p>
         <button class="secondary" data-demo-step="1" aria-label="Neste byggesteg">Neste ${icon('arrow')}</button>
       </div>` : ''}
-      ${demo ? `<div class="demo-shortcuts"><button class="secondary" data-demo-finish>Vis finalen</button></div>` : ''}
+      ${demo ? `<div class="demo-shortcuts">${trail?'<button class="secondary" data-demo-residence>Vis residensen</button>':''}<button class="secondary" data-demo-finish>Vis finalen</button></div>` : ''}
       <div class="project-map-stage">
         <canvas tabindex="0" role="img" aria-label="${escapeHtml(scene.world ? 'Kart: '+title : title+' i 3D')}" aria-describedby="project-instructions project-milestone"></canvas>
         ${scene.world?`<section class="map-info-card" data-map-info hidden aria-live="polite">
@@ -712,8 +713,9 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         if (trail) {
           while (!trail[target]) {
             const latest=trail.at(-1);
-            const [choice]=worldBuildingOptions(id,latest);
-            trail.push(worldAdvance(worldSelect(latest,choice,id),id));
+            const choices=worldBuildingOptions(id,latest,demoOwner);
+            const choice=choices.includes(RESIDENCE_PLACE)?RESIDENCE_PLACE:choices[0];
+            trail.push(worldAdvance(worldSelect(latest,choice,id,demoOwner),id));
           }
           map = trail[target];
         }
@@ -728,6 +730,13 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       previous.addEventListener('click', () => step(-1));
       next.addEventListener('click', () => step(1));
       finish.addEventListener('click',()=>goTo(progress().total,1));
+      viewer.querySelector('[data-demo-residence]')?.addEventListener('click',()=>{
+        const index=map.order.indexOf(RESIDENCE_PLACE);
+        const residenceStep=(index<0?3:index+1)*WORLD_BUILD_STEPS;
+        if (completed<residenceStep) goTo(residenceStep,1);
+        if (card) inspect(RESIDENCE_PLACE,{focus:true});
+        else dispose.inspect?.(RESIDENCE_PLACE,{focus:true});
+      });
       dialog.querySelector('[data-demo-new]')?.addEventListener('click', () => {
         map = freshWorld(Math.random, map);
         trail = [map];
