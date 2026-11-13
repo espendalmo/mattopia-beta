@@ -19,7 +19,10 @@ export function riverAt(layout,z) {
 }
 
 export function riverWidth(layout,z) {
-  return (layout.grand?5.2:3.85)+1.1*Math.sin(z*.071+layout.phase)+.45*Math.cos(z*.23);
+  const width=(layout.grand?6.15:3.85)+1.1*Math.sin(z*.071+layout.phase)+.45*Math.cos(z*.23);
+  if (!layout.riverLagoon) return width;
+  const {bridge,lagoon}=layout.riverLagoon;
+  return width+2.4*Math.exp(-((z-bridge)**2)/74)+5.5*Math.exp(-((z-lagoon)**2)/91);
 }
 
 function coastAt(layout,x,z) {
@@ -67,6 +70,17 @@ export function regionSurface(layout,x,z) {
     }
   }
   if (theme==='moon') return {y,water:false,bank:Infinity,basin,detail,relief};
+  const volcano=layout.volcano;
+  if (volcano) {
+    const dx=(x-volcano.x)/volcano.halfWidth,dz=(z-volcano.z)/volcano.halfDepth;
+    const r=Math.hypot(dx,dz)*(1+.074*Math.sin(Math.atan2(dz,dx)*5+phase));
+    if (r<1.24) {
+      const rim=Math.exp(-((r-.46)**2)/.032)*5.7;
+      const cone=Math.max(0,1-r/1.24)**1.45*6.2;
+      y+=rim+cone-5.25*Math.exp(-(r*r)/.065);
+      if (r<.83) return {y,water:false,bank:12,basin,detail,relief:y,volcanic:r};
+    }
+  }
   const outerBank=theme==='city' ? Math.abs(x-riverAt(layout,z))-riverWidth(layout,z) : coastAt(layout,x,z);
   const bank=Math.min(outerBank,basin);
   const pond=basin<outerBank;
@@ -136,7 +150,7 @@ function districtGround(layout,site,halfWidth,halfDepth) {
     return regionSurface(layout,p.x,p.z);
   }));
   const high=Math.max(...samples.map(p=>p.y)),low=Math.min(...samples.map(p=>p.y));
-  return {y:high+.09,grade:high-low,dry:samples.every(p=>!p.water&&p.bank>.35&&p.basin>-.6)};
+  return {y:high+.09,grade:high-low,dry:samples.every(p=>!p.water&&p.bank>.35&&p.basin>-.6&&p.volcanic===undefined)};
 }
 
 export function resortShore(layout,site,x) {
@@ -248,11 +262,13 @@ export function regionLayout(theme,seed,grand=false,capacity=grand?GRAND_REGION_
   if (grand && theme==='island') {
     layout.radiusX+=6;
     layout.radiusZ+=11;
+    if (capacity>=50) { layout.radiusX+=4;layout.radiusZ+=4.5; }
     layout.basins=layout.basins.map(pond=>({...pond,w:pond.w*1.24,d:pond.d*1.24}));
   }
   const side=rng()<.5?1:-1;
   const quayZ=22+rng()*8;
   const bridgeZ=(rng()<.5?1:-1)*(5+rng()*8);
+  if (grand&&theme==='city') layout.riverLagoon={bridge:bridgeZ,lagoon:Math.sign(bridgeZ)*(32+seed%7)};
   const berths=theme==='city'?{
     pier:cityBerth(layout,-30-rng()*7,side),
     quay:cityBerth(layout,quayZ,-side),
@@ -262,6 +278,11 @@ export function regionLayout(theme,seed,grand=false,capacity=grand?GRAND_REGION_
     marina:coastSite(layout,layout.phase+2.05+rng()*.48),
   }:{};
   layout.berths=berths;
+  if (theme==='island'&&capacity>=50) {
+    const peaks=[46+seed%8,40].flatMap(reach=>[-2.6,-3.05,2.66,-1.84,1.88].map(angle=>
+      ({...polar(angle,reach),yaw:0,halfWidth:9.7,halfDepth:9.2})));
+    layout.volcano=peaks.find(site=>coastAt(layout,site.x,site.z)>11&&Object.values(berths).every(berth=>distance(site,berth)>23));
+  }
 
   const startZ=(rng()-.5)*12;
   const start={z:startZ,x:theme==='city'?riverAt(layout,startZ)+side*(17+rng()*2): (rng()-.5)*14};
@@ -313,7 +334,7 @@ export function regionLayout(theme,seed,grand=false,capacity=grand?GRAND_REGION_
       }
     }
   }
-  layout.regionalSites=[layout.airfield,layout.hangar,layout.beachResort,layout.spaceResort,layout.moonLake,
+  layout.regionalSites=[layout.airfield,layout.hangar,layout.beachResort,layout.spaceResort,layout.moonLake,layout.volcano,
     berths.lighthouse,berths.stoneLighthouse].filter(Boolean);
   const grid=Array.from({length:GRID*GRID},(_,i)=>{
     const x=i%GRID*STEP-EDGE,z=Math.floor(i/GRID)*STEP-EDGE;

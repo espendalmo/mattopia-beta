@@ -5,6 +5,7 @@ import {planStreetRegion} from './street-grid.js';
 import {prepareRoadGrades,prepareRoadTunnels,regionRoads,streetHalfWidth} from './region-roads.js';
 import {roadProjections} from './street-network.js';
 import {constructionYard,landmarkVisitors,lunarEarth,rideModels,resortBeach} from './map-art.js';
+import {residentJourneys} from './map-life.js';
 import {plotAccess,terrainFoundation} from './landmark-ground.js';
 import {districtRail,districtTram,helicopterModels} from './transport.js';
 import {regionalHeadquarters} from './world-landmarks.js';
@@ -58,6 +59,10 @@ function surfaceColor(tile,layout,season) {
     const dust=blend(rgb('#5b719f'),rgb('#a1b7cd'),clamp(1+tile.bank/4.9)*.76+variation*.15);
     const shore=blend(rgb('#bcb9cb'),ground,smooth(tile.bank/2.9));
     return blend(dust,shore,smooth((tile.bank+.69)/1.25));
+  }
+  if (tile.volcanic!==undefined) {
+    const stone=blend(rgb('#514746'),rgb('#9d7058'),clamp(tile.volcanic*.96+variation*.22));
+    return blend(stone,ground,smooth((tile.volcanic-.56)/.27));
   }
   const beach=clamp(1-tile.bank/(layout.theme==='island'?3.8:layout.grand&&tile.pond?2.18:1.22));
   return blend(ground,rgb(palette.bank),beach*.88);
@@ -161,7 +166,8 @@ function regionGround(layout,plan,sky,full,horizon,season,discoveries) {
       ground-=(ground-estate.y-.012)*smooth(1-Math.max(0,beyond)/2.15);
     }
     for (const {level,cut} of apronCuts) ground-=Math.max(0,ground-level)*cut;
-    return {point:[x,ground,z],color:blend(background,color,visibility),visibility,lake:tile.moonLake&&tile.bank<-.14};
+    return {point:[x,ground,z],color:blend(background,color,visibility),visibility,lake:tile.moonLake&&tile.bank<-.14,
+      volcano:tile.volcanic<.69};
   };
   const grid=Array.from({length:row*row},(_,i)=>{
     const col=i%row,line=Math.floor(i/row);
@@ -175,6 +181,7 @@ function regionGround(layout,plan,sky,full,horizon,season,discoveries) {
     const part=face(triangle.map(v=>v.point),sky,0,triangle.map(v=>v.color));
     if (layout.theme==='moon') part.opacity=triangle.map(v=>v.visibility);
     if (triangle.every(v=>v.lake&&v.visibility>.39)) part.entity='moon-lake';
+    if (triangle.every(v=>v.volcano&&v.visibility>.39)) part.entity='volcano';
     ground.push(part);
   };
   for (let i=0;i<grid.length-row;i++) {
@@ -184,19 +191,22 @@ function regionGround(layout,plan,sky,full,horizon,season,discoveries) {
     const nearby=mines.filter(site=>site.x>a.point[0]-6&&site.x<b.point[0]+6&&site.z>a.point[2]-6&&site.z<c.point[2]+6);
     const lakeCell=lake&&lake.x>a.point[0]-reach&&lake.x<b.point[0]+reach
       &&lake.z>a.point[2]-reach&&lake.z<c.point[2]+reach;
+    const volcano=layout.volcano;
+    const volcanoCell=volcano&&volcano.x>a.point[0]-13&&volcano.x<b.point[0]+13
+      &&volcano.z>a.point[2]-13&&volcano.z<c.point[2]+13;
     const airfieldCell=airfields.some(site=>{
       const extent=site.airfield?18:12;
       return site.x>a.point[0]-extent&&site.x<b.point[0]+extent
         &&site.z>a.point[2]-extent&&site.z<c.point[2]+extent;
     });
-    if (!nearby.length&&!lakeCell&&!airfieldCell) {
+    if (!nearby.length&&!lakeCell&&!volcanoCell&&!airfieldCell) {
       addTriangle([a,c,b]); addTriangle([b,c,d]);
       continue;
     }
     const refined=Array.from({length:25},(_,j)=>{
       const u=(j%5)/4,v=Math.floor(j/5)/4;
       const x=lerp(a.point[0],b.point[0],u),z=lerp(a.point[2],c.point[2],v);
-      const tile=lakeCell||airfieldCell?regionSurface(layout,x,z):null;
+      const tile=lakeCell||volcanoCell||airfieldCell?regionSurface(layout,x,z):null;
       const innerPoint=j%5>0&&j%5<4&&j>=5&&j<20;
       if (tile&&(innerPoint||airfieldCell&&cutAprons(x,z).length)) return vertex(x,z,tile);
       const base=lerp(lerp(a.point[1],b.point[1],u),lerp(c.point[1],d.point[1],u),v);
@@ -204,7 +214,7 @@ function regionGround(layout,plan,sky,full,horizon,season,discoveries) {
       const color=blend(blend(a.color,b.color,u),blend(c.color,d.color,u),v);
       return {point:[x,base+offset,z],color:blend(color,rgb(layout.theme==='moon'?'#82788d':'#8e826d'),clamp(Math.abs(offset)*.12)),
         visibility:lerp(lerp(a.visibility,b.visibility,u),lerp(c.visibility,d.visibility,u),v),
-        lake:tile?.moonLake&&tile.bank<-.14};
+        lake:tile?.moonLake&&tile.bank<-.14,volcano:tile?.volcanic<.69};
     });
     for (let j=0;j<20;j++) {
       if (j%5===4) continue;
@@ -314,6 +324,7 @@ function landscapeDetails(layout,plan,full,sky,season,finds) {
     const tile=regionSurface(layout,x,z);
     const ground=groundLevel(plan,x,z,tile.y);
     if (tile.moonLake&&tile.bank<.55) continue;
+    if (tile.volcanic<.71) continue;
     if (tile.water) {
       if (visibility<.62||tile.bank< -17) continue;
       marks.push({...box(x,z,.83+random()*1.36,.065,.008,theme==='island'?'#b9dfd8':'#a1cbca',tile.y+.014),layer:2,fog:1-visibility});
@@ -500,6 +511,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const buildings=opened.map(index=>({index,kind:buildingInfo(index).kind}));
   const plan=(map.layout===3?planStreetRegion(layout,buildings,grandCatalog(map)?status.capacity:hasExpandedCatalog(map)?REGION_PLACES:undefined,{starter:map.starter}):null)
     ??planRegion(layout,buildings);
+  plan.visitorAccess=new Map();
   const isNewPlot=map.progress%WORLD_BUILD_STEPS===1;
   const developments=plan.plots.map(plot=>({plot,steps:buildingParts(plot.index,plot)}));
   const completedPlots=plan.plots.slice(0,status.built);
@@ -537,6 +549,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
     const approach=plot.residence
       ?{path:residenceDrive(layout,plot,plan.streetElevation).path,drive:true,width:RESIDENCE_PLOT.gateHalf,color:RESIDENCE_PLOT.paving[id]}
       :plotAccess(layout,plot,steps[0].find(part=>part.support),plan.streetElevation);
+    if (approach) plan.visitorAccess.set(plot.index,approach.path);
     return approach?[{...approach,latest:i===developments.length-1}]:[];
   });
   const parkedTours=developments.slice(0,status.built).flatMap(({plot,steps})=>parkingTours(layout,plan,plot,steps));
@@ -546,6 +559,12 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   if (layout.moonLake) {
     discoveries.info['moon-lake']={...layout.moonLake,name:'Månestøvsjøen',status:'Natur på månen',sound:'discovery',
       voice:map.seed%12,story:'Det ser ut som vann, men hele sjøen er fylt med blågrått månestøv. En badegjest tok med håndkle og ba om å få låne en støvsuger.'};
+  }
+  if (layout.volcano) {
+    const {x,z}=layout.volcano;
+    discoveries.info.volcano={x,z,y:regionSurface(layout,x,z).y,height:5,name:'Palmeøyens vulkankrater',
+      status:'Natur på Palmeøya',sound:'discovery',voice:map.seed%12,
+      story:'Vulkanen sover. Papegøyene øver på å vekke den, men foreløpig har de bare vekket hverandre.'};
   }
   if (plan.starter) {
     discoveries.info.headquarters={...plan.starter,status:'Startbygg',sound:'discovery',
@@ -574,6 +593,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   ];
   let latest=[],last,finished=null,latestTarget=null;
   const landmarks={},sites={},rides=[],beachSwimmers=[];
+  const residents=[];
   developments.forEach(({plot,steps},i)=>{
     const amount=Math.min(WORLD_BUILD_STEPS,map.progress-i*WORLD_BUILD_STEPS);
     const {name}=buildingInfo(plot.index);
@@ -630,7 +650,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
         parts.push(...beach.parts.map(part=>({...part,landmark:plot.index})));
         beachSwimmers.push(...beach.swimmers);
       }
-      parts.push(...landmarkVisitors(id,plot));
+      parts.push(...landmarkVisitors(id,plot,residents));
       parts.push(...seasonalDetails(layout,plot,season));
     } else {
       const yard=constructionYard(layout,plot,amount,height);
@@ -643,19 +663,23 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const street=locals.filter(actor=>actor.fleet);
   const roadworks=planRoadworks(layout,plan,[...street,...locals.filter(actor=>actor.kind==='bus'||actor.kind==='hover')],status.built);
   const speakers=[...locals.filter(actor=>actor.encounter),...locals.filter(actor=>actor.voice&&!actor.encounter)].slice(0,2);
+  const journeys=residentJourneys(layout,plan,residents,rail?.passengerService);
   const primaryTours=[...new Map(parkedTours.slice().reverse().map(actor=>[actor.parking.plot,actor])).values()];
-  const essential=[...rides.filter(actor=>actor.kind==='observation'||actor.kind==='wheel'),...(rail?.actors??[]),...(rail?.walkers??[]),...roadworks.crews,
+  const roadQuota=id==='moon'?17:20;
+  const essential=[...rides.filter(actor=>actor.kind==='observation'||actor.kind==='wheel'),...(rail?.actors??[]),...roadworks.crews,
     ...primaryTours.filter(actor=>actor.service),...helicopter,...craft.slice(0,5),...beachSwimmers,...rides.filter(actor=>actor.dustBather),...primaryTours,
+    ...street.slice(0,roadQuota),...journeys.slice(0,2),...(rail?.walkers??[]),...journeys.slice(2),
     ...parkedTours.filter(actor=>actor.parking.merge),...speakers,
     ...(discoveries.visitor?[discoveries.visitor]:[]),...discoveries.smoke,
-    ...parks.walks,...locals.filter(actor=>actor.driveThrough||actor.offroadExplorer||['bus','offroad-rover','hover'].includes(actor.kind)),...street.slice(0,17)];
+    ...parks.walks,...locals.filter(actor=>actor.driveThrough||actor.offroadExplorer||['bus','offroad-rover','hover'].includes(actor.kind))];
   const football=rides.filter(actor=>actor.footballPlayer||actor.kind.startsWith('football-'));
   const slide=rides.find(actor=>actor.kind==='slide');
   const bubbles=parkedTours.flatMap(actor=>actor.carWash?washBubbles(actor.carWash):[]);
   const ambient=[...new Set([...essential,...football,...(slide?[slide]:[]),...bubbles,...street,...parkedTours,...rides,...locals])].slice(0,MAX_ACTORS);
   const moving=new Set(ambient.flatMap(actor=>actor.parking?[actor.parking.model]:[]));
   const rotating=new Set(ambient.flatMap(actor=>Number.isInteger(actor.landmark)?[actor.landmark]:[]));
-  const keep=part=>!moving.has(part.parking)&&!((part.observation||part.wheel)&&rotating.has(part.landmark));
+  const visiting=new Set(ambient.flatMap(actor=>actor.resident?[actor.resident]:[]));
+  const keep=part=>!visiting.has(part.entity)&&!moving.has(part.parking)&&!((part.observation||part.wheel)&&rotating.has(part.landmark));
   return {
     id,seed:map.seed,residenceName:map.residenceName,junctions:plan.junctions,discoveries:{...discoveries.info,...rail?.entries},parts:parts.filter(keep),latest:latest.filter(keep),last,finished,landmarks,sites,roadBuild,latestTarget,world:true,illustrated:true,background:sky,yaw:-Math.PI/4,pitch:.6155,center:1.1,closeSize:76,
     ...viewBounds({...plan,transit:id==='city'?plan.transit:plan.transit?.filter(point=>Math.hypot(point.x-plan.origin.x,point.z-plan.origin.z)<55)},horizon),

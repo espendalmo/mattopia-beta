@@ -209,17 +209,18 @@ function harbor(theme,style) {
 function suspension(span=14.6) {
   const towers=span*.275, vermilion='#bd5553', highlight='#e68465', deck='#5c6879';
   const zRails=pair.map(s=>s*1.25);
+  const rise=1+Math.max(0,Math.min(11,span-17))*.026;
   return [
     pair.flatMap(s=>[r(s*towers,0,1.57,3.27,.52,'#a99992',-.53),...zRails.map(z=>b(s*towers,z,.64,.62,1.08,vermilion,-.32))]),
     [b(0,0,span,2.78,.36,vermilion,.04),b(0,0,span,2.49,.12,deck,.394),
-      ...pair.flatMap(s=>[...zRails.map(z=>r(s*towers,z,.54,.6,5.21,vermilion,.25)),
-        ...[2.32,4.27,5.27].map(y=>b(s*towers,0,.56,2.69,.27,highlight,y)),
-        ...zRails.map(z=>b(s*towers,z,.73,.76,.32,highlight,5.39))])],
+      ...pair.flatMap(s=>[...zRails.map(z=>r(s*towers,z,.54,.6,5.21*rise,vermilion,.25)),
+        ...[2.32,4.27,5.27].map(y=>b(s*towers,0,.56,2.69,.27,highlight,y*rise)),
+        ...zRails.map(z=>b(s*towers,z,.73,.76,.32,highlight,5.39*rise))])],
     [...zRails.flatMap(z=>{
       const points=Array.from({length:21},(_,i)=>{
         const x=(i/20-.5)*span;
         const y=Math.abs(x)<towers ? 1.83+3.87*(x/towers)**2 : 5.68-(Math.abs(x)-towers)/(span*.5-towers)*4.75;
-        return [x,y,z];
+        return [x,.65+(y-.65)*rise,z];
       });
       return [...points.slice(1).map((point,i)=>beam(points[i],point,.15,highlight)),
         ...points.filter((_,i)=>i>0&&i<20&&i%2===1).map(([x,y,z])=>beam([x,.56,z],[x,y,z],.06,'#f0a17f')),

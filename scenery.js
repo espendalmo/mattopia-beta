@@ -49,7 +49,7 @@ export function placeParts(parts,site) {
 
 // Front-facing plaques use a few simple painted shapes, at the same scale as the buildings.
 // Sweep one ridge from portal to portal, following the grade and turns of the track.
-export function tunnelLandform(path,layout,{width=1.25,height=2.05}={}) {
+export function tunnelLandform(path,layout,{width=1.25,height=2.05,rail=false}={}) {
   const moon=layout.theme==='moon';
   const rock=moon?['#9a96ae','#a5a0b6','#9290a8']:['#95a379','#a7ae81','#8e9c73'];
   const stone=moon?'#c1b9cb':'#d5c4a8',shadow=moon?'#414356':'#42494b';
@@ -67,7 +67,8 @@ export function tunnelLandform(path,layout,{width=1.25,height=2.05}={}) {
       const [a,,b]=point([side*width*(2.12+.65*ridge),0]);
       return [a,regionSurface(layout,a,b).y-.15,b];
     });
-    return {inner,outer,skirt};
+    const feet=[inner[0],inner.at(-1)].map(([a,y,b])=>[a,Math.min(y-.06,regionSurface(layout,a,b).y-.2),b]);
+    return {inner,outer,skirt,feet};
   });
   const surface=(outline,color)=>{
     const [x,y,z]=outline[0];
@@ -82,6 +83,10 @@ export function tunnelLandform(path,layout,{width=1.25,height=2.05}={}) {
     }
     parts.push(surface([a.skirt[0],b.skirt[0],b.outer[0],a.outer[0]],rock[0]),
       surface([a.outer.at(-1),b.outer.at(-1),b.skirt[1],a.skirt[1]],rock[0]));
+    if (rail) for (const [side,j] of [[0,0],[1,arch.length-1]]) {
+      const wall=[a.feet[side],b.feet[side],b.inner[j],a.inner[j]];
+      parts.push(surface(wall,rock[1]),surface([...wall].reverse(),shadow));
+    }
   }
   for (const [index,ring] of [[0,rings[0]],[1,rings.at(-1)]]) {
     for (let j=1;j<arch.length;j++) {
@@ -91,7 +96,12 @@ export function tunnelLandform(path,layout,{width=1.25,height=2.05}={}) {
     }
     for (const [side,j] of [[0,0],[1,arch.length-1]]) {
       const edge=[ring.inner[j],ring.outer[j],ring.skirt[side]];
-      parts.push(surface((index===side)?edge:edge.reverse(),rock[2]));
+      const outside=index===side?edge:edge.reverse();
+      parts.push(surface(outside,rock[2]));
+      if (rail) {
+        const wing=[ring.feet[side],...edge];
+        parts.push(surface(wing,rock[2]),surface([...wing].reverse(),rock[2]));
+      }
     }
   }
   return parts;

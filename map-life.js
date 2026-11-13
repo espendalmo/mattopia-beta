@@ -1,5 +1,8 @@
 import {mapStorySeed,personStories,vehicleStories} from './map-stories.js';
 import {visitor,dome,tube,pointOnSite,RESIDENCE_DRIVER} from './scenery.js';
+import {roadProjections,streetNetwork,streetPathBetween} from './street-network.js';
+import {regionSurface} from './regions.js';
+import {streetHalfWidth} from './region-roads.js';
 
 const modulo=(value,n)=>{const remainder=value%n;return remainder<0?remainder+n:remainder;};
 
@@ -41,7 +44,7 @@ export function mapCharacterInfo(scene,key,discovery,profileName) {
       voice:mapStorySeed(scene.seed,key)%24};
   }
   const index=Number(key.split(':')[1]);
-  const actor=key.startsWith('actor:')?scene.ambient?.[index]:null;
+  const actor=key.startsWith('actor:')?scene.ambient?.[index]:scene.ambient?.find(person=>person.resident===key);
   const part=actor?.parts.find(piece=>piece.characterKind)??scene.parts.find(piece=>piece.entity===key);
   if (!actor&&!part) return null;
   const seed=mapStorySeed(scene.seed,key);
@@ -63,6 +66,9 @@ export function mapCharacterInfo(scene,key,discovery,profileName) {
     if (actor?.transitPassenger==='train') story='På vei opp til toget. Håper å få vindusplass når det kjører over elven.';
     if (actor?.transitPassenger==='monorail') story='Tar trappen opp til månetoget. Teller trinnene for å sjekke om det er like mange i månetyngdekraft.';
     if (actor?.transitPassenger==='tram') story='På vei opp til trikken. Skal ta én runde til for å se hvilken palm som er høyest.';
+    if (actor?.railJourney) story=lunar?'Tar svevebanen på besøk. Månestøvet må vente på neste tog.'
+      :scene.id==='island'?'Tar trikken på besøk. Hadde med en kokosnøtt som niste, men den tok en annen avgang.':
+        'Tar toget på besøk. Har pakket niste til én holdeplass og dessert til den neste.';
     if (actor?.kind==='slide') story=lunar
       ? 'Skal slå sin egen rekord i støvrutsjebanen. Må bare finne ut hvor støvet har gjemt stoppeklokken.'
       : 'Har tenkt å ta rutsjebanen én gang til. Det har visst vært planen hele ettermiddagen.';
@@ -87,6 +93,139 @@ export function mapCharacterInfo(scene,key,discovery,profileName) {
   const name=names[(mapStorySeed(scene.seed,kind)+ordinal)%names.length]+(ordinal>=names.length?` ${Math.floor(ordinal/names.length)+1}`:'');
   return {name,status:lunar?'Liv i månebasen':'Liv på kartet',
     story:stories[(seed>>>12)%stories.length],sound:['dog','bird'].includes(kind)?'animal':kind==='swimmer'?'human':'vehicle',voice:seed%24};
+}
+
+const walkGap=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
+const pathPoint=([x,y,z])=>({x,y,z});
+
+function walkingLeg(points) {
+  const clean=points.filter((p,i)=>!i||Math.hypot(p.x-points[i-1].x,p.y-points[i-1].y,p.z-points[i-1].z)>.014);
+  let duration=0;
+  const steps=clean.slice(1).map((end,i)=>{
+    const start=clean[i],begin=duration;
+    duration+=Math.hypot(end.x-start.x,end.y-start.y,end.z-start.z)/1.62;
+    return {start,end,begin,finish:duration};
+  });
+  return {duration,points:clean,at(seconds){
+    const t=Math.max(0,Math.min(duration,seconds));
+    const step=steps.find(step=>t<step.finish)??steps.at(-1);
+    if (!step) return {...clean[0],yaw:0,stride:0};
+    const {start,end,begin,finish}=step,f=(t-begin)/(finish-begin);
+    return {x:start.x+(end.x-start.x)*f,y:start.y+(end.y-start.y)*f,z:start.z+(end.z-start.z)*f,
+      yaw:Math.atan2(end.x-start.x,end.z-start.z),stride:seconds>0&&seconds<duration?Math.sin(t*9.5)*.16:0};
+  }};
+}
+
+function railTrip(service,from,to,ready) {
+  const a=service.schedule.find(stop=>stop.distance===from.distance);
+  const b=service.schedule.find(stop=>stop.distance===to.distance);
+  if (!a||!b) return null;
+  const period=service.period;
+  const departure=a.depart;
+  const lap=Math.max(0,Math.ceil((ready-departure+1.7)/period));
+  const leave=departure+lap*period;
+  const arrive=(b.arrive===0&&b.arrive<a.arrive?(service.returnAt??period):b.arrive+Number(b.arrive<a.arrive)*period)+lap*period;
+  const door=(t,landing)=>{
+    const vehicle=service.vehicle.pose(t);
+    const side=Math.sign((landing.x-vehicle.x)*vehicle.cos-(landing.z-vehicle.z)*vehicle.sin)||1;
+    return {x:vehicle.x+vehicle.cos*.44*side,y:vehicle.y+.21,z:vehicle.z-vehicle.sin*.44*side};
+  };
+  const boardAt=leave-1.7,offAt=arrive+.3;
+  const here=from.access[0],there=to.access[0];
+  const boarding=walkingLeg([here,door(boardAt,here)]);
+  const leaving=walkingLeg([door(offAt,there),there]);
+  return {boardAt,offAt,boarding,leaving,end:offAt+leaving.duration,vehicle:service.vehicle};
+}
+
+export function residentJourneys(layout,plan,people,service) {
+  if (people.length<2||!plan.paths.length) return [];
+  const network=plan.network??streetNetwork(plan.paths);
+  const width=streetHalfWidth(layout.theme);
+  const floor=(x,z)=>Math.max(regionSurface(layout,x,z).y,plan.streetElevation?.(x,z)??-Infinity)+.037;
+  const locate=(point,radius=12)=>roadProjections(plan.paths,point,radius).sort((a,b)=>a.gap-b.gap)[0];
+  const available=people.flatMap(person=>{
+    const entry=person.plot.entries[0],access=plan.visitorAccess?.get(person.plot.index);
+    const road=locate(entry,1.25);
+    if (!road||!access?.length) return [];
+    const deck=access.at(-1);
+    return [{...person,road,access:[person,{...deck,y:person.plot.y+.32},...access.slice().reverse()]}];
+  });
+  const walkingRoute=(from,to)=>{
+    const street=streetPathBetween(network,from.road,to.road);
+    if (!street) return null;
+    const side=Math.sign((from.access.at(-1).z-from.road.z)*from.road.u-(from.access.at(-1).x-from.road.x)*from.road.v)||1;
+    const shoulder=street.map((p,i)=>{
+      const a=street[Math.max(0,i-1)],b=street[Math.min(street.length-1,i+1)];
+      const length=walkGap(a,b)||1;
+      const x=p.x-(b.z-a.z)*side*(width+.28)/length,z=p.z+(b.x-a.x)*side*(width+.28)/length;
+      return {x,y:floor(x,z),z};
+    });
+    if (shoulder.some(p=>regionSurface(layout,p.x,p.z).water&&p.y<.13)) return null;
+    return walkingLeg([...from.access,...shoulder,...to.access.slice().reverse()]);
+  };
+  const stops=(service?.stops??[]).flatMap(stop=>{
+    const start=pathPoint(stop.access[0]);
+    const road=locate(stop.entry??start,4.3);
+    return road?[{...stop,road,access:stop.access.slice().reverse().map(pathPoint)}]:[];
+  });
+  const residents=[],used=new Set();
+  for (const from of available) {
+    if (used.has(from.plot)||residents.length>=6) continue;
+    const near=available.filter(to=>to.plot!==from.plot&&!used.has(to.plot)&&walkGap(from,to)<39)
+      .sort((a,b)=>walkGap(from,a)-walkGap(from,b));
+    const start=3.1+residents.length*.85;
+    const nearStops=person=>stops.filter(stop=>walkGap(person,stop.road)<32)
+      .sort((a,b)=>walkGap(person,a.road)-walkGap(person,b.road));
+    const departures=nearStops(from).slice(0,4).map(stop=>({stop,path:walkingRoute(from,stop)})).filter(entry=>entry.path);
+    let destination;
+    for (const to of near) {
+      const path=walkingRoute(from,to);
+      if (!path) continue;
+      destination??={to,path};
+      for (const last of nearStops(to).slice(0,4)) {
+        const first=departures.find(entry=>entry.stop!==last);
+        if (!first) continue;
+        const outbound=walkingRoute(last,to);
+        const trip=outbound&&railTrip(service,first.stop,last,start+first.path.duration);
+        if (!trip) continue;
+        destination={to,path,trip,inbound:first.path,outbound};
+        break;
+      }
+      if (destination.trip||!departures.length) break;
+    }
+    if (!destination) continue;
+    const {to,path,trip,inbound,outbound}=destination;
+    const end=trip?trip.end+outbound.duration:start+path.duration;
+    const swapStart=end+5.5;
+    const back=walkingLeg(path.points.slice().reverse());
+    const endCycle=swapStart+Math.max(path.duration,back.duration)+6;
+    const cycle=trip?Math.ceil(endCycle/service.period)*service.period:endCycle;
+    const make=(person,away,go,returnHome,rides)=>({
+      kind:'walk',resident:person.entity,visits:away.plot.index,railJourney:Boolean(rides),
+      voice:person.kind==='human'?'people':person.kind,
+      parts:person.model.map(part=>({...part,entity:person.entity})),
+      pose(seconds){
+        const t=seconds%cycle;
+        let current={...person,stride:0};
+        if (t>=swapStart) current=returnHome.at(t-swapStart);
+        else if (t>=start) {
+          if (!rides) current=go.at(t-start);
+          else if (t<trip.boardAt) current=inbound.at(t-start);
+          else if (t<trip.boardAt+1.7) current=trip.boarding.at((t-trip.boardAt)*trip.boarding.duration/1.7);
+          else if (t<trip.offAt) {
+            const vehicle=trip.vehicle.pose(t);
+            current={...vehicle,y:-540,yaw:0,stride:0};
+          } else if (t<trip.end) current=trip.leaving.at(t-trip.offAt);
+          else current=outbound.at(t-trip.end);
+        }
+        const {x,y,z,yaw,stride}=current;
+        return {x,y,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride,rollCos:1,rollSin:0,sound:0};
+      },
+    });
+    residents.push(make(from,to,path,back,trip),make(to,from,back,path,null));
+    used.add(from.plot);used.add(to.plot);
+  }
+  return residents;
 }
 
 export function footballMoment(seconds) {

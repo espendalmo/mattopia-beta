@@ -7,6 +7,8 @@ import {isCarWash} from './scenery.js';
 export const STREET_TURN_RADIUS=2.35;
 const streets=new WeakMap();
 const outskirts=new Set(['prison','factory','breadWorks','glassWorks','sawmill','radioTower','broadcastHouse','lunarRadio','signalSpire','satelliteHub','camp','beachCamp']);
+const industry=new Set(['prison','factory','breadWorks','glassWorks','sawmill','moonWorkshop','moonCargo','cargoDepot',
+  'generator','plasmaBattery','batteryVault','oxygen','fuelPlant','airport','shuttlePort','hangar']);
 const gap=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const edgeKey=(a,b)=>a<b?`${a}:${b}`:`${b}:${a}`;
 
@@ -171,21 +173,25 @@ function residenceSites(layout,{available}) {
     if (high-low>1.28||natural+deck-street>.68) return [];
     const y=Math.max(street-deck-.08,Math.min(natural,street-deck+.24));
     const cut=Math.max(0,natural-y),rise=Math.abs(y+deck-street);
-    const shore=Math.min(...samples.map(point=>point.basin));
-    const lake=layout.theme==='moon'?0:Math.min(26,Math.max(0,shore-2.2))*1.4;
-    return [{lot,edge,site:{...site,y,gradeCut:cut},terrainCost:(high-low)*22+(rise+cut)*35+lake}];
+    const shore=Math.min(...samples.map(point=>layout.theme==='moon'?(point.moonLake?point.bank:Infinity):point.basin));
+    const lakeside=shore<2.85||layout.moonLake&&gap(site,layout.moonLake)<layout.moonLake.w+14;
+    return [{lot,edge,site:{...site,y,gradeCut:cut},lakeside,terrainCost:(high-low)*22+(rise+cut)*35}];
   }));
 }
 
-function chooseResidence(layout,graph,{links,open,active,connectors,usedLots,blockedLots,remaining}) {
+function chooseResidence(layout,graph,{links,open,active,connectors,usedLots,blockedLots,remaining,plots}) {
   const {nodes,edges,available,origin}=graph;
   const sites=graph.residences??=residenceSites(layout,graph);
   const activeNodes=[...active].map(id=>nodes[id]);
+  const industrial=plots.filter(plot=>industry.has(plot.kind));
   const candidates=sites.filter(({lot})=>!usedLots.has(lot))
     .map(candidate=>{
-      const {site,terrainCost}=candidate;
+      const {site,terrainCost,lakeside}=candidate;
       const newRoad=Math.min(...activeNodes.map(node=>gap(node,site.entries[0])));
-      return {...candidate,score:terrainCost+gap(site,origin)*.15+newRoad*.46};
+      const distance=gap(site,origin);
+      const industrialPenalty=Math.max(0,27-Math.min(...industrial.map(plot=>gap(plot,site))))*5;
+      return {...candidate,score:terrainCost+Math.max(0,24-distance)*2+Math.max(0,distance-48)*.38
+        +newRoad*.38+industrialPenalty-(lakeside?22:0)};
     }).sort((a,b)=>a.score-b.score);
   for (const {edge,site} of candidates) {
     const turned=Math.abs(Math.sin(site.yaw))>.5;
@@ -331,7 +337,7 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     }
     if (kind==='residence') {
       const remaining=requiredLots-usedLots.size-1;
-      const estate=chooseResidence(layout,graph,{links,open,active,connectors,usedLots,blockedLots,remaining});
+      const estate=chooseResidence(layout,graph,{links,open,active,connectors,usedLots,blockedLots,remaining,plots});
       if (estate) {
         const {site,edge,street,loop,covered}=estate;
         links=estate.links;
@@ -354,6 +360,7 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
       if (!plot.waterfront&&!plot.airfield) banks[bankOf(plot)]++;
     }
     // Keep the centre compact, then let new districts take turns across the river.
+    const estate=industry.has(kind)?plots.find(plot=>plot.kind==='residence'):null;
     let choice=null;
     for (const lot of available) {
       if (usedLots.has(lot)||blockedLots.has(lot)) continue;
@@ -372,7 +379,8 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
         const slope=kind==='residence'||kind==='busStation'||isCarWash(kind)
           ?lot.grade*10+Math.abs(lot.y+.43-roadElevation(layout,middle.x,middle.z))*18:0;
         const distance=gap(lot,origin);
-        const outer=outskirts.has(kind)?Math.max(0,31-distance)*1.6:0;
+        const outer=(outskirts.has(kind)?Math.max(0,31-distance)*1.6:0)
+          +(estate?Math.max(0,27-gap(lot,estate))*5:0);
         const coast=kind==='tramStation'&&layout.theme==='island'&&!insideIslandBelt(layout,origin,middle.x,middle.z,.66)?65:0;
         const score=path.length*6+distance*.18+outer+coast+lot.weight+starter+riverBias+slope+(lot.westFirst===(yaw!==0)?0:.65);
         if (!choice||score<choice.score) choice={lot,edge,yaw,path,score};

@@ -210,7 +210,7 @@ const VISITORS={
   cargoDepot:[[-2.79,.35,3.78,-.42]],
 };
 
-export function landmarkVisitors(theme,plot) {
+export function landmarkVisitors(theme,plot,mobile) {
   const positions=plot.residence?[[-4.53,.18,-4.94,.62],[3.3,.18,-6.66,-.65]]
     :VISITORS[plot.kind]??(plot.kind==='bridge'?[]:theme==='moon'?[[-2.1,.36,3.14,-.25],[1.53,.36,2.82,.4]]:[[1.4,.36,2.9,-.35]]);
   const outfits=['#ca8677','#6c9cb4','#e0b375','#8a80b0'];
@@ -221,7 +221,11 @@ export function landmarkVisitors(theme,plot) {
     const kind=theme==='moon'?(i===1?'alien':'astronaut'):'human';
     const model=visitor(kind,outfits[(plot.index+i)%outfits.length],skins[(plot.index+i)%skins.length],seated,.83,(plot.index*3+i)%8);
     const [px,py,pz]=pointOnSite([x,y,z],plot);
-    return placeParts(model,{x,y,z,yaw}).map(part=>({...part,entity:`resident:${plot.index}:${i}`,life:[px,py,pz,1+plot.index*.87+i*2.3]}));
+    const entity=`resident:${plot.index}:${i}`;
+    if (mobile&&!seated&&!plot.residence&&plot.entries?.length&&z>1.6&&y<.65) {
+      mobile.push({plot,x:px,y:py,z:pz,yaw:yaw+plot.yaw,kind,entity,model});
+    }
+    return placeParts(model,{x,y,z,yaw}).map(part=>({...part,entity,life:[px,py,pz,1+plot.index*.87+i*2.3]}));
   });
   const pools=plot.kind==='megaResort'?[[-1.64,.65,2.52],[2.06,.65,2.83]]
     :plot.kind==='tropicalPools'?[[1.5,.65,-.93],[-1.72,.65,2.02]]
