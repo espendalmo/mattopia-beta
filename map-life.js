@@ -7,6 +7,7 @@ function vehicleStoryKind(actor,lunar,island) {
   const kind=actor?.kind;
   if (actor?.parts.some(piece=>piece.animalKind==='dog')) return 'dog';
   if (actor?.lunarBus) return 'rover-bus';
+  if (actor?.service==='policeStation') return 'police';
   if (actor?.islandVehicle) return `island-${actor.islandVehicle}`;
   if (actor?.lightAircraft) return 'light-plane';
   if (actor?.vehicleModel&&Object.hasOwn(vehicleStories,actor.vehicleModel)) return actor.vehicleModel;

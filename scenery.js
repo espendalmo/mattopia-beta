@@ -14,6 +14,12 @@ export const beam = (from,to,width,color) => ({
   shape:'beam',from,to,width,color,x:(from[0]+to[0])/2,z:(from[2]+to[2])/2,y:Math.min(from[1],to[1]),h:Math.abs(from[1]-to[1])+width,
 });
 export const MAX_ACTORS=54;
+export const EMERGENCY_LIGHT=-1001;
+export const SERVICE_STOPS={
+  busStation:{model:'bus',color:'#4c8f8c',x:0,z:3.05,y:.406,yaw:Math.PI*.5,delay:3.4,rest:4.2},
+  fireStation:{model:'fire-engine',color:'#b95553',x:2.43,z:1.9,y:.419,yaw:0,delay:21,rest:32},
+  policeStation:{model:'police',color:'#3f6597',x:2.5,z:1.8,y:.419,yaw:0,delay:16,rest:25},
+};
 
 export function pointOnSite([a,b,d],{x,y,z,yaw=0}) {
   const c=Math.cos(yaw),s=Math.sin(yaw);
@@ -121,7 +127,9 @@ const marks = {
   snow:[['line',0,0,1.08,.13,blue],['line',0,0,.13,1.06,blue],['oval',0,0,.36,.36,cream]],
   palm:[['line',0,-.22,.17,.66,apricot],['oval',-.23,.21,.51,.25,mint],['oval',.24,.21,.52,.25,mint],['oval',0,.38,.27,.41,mint]],
   board:[['oval',0,0,.38,1.07,cream],['line',0,0,.11,.75,rose]],
-  fork:[['line',-.26,0,.13,.98,cream],['line',-.26,.24,.4,.12,cream],['oval',.27,.26,.34,.49,apricot],['line',.27,-.22,.13,.51,apricot]],
+  fork:[...[-.42,-.26,-.10].map(x=>['line',x,.31,.095,.39,cream]),
+    ['line',-.26,.115,.415,.13,cream],['line',-.26,-.165,.112,.52,cream],
+    ['oval',.27,.25,.30,.46,apricot],['line',.27,-.23,.12,.52,apricot]],
   boat:[['poly',[[-.48,-.16],[.48,-.16],[.29,-.45],[-.25,-.45]],apricot],['poly',[[0,.55],[0,-.03],[-.4,-.03]],cream],['poly',[[.08,.4],[.42,-.03],[.08,-.03]],blue]],
   fruit:[['oval',0,-.09,.78,.73,apricot],['oval',.15,.42,.43,.25,mint]],
 };
@@ -168,12 +176,48 @@ export function vehicle(kind,color) {
       rounded(0,1.65,.63,.05,.16,'#e5ba74',1.55),
       ...at(visitor('alien','#8d77aa',undefined,true,.42,1),.02,1.04,1.03)];
   }
-  if (kind==='hover') {
-    return [rounded(0,0,1.17,2.34,.34,color,.18),rounded(0,.7,.99,.86,.19,color,.46),rounded(0,-.27,.68,.77,.17,ink,.5),
-      ...[-1,1].map(s=>box(s*.47,-.11,.13,1.56,.098,cream,.49)),
-      box(0,.45,.84,.13,.37,'#8ed0d9',.51),box(0,-.44,.65,.26,.38,ink,.47),
-      ...[-1,1].flatMap(s=>[tube(s*.36,-1.02,.38,.57,.38,'#acadc2',.25,'z'),
-        tube(s*.36,-1.34,.26,.095,.27,'#85d7d9',.31,'z'),rounded(s*.34,.91,.2,.1,.12,cream,.42)])];
+  if (kind==='hover'||kind==='classic') {
+    const classic=kind==='classic',lift=classic?.13:0;
+    const chrome=classic?'#f1e7d3':'#acadc2';
+    const body=[rounded(0,0,1.19,2.35,.31,color,.18),rounded(0,.72,1.05,.82,.2,color,.46),rounded(0,-.26,.68,.87,.17,ink,.48),
+      box(0,.4,.84,.095,.32,'#a0cfda',.50),rounded(0,-.46,.65,.22,.33,ink,.49),
+      rounded(0,1.17,1.05,.12,.13,chrome,.27),
+      ...[-1,1].flatMap(s=>[box(s*.54,-.09,.098,1.86,.06,chrome,.43),
+        roof(s*.49,-.79,.24,.83,.32,color,.47),tube(s*.41,1.104,.19,.10,.19,cream,.38,'z'),
+        rounded(s*.48,-1.17,.14,.11,.13,'#b64e64',.53)])];
+    if (classic) return [...[-.56,.56].flatMap(x=>[-.73,.73].flatMap(z=>wheel(x,z,.48,0))),
+      ...at(body,0,lift,0),
+      ...at(visitor('human','#e7c281','#bd875e',true,.41,3),-.22,.69,-.17)];
+    return [...body,...[-1,1].flatMap(s=>[tube(s*.36,-1.02,.38,.57,.38,chrome,.25,'z'),
+      tube(s*.36,-1.34,.26,.095,.27,'#85d7d9',.31,'z')])];
+  }
+  if (kind==='sport') {
+    return [...[-.59,.59].flatMap(x=>[-.78,.78].flatMap(z=>wheel(x,z,.49,0))),
+      rounded(0,0,1.26,2.45,.36,color,.24),dome(0,.58,1.26,1.32,.24,color,.46),
+      dome(0,-.19,1.01,1.31,.53,'#386270',.57),rounded(0,.76,.14,.31,.026,'#f1d198',.697),
+      rounded(0,-.86,.14,.32,.026,'#f1d198',.603),
+      rounded(0,-.99,1.35,.24,.11,'#3d4d59',.68),rounded(0,1.21,.78,.11,.13,'#3d4d59',.27),
+      ...[-1,1].flatMap(s=>[rounded(s*.46,1.16,.23,.14,.10,'#fff0ae',.48),
+        rounded(s*.44,-1.22,.25,.10,.13,'#ed8e8d',.45),rounded(s*.53,-.23,.19,.25,.12,color,.79)])];
+  }
+  if (['police','lunar-police','island-police','fire-engine'].includes(kind)) {
+    const fire=kind==='fire-engine',lunar=kind==='lunar-police',island=kind==='island-police';
+    const length=fire?2.94:lunar?2.68:2.48;
+    const body=fire?color:lunar?'#d4d5e6':island?'#e9e1c2':'#e4e9e8',stripe=fire?'#f4dc9b':color;
+    const top=fire?1.55:lunar?1.38:1.22;
+    const axles=lunar?[-.94,0,.94]:[-length*.31,length*.31];
+    return [...[-.56,.56].flatMap(x=>axles.flatMap(z=>wheel(x,z,lunar?.59:.49,0))),
+      rounded(0,0,1.22,length,.42,body,.28),rounded(0,.42,1.13,fire?1.42:1.34,top-.68,body,.69),
+      rounded(0,.43+(fire?.71:.68),.94,.09,.32,'#638e9f',.83),
+      ...(fire?[rounded(0,-.73,1.21,1.41,.91,body,.62),...[-.22,.22].map(x=>box(x,-.64,.08,1.42,.074,'#e6dfd1',1.56)),
+        ...[-1.18,-.92,-.66,-.4].map(z=>box(0,z,.55,.08,.061,'#e6dfd1',1.56))]
+        :[rounded(0,.27,1.15,1.4,.12,island?'#469485':'#3e6281',top-.18),
+          ...(lunar?[dome(0,-.63,1.12,1.13,.53,'#889ec4',.71),tube(.37,-.88,.086,.086,.57,stripe,1.17)]
+            :island?[rounded(0,-.64,1.14,.67,.27,'#699690',.67)]:[])]),
+      ...[-1,1].flatMap(s=>[box(s*.61,0,.031,length-.21,.16,stripe,.61),
+        rounded(s*.4,length*.5,.23,.095,.13,'#ffedb9',.44),
+        rounded(s*.33,.41,.27,.25,.15,'#477dcc',top),
+        {...dome(s*.33,.41,.41,.36,.21,'#6fa9ff',top+.015),life:[0,0,0,EMERGENCY_LIGHT]}])];
   }
   if (kind==='bus') {
     return [...[-.57,.57].flatMap(x=>[-1.03,1.03].flatMap(z=>wheel(x,z,.48,0))),
@@ -266,7 +310,7 @@ function walker(kind,coat,skin='#edb88c',variant=0) {
   const arms=[-.4,.4].map((x,i)=>({...rounded(x,.02,.2,.29,.58,coat,.68),stride:i===0?-1:1}));
   if (astronaut) {
     const accent=['#dfa767','#83ccd3','#cc9fc9','#c9d78e'][variant%4];
-    const helmet=['#f1e8d7','#c8d4e1','#e7c1ab','#d6c8e6'][variant%4];
+    const helmet=variant===8?'#e7b75a':['#f1e8d7','#c8d4e1','#e7c1ab','#d6c8e6'][variant%4];
     const visor=['#354f66','#88714d','#345b74','#675782'][variant%4];
     return [...legs,body,...arms,
       rounded(0,-.31,.62,.36,.72,'#c9cfe1',.62),dome(0,.015,.87,.76,.66,helmet,1.18),
@@ -304,7 +348,8 @@ export function visitor(kind,coat,skin,seated=false,scale=.83,variant=0) {
 
 export function parkedVehicle(kind,color,site) {
   const parking={kind,color,...site};
-  return placeParts(vehicle(kind,color),site).map(part=>({...part,parking}));
+  const parts=kind==='hover'?occupiedHovercar(false,color).filter(part=>part.life?.[3]!==-1):vehicle(kind,color);
+  return placeParts(parts.filter(part=>part.life?.[3]!==EMERGENCY_LIGHT),site).map(part=>({...part,parking}));
 }
 
 function occupiedHovercar(passenger=false,color='#b982ac') {
@@ -319,7 +364,7 @@ function occupiedHovercar(passenger=false,color='#b982ac') {
       {...tube(x,-1.414,.28,.084,.27,'#f2aa6c',.29,'z'),life:[0,0,0,-1]},
       ...exhaust(x,.145,.78,'#ff985e'),...exhaust(x,.09,.53,'#fff0a8'),
     ]),
-    ...at(visitor('astronaut','#e7e1d6',undefined,true,.46),-.23,.60,-.19),
+    ...at(visitor('astronaut','#e7e1d6',undefined,true,.46,8),-.23,.60,-.19),
     tube(-.23,.25,.21,.065,.21,'#465463',.84,'z'),
     ...(passenger?at(visitor('alien','#5aa69b',undefined,true,.43),.24,.58,-.27):[]),
   ];
@@ -442,6 +487,7 @@ export function actorPose(actor, seconds, distanceOverride) {
     const turn=Math.max(0,Math.min(1,(actor.parking.reverseUntil-distance)/2.1));
     yaw+=Math.PI*turn*turn*(3-2*turn);
   }
+  if (actor.parking?.reverseFrom!==undefined&&distance>=actor.parking.reverseFrom) yaw+=Math.PI;
   const walking=actor.kind==='walk';
   const nearestRoad=Math.min(...actor.roads.map(row=>Math.abs(row-z)));
   const y=actor.kind==='coaster'?segment.y+segment.dy*t:
@@ -468,6 +514,10 @@ function vehicleFootprint(actor) {
     case 'motorcycle': return [1.02,.36];
     case 'moon-trike': return [1.04,.63];
     case 'compact': return [.85,.54];
+    case 'classic': return [1.28,.73];
+    case 'sport': return [1.31,.74];
+    case 'fire-engine': return [1.57,.74];
+    case 'lunar-police': return [1.46,.74];
     case 'mini-rover': return [.93,.61];
     case 'delivery': return [1.53,.68];
     case 'cart': return [1.13,.64];
@@ -778,6 +828,7 @@ export function createTraffic(actors,junctions=[],obstacles=[],roadworks=[]) {
         }
         const parking=actor.parking&&proposed>=vehicle.nextPark;
         const distance=parking?vehicle.nextPark:proposed;
+        const departing=actor.response&&atBay(vehicle);
         const pose=actorPose(vehicle.actor,seconds,distance);
         const zone=merge&&distance<=stop+.00001?null:junctionAt(vehicle,pose);
         const blocker=roadworkBlocker(vehicle,pose)||intersectionOwner(vehicle,zone)||laneBlocker(vehicle,pose)
@@ -797,6 +848,9 @@ export function createTraffic(actors,junctions=[],obstacles=[],roadworks=[]) {
           vehicle.pose={...vehicle.pose,sound:0,thrust:0};
         } else {
           Object.assign(vehicle,{pose,zone,distance,wait:0,workWait:0,blocker:null});
+          if (departing) {
+            vehicle.response=vehicle.response===undefined||vehicle.rng()<.67?seconds:-Infinity;
+          }
           if (parking) {
             vehicle.nextPark+=actor.route.length;
             vehicle.holdUntil=seconds+actor.parking.rest;
@@ -812,6 +866,11 @@ export function createTraffic(actors,junctions=[],obstacles=[],roadworks=[]) {
       const queueAge=(vehicle.workWait??0)-1.55-.87*actor.phase;
       if (queueAge>=0&&queueAge%5.1<.54) {
         return {...vehicle.pose,cue:'queue-horn',sound:.8};
+      }
+      if (actor.response&&vehicle.distance>vehicle.nextPark-actor.route.length+.005&&seconds>=vehicle.holdUntil
+        &&seconds-vehicle.response<18) {
+        const cue=seconds-vehicle.response<1.2;
+        return {...vehicle.pose,thrust:2,...(cue&&{cue:'blue-lights',sound:.75})};
       }
       const horn=seconds<vehicle.passHorn||actor.horn&&(seconds+17*actor.phase)%actor.horn<.68&&seconds>8;
       return horn?{...vehicle.pose,cue:'horn',sound:.65}:vehicle.pose;
@@ -929,7 +988,7 @@ function parkingStreet(plan,access,site) {
   return laneLoop(points,.87);
 }
 
-function residenceMerge(route,plot,entry,front) {
+function drivewayMerge(route,plot,entry,front) {
   const depth=(x,z)=>(x-plot.x)*Math.sin(plot.yaw)+(z-plot.z)*Math.cos(plot.yaw);
   const line=front-3.02;
   const segment=route.segments.find(p=>depth(p.x,p.z)<=line&&depth(p.x+p.dx,p.z+p.dz)>line);
@@ -950,10 +1009,57 @@ function residenceTours(layout,plan,plot,spots) {
     const leaving=[[spot.x,spot.z],[side*1.43,4.78],[0,front-3.45],throat];
     const returning=[throat,[0,front-3.48],[side*1.66,5.72],[side*4.14,5.51],[side*4.62,4.52],[side*4.34,3.58]];
     const points=leaving.map(point).concat(street,returning.map(point));
-    const car=actor(vehicle(spot.kind,spot.color),points,{kind:'road',speed:2.16,corner:STREET_TURN_RADIUS,elevation,exactStart:true});
+    const hover=spot.kind==='hover';
+    const model=hover?occupiedHovercar(false,spot.color):vehicle(spot.kind,spot.color);
+    const car=actor(model,points,{kind:hover?'hover':'road',speed:hover?2.34:2.16,corner:STREET_TURN_RADIUS,
+      elevation:hover?(x,z)=>elevation(x,z)+.17:elevation,exactStart:true});
     return {...car,vehicleModel:spot.kind,parking:{model:spot,plot:plot.index,delay:8+i*11,rest:15+i*6,
-      merge:residenceMerge(car.route,plot,entry,front)}};
+      merge:drivewayMerge(car.route,plot,entry,front)}};
   });
+}
+
+function serviceTour(layout,plan,plot,spot) {
+  const service=SERVICE_STOPS[plot.kind];
+  const cos=Math.cos(plot.yaw),sin=Math.sin(plot.yaw),entry=plot.entries[0];
+  const front=(entry.x-plot.x)*sin+(entry.z-plot.z)*cos;
+  const bus=spot.kind==='bus';
+  const access=regionalPoint(plot,bus?3.67:spot.x,front);
+  const toWorld=([x,z])=>{const point=regionalPoint(plot,x,z);return [point.x,point.z];};
+  const street=parkingStreet(plan,access,plot);
+  if (!street||front<4.95) return [];
+  const bay=[spot.x,spot.z];
+  const leaving=bus?[bay,[3.67,spot.z],[3.67,front-1.48]]
+    :[bay,[spot.x,front-2.24],[spot.x,front-1.46]];
+  const returning=bus?[[-3.67,front-1.48],[-3.67,spot.z]]
+    :[[spot.x,front-1.46],[spot.x,front-2.24]];
+  if (bus) street[street.length-1]=toWorld([-3.67,front-.87]);
+  const width=layout.theme==='island'?1.02:1.22;
+  const height=(x,z)=>plan.streetElevation?.(x,z)??roadElevation(layout,x,z);
+  const deck=plot.y+spot.y;
+  const deckZ=bus?4.71:4.49;
+  const elevation=(x,z)=>{
+    const a=x-plot.x,b=z-plot.z,depth=a*sin+b*cos,across=a*cos-b*sin;
+    if (Math.abs(across)>5.35||depth<1.17||depth>=front-width+.13) return height(x,z);
+    const mix=Math.max(0,Math.min(1,(depth-deckZ)/(front-width+.13-deckZ)));
+    return deck+(height(x,z)-deck)*mix;
+  };
+  const car=actor(vehicle(spot.kind,spot.color),leaving.map(toWorld).concat(street,returning.map(toWorld)),
+    {kind:bus?'bus':'road',speed:bus?2.26:2.68,elevation,corner:bus?1.42:1.04,exactStart:true});
+  const merge=drivewayMerge(car.route,plot,access,front);
+  // The long bus pulls up just far enough to keep its nose behind the curb.
+  if (bus) merge.stop=Math.max(0,merge.stop-.46);
+  const last=car.route.segments.at(-1);
+  return [{...car,service:plot.kind,response:!bus,vehicleModel:spot.kind,parking:{
+    model:spot,plot:plot.index,delay:service.delay,rest:service.rest,
+    merge,...(!bus&&{reverseFrom:last.start}),
+  }}];
+}
+
+export function serviceDriveways(plot) {
+  if (!SERVICE_STOPS[plot.kind]) return [];
+  if (plot.kind==='busStation') return [-3.67,3.67].map(x=>({x,z:4.78,y:.406,width:1.1}));
+  const {x,y}=SERVICE_STOPS[plot.kind];
+  return [{x,z:4.53,y,width:.88}];
 }
 
 export function parkingTours(layout,plan,plot,stages) {
@@ -962,6 +1068,7 @@ export function parkingTours(layout,plan,plot,stages) {
   const spots=[...new Set(stages.flatMap(stage=>stage.flatMap(part=>part.parking?[part.parking]:[])))];
   if (!spots.length) return [];
   if (plot.residence) return residenceTours(layout,plan,plot,spots);
+  if (SERVICE_STOPS[plot.kind]) return serviceTour(layout,plan,plot,spots[0]);
   const cos=Math.cos(plot.yaw),sin=Math.sin(plot.yaw);
   const front=(entry.x-plot.x)*sin+(entry.z-plot.z)*cos;
   return spots.flatMap((spot,i)=>{
@@ -985,11 +1092,11 @@ export function parkingTours(layout,plan,plot,stages) {
       const t=Math.max(0,Math.min(1,(depth-edge)/Math.max(.5,front-edge)));
       return deck+(street-deck)*t+height;
     };
-    const car=actor(spot.kind==='hover'?occupiedHovercar(i===0,spot.color):vehicle(spot.kind,spot.color),points,
+    const car=actor(spot.kind==='hover'?occupiedHovercar(plot.kind!=='residence'&&i===0,spot.color):vehicle(spot.kind,spot.color),points,
       {kind:spot.kind==='hover'?'hover':'road',speed:spot.kind==='hover'?2.38:1.76,corner:STREET_TURN_RADIUS,elevation,exactStart:true});
     return [{...car,...(plot.kind==='residence'&&{vehicleModel:spot.kind}),parking:{
       model:spot,plot:plot.index,delay:7+(plot.index*3+i*12)%18,rest:18+(plot.index+i*9)%15,reverseUntil:front-spot.z+.65,
-      ...(plot.kind==='residence'&&{merge:residenceMerge(car.route,plot,access,front)}),
+      ...(plot.kind==='residence'&&{merge:drivewayMerge(car.route,plot,access,front)}),
       access:Array.from({length:7},(_,j)=>{
         const t=j/6,depth=edge+(front-.55-edge)*t;
         const point=regionalPoint(plot,spot.x+(apron-spot.x)*t,depth);
@@ -1195,7 +1302,7 @@ function streetFleet(theme,layout,plan,completed,circuits,alternatives,elevation
   const landmarkVisits=visits.filter(tour=>tour.landmark);
   const branchVisits=visits.filter(tour=>!tour.landmark);
   const models=theme==='moon'?['rover','moon-trike','mini-rover','rover','moon-trike','mini-rover']
-    :theme==='island'?['cart','motorcycle','pickup','van','compact','delivery','car']
+    :theme==='island'?['classic','motorcycle','pickup','van','compact','delivery','cart']
     :['car','motorcycle','compact','van','delivery','pickup','car','compact'];
   const colors=['#deaa73','#8eb1c6','#d27d84','#e0bb83','#80b5a9','#ad91c0','#d6a26e','#7798bc'];
   const span=network.edges.reduce((sum,edge)=>sum+edge.length,0);
@@ -1211,8 +1318,10 @@ function streetFleet(theme,layout,plan,completed,circuits,alternatives,elevation
     if (!points?.length) continue;
     const model=models[i%models.length];
     const speed=theme==='moon'?2.05+(i%4)*.32:model==='motorcycle'?3.75:model==='delivery'?2.28:2.65+(i%3)*.32;
+    const variation=rng();
+    const phase=tour?.landmark ? .43+variation*.08 : variation;
     fleet.push({...actor(vehicle(model,colors[(i+(layout.seed%colors.length))%colors.length]),points,{
-      kind:'road',elevation,speed,phase:rng(),corner:tour?1.34:STREET_TURN_RADIUS,
+      kind:'road',elevation,speed,phase,corner:tour?1.34:STREET_TURN_RADIUS,
     }),vehicleModel:model,fleet:true,destination:tour?.landmark?tour.terminal:null,
       ...(!tour&&{alternatives}),horn:theme==='moon'?0:34+i*9,
       ...(theme==='island'&&['cart','pickup','van'].includes(model)&&{islandVehicle:model})});
@@ -1250,17 +1359,6 @@ export function regionActors(theme,layout,plan,completed,discoveries=[]) {
   }
   for (const shop of completed.filter(plot=>plot.kind==='driveThrough')) {
     actors.push(driveThroughTraffic(shop,theme,elevation,circuits));
-  }
-  const station=completed.find(plot=>plot.kind==='busStation');
-  if (station&&paths.length) {
-    const entry=station.entries[0]??station;
-    const distance=path=>Math.min(...path.map(point=>Math.hypot(point.x-entry.x,point.z-entry.z)));
-    const routes=circuits.length?circuits:paths;
-    const cost=path=>distance(path)-Math.min(path.length,12)*.8;
-    const closest=routes.reduce((near,route)=>cost(route)<cost(near)?route:near);
-    const points=circuits.length?streetLane(closest):laneLoop(closest,.83);
-    actors.push({...actor(vehicle('bus','#4c9694'),points,{kind:'bus',speed:2.25,phase:.33,
-      elevation,corner:STREET_TURN_RADIUS}),horn:44});
   }
   if (theme==='island'&&completed.length>=2) {
     const busCount=completed.length>=12&&circuits.length>=2?2:1;

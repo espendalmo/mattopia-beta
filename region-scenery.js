@@ -1,5 +1,5 @@
-import {box,dome,tube,beam,pointOnSite,placeParts,regionActors,parkingTours,driveThroughApproach,actor,visitor,MAX_ACTORS} from './scenery.js';
-import {regionLayout,planRegion,regionVisibility,regionSurface,regionalFootprint,residenceDrive,RESIDENCE_PLOT} from './regions.js';
+import {box,dome,tube,beam,pointOnSite,placeParts,regionActors,parkingTours,serviceDriveways,driveThroughApproach,actor,visitor,MAX_ACTORS} from './scenery.js';
+import {regionLayout,planRegion,regionVisibility,regionSurface,roadElevation,regionalFootprint,residenceDrive,RESIDENCE_PLOT} from './regions.js';
 import {REGION_PLACES,WORLD_BUILD_STEPS,grandCatalog,hasExpandedCatalog,randomGenerator,worldStatus} from './worlds.js';
 import {planStreetRegion} from './street-grid.js';
 import {prepareRoadTunnels,regionRoads,streetHalfWidth} from './region-roads.js';
@@ -481,6 +481,19 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const sky=id==='moon'?'#000000':palette.sky;
   const tunnels=prepareRoadTunnels(layout,plan);
   plan.approaches=developments.flatMap(({plot,steps},i)=>{
+    const driveway=serviceDriveways(plot);
+    if (driveway.length&&plot.entries?.length) {
+      const [entry]=plot.entries,c=Math.cos(plot.yaw),s=Math.sin(plot.yaw);
+      const front=(entry.x-plot.x)*s+(entry.z-plot.z)*c-streetHalfWidth(id)+.14;
+      return driveway.filter(({z})=>front>z-.14).map(({x,z,y,width},j)=>{
+        const path=Array.from({length:5},(_,k)=>{
+          const t=k/4,[a,deck,b]=pointOnSite([x,y,lerp(z-.1,front,t)],plot);
+          const street=plan.streetElevation?.(a,b)??roadElevation(layout,a,b);
+          return {x:a,z:b,y:lerp(deck-.018,street,smooth(t))};
+        });
+        return {path,drive:true,width,latest:j===0&&i===developments.length-1};
+      });
+    }
     const approach=plot.residence
       ?{path:residenceDrive(layout,plot,plan.streetElevation).path,drive:true,width:RESIDENCE_PLOT.gateHalf,color:RESIDENCE_PLOT.paving[id]}
       :plotAccess(layout,plot,steps[0].find(part=>part.support));
@@ -491,14 +504,20 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const discoveries=terrainDiscoveries(layout,{...plan,plots:sceneryPlan.plots},status.full);
   if (plan.starter) {
     discoveries.info.headquarters={...plan.starter,status:'Startbygg',sound:'discovery',
-      name:id==='city'?'Elveby rådhus':id==='moon'?'Månekommandoen':'Palmeøyas hovedhus',
+      name:id==='city'?'Elveby rådhus':id==='moon'?'Månekommandoen':'Palmeøyens hovedhus',
       story:id==='city'?'Her planlegges nye gater og bygg. Rådhusklokken går på bytid.':id==='moon'?'Herfra holder månebasen kontakt med jorden. Antennen fanger også opp fotballkamper.':'Her tegnes de første kartene over øyen, med plass til både palmer og isboder.'};
     discoveries.parts.push(...placeParts(regionalHeadquarters(id),plan.starter)
       .flatMap(part=>terrainFoundation(layout,part,map.seed)).map(part=>({...part,entity:'headquarters'})));
   }
   const parks=pocketParks(layout,{...plan,plots:sceneryPlan.plots},completedPlots,discoveries.sites);
   plan.footpaths=[...parks.paths,...(rail?.walkways??[])];
-  const roads=regionRoads(layout,plan,isNewPlot);
+  const waterCovers=[...(rail?.waterCovers??[])];
+  const suspension=completedPlots.find(plot=>plot.kind==='bridge');
+  if (suspension) {
+    const half=suspension.span*.5;
+    waterCovers.push({a:{x:suspension.x-half,z:suspension.z},b:{x:suspension.x+half,z:suspension.z},width:1.56});
+  }
+  const roads=regionRoads(layout,plan,isNewPlot,waterCovers);
   const roadBuild=roads.some(part=>part.roadBuild!==undefined);
   const parts=[
     ...(id==='moon'&&horizon?lunarEarth(sky,horizon):[]),
@@ -581,7 +600,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const speakers=[...locals.filter(actor=>actor.encounter),...locals.filter(actor=>actor.voice&&!actor.encounter)].slice(0,2);
   const primaryTours=[...new Map(parkedTours.slice().reverse().map(actor=>[actor.parking.plot,actor])).values()];
   const essential=[...rides.filter(actor=>actor.kind==='observation'||actor.kind==='wheel'),...(rail?.actors??[]),...(rail?.walkers??[]),...roadworks.crews,
-    ...helicopter,...craft.slice(0,5),...beachSwimmers,...rides.filter(actor=>actor.dustBather),...primaryTours,
+    ...primaryTours.filter(actor=>actor.service),...helicopter,...craft.slice(0,5),...beachSwimmers,...rides.filter(actor=>actor.dustBather),...primaryTours,
     ...parkedTours.filter(actor=>actor.parking.merge),...speakers,
     ...(discoveries.visitor?[discoveries.visitor]:[]),...discoveries.smoke,
     ...parks.walks,...locals.filter(actor=>actor.driveThrough||actor.offroadExplorer||['bus','offroad-rover','hover'].includes(actor.kind)),...street.slice(0,17)];
@@ -594,9 +613,8 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   return {
     id,seed:map.seed,junctions:plan.junctions,discoveries:{...discoveries.info,...rail?.entries},parts:parts.filter(keep),latest:latest.filter(keep),last,finished,landmarks,sites,roadBuild,latestTarget,world:true,illustrated:true,background:sky,yaw:-Math.PI/4,pitch:.6155,center:1.1,closeSize:76,
     ...viewBounds({...plan,transit:id==='city'?plan.transit:plan.transit?.filter(point=>Math.hypot(point.x-plan.origin.x,point.z-plan.origin.z)<55)},horizon),
-    soundscape:{buildings:completedPlots.length,wheel:completedPlots.some(plot=>plot.kind==='wheel'),
-      hotel:id==='island'&&completedPlots.some(plot=>['hotel','resort','sunsetHotel','glassHotel','megaResort'].includes(plot.kind)),fun:completedPlots.filter(plot=>isSlidePark(plot.kind)||['wheel','coaster','arcade','lunarArcade','islandArcade','tropicalPools'].includes(plot.kind)).length},
-    ambient,roadworks:roadworks.sites,
+    soundscape:{buildings:completedPlots.length},
+    ambient,roadworks:roadworks.sites,waterCovers,
     trafficObstacles:discoveries.sites.map(({x,z,type})=>({x,z,radius:type.mine?4.8:3.9})),
     next:status.building!==null?`${buildingInfo(status.building).name} · ${PHASES[status.phase]}`:null,
   };

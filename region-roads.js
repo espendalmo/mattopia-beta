@@ -298,7 +298,8 @@ export function prepareRoadTunnels(layout,plan) {
     const heights=[-approach,-mouth,mouth,approach].map(d=>roadElevation(layout,x+dx*d,z+dz*d));
     if (Math.max(...heights)-Math.min(...heights)>.74
       ||plan.plots.some(plot=>Math.hypot(x-plot.x,z-plot.z)<6.7
-        ||plot.residence&&plot.entries.some(entry=>Math.hypot(x-entry.x,z-entry.z)<10))
+        ||['residence','busStation','fireStation','policeStation'].includes(plot.kind)
+          &&plot.entries.some(entry=>Math.hypot(x-entry.x,z-entry.z)<10))
       ||plan.transitPortals?.some(portal=>Math.hypot(x-portal.x,z-portal.z)<12)) return [];
     const seed=(Math.imul(Math.round(x*100),19)^Math.imul(Math.round(z*100),37)^layout.seed)>>>0;
     const relief=regionSurface(layout,x,z).relief;
@@ -344,7 +345,7 @@ export function prepareRoadTunnels(layout,plan) {
   });
 }
 
-export function regionRoads(layout,plan,animate=false) {
+export function regionRoads(layout,plan,animate=false,waterCovers=[]) {
   const width=streetHalfWidth(layout.theme);
   const nodes=plan.junctions??[];
   const junctions=new Set(nodes.filter(node=>node.arms.length>=3||node.connector).map(key));
@@ -364,6 +365,12 @@ export function regionRoads(layout,plan,animate=false) {
         return t===1?point:{x:before.x+(point.x-before.x)*t,z:before.z+(point.z-before.z)*t};
       });
     }):path;
+    if (layout.theme==='city') for (let j=1;j<fine.length;j++) {
+      const a=fine[j-1],b=fine[j],x=(a.x+b.x)*.5,z=(a.z+b.z)*.5;
+      const tile=regionSurface(layout,x,z);
+      if (tile.water&&!tile.pond) waterCovers.push({a,b,width:width+.24,
+        at:stage?.((j-.5)/(fine.length-1))});
+    }
     return pavedRoute(layout,fine,width,{junctions,plan:plan.plots?plan:null,stage,gateway:plan.gateways?.has(plan.paths[i])});
   });
   for (const {path,drive,latest,width,color=drive?'#a7a699':'#d3c09e'} of plan.approaches??[]) {

@@ -142,10 +142,11 @@ function beachDistrict(layout) {
       const shores=[-12,-6,0,6,12].map(x=>resortShore(layout,site,x));
       if (shores.some(z=>z===null||z<8.1)) continue;
       const span=Math.max(...shores)-Math.min(...shores);
-      candidates.push({...site,y:ground.y,score:ground.grade*2.3+span*.24+setback*.07+i*.018});
+      candidates.push({...site,y:ground.y,south:Math.cos(yaw)>=Math.SQRT1_2,
+        score:ground.grade*2.3+span*.24+setback*.07+i*.018});
     }
   }
-  return candidates.sort((a,b)=>a.score-b.score)[0]??null;
+  return candidates.sort((a,b)=>Number(b.south)-Number(a.south)||a.score-b.score)[0]??null;
 }
 
 function airDistrict(layout) {
@@ -199,7 +200,7 @@ function lunarResortDistrict(layout) {
 }
 
 export function regionalAnnex(layout,kind) {
-  if (kind==='lighthouse') return layout.berths.lighthouse;
+  if (kind==='lighthouse'||kind==='stoneLighthouse') return layout.berths[kind];
   if (kind==='hangar') return layout.hangar;
   if (kind==='megaResort') return layout.beachResort;
   if (kind==='lunarResort') return layout.spaceResort;
@@ -256,9 +257,19 @@ export function regionLayout(theme,seed,grand=false,capacity=grand?GRAND_REGION_
   }
   layout.sites=sites;
   layout.origin=sites[0];
-  if (grand&&theme==='city') berths.lighthouse=cityBerth(layout,bridgeZ>0?-56:54,-side);
+  const lighthouse=site=>({...site,halfWidth:3.53,halfDepth:3.38,lighthouse:true});
+  if (grand&&theme==='city') {
+    berths.lighthouse=lighthouse(cityBerth(layout,bridgeZ>0?-56:54,-side));
+    const banks=[-48,48,-57,57,35,-35,63,-63].flatMap(z=>[side,-side].map(bank=>cityBerth(layout,z,bank)));
+    const stone=banks.find(site=>Object.values(berths).every(berth=>distance(berth,site)>15));
+    if (stone) berths.stoneLighthouse=lighthouse(stone);
+  }
   if (grand&&theme==='island') {
-    berths.lighthouse=coastSite(layout,layout.phase+4.14);
+    berths.lighthouse=lighthouse(coastSite(layout,layout.phase+4.14));
+    const coast=Array.from({length:24},(_,i)=>coastSite(layout,layout.phase+i*Math.PI/12))
+      .filter(site=>Object.values(berths).every(berth=>distance(berth,site)>18))
+      .sort((a,b)=>a.z-b.z)[0];
+    if (coast) berths.stoneLighthouse=lighthouse(coast);
     layout.beachResort=beachDistrict(layout);
   }
   if (grand) {
@@ -267,7 +278,8 @@ export function regionLayout(theme,seed,grand=false,capacity=grand?GRAND_REGION_
     layout.hangar=hangar;
     if (theme==='moon') layout.spaceResort=lunarResortDistrict(layout);
   }
-  layout.regionalSites=[layout.airfield,layout.hangar,layout.beachResort,layout.spaceResort].filter(Boolean);
+  layout.regionalSites=[layout.airfield,layout.hangar,layout.beachResort,layout.spaceResort,
+    berths.lighthouse,berths.stoneLighthouse].filter(Boolean);
   const grid=Array.from({length:GRID*GRID},(_,i)=>{
     const x=i%GRID*STEP-EDGE,z=Math.floor(i/GRID)*STEP-EDGE;
     const sample=regionSurface(layout,x,z);
@@ -361,7 +373,7 @@ export function specialEntrances(site,kind) {
   if (site.beach) return [regionalPoint(site,0,-8.1)];
   if (site.spaceResort) return [regionalPoint(site,0,8.25)];
   if (kind==='bridge') return [-1,1].map(side=>({x:site.x+side*site.span*.5,y:site.y+.514,z:site.z}));
-  const land=polar(site.yaw+Math.PI,kind==='lighthouse'?5.2:3.4);
+  const land=polar(site.yaw+Math.PI,site.lighthouse?5.4:3.4);
   return [{x:site.x+land.x,z:site.z+land.z}];
 }
 
