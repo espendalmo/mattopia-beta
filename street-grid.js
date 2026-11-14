@@ -115,6 +115,15 @@ function layoutStreets(layout,requiredLots) {
     const candidate=streetGraph(layout,spacing,shift,maxGrade);
     if (candidate?.available.length>=requiredLots) { graph=candidate; break; }
   }
+  if (!graph&&layout.theme==='island'&&layout.grand) {
+    for (const spacing of [12.35,12.15,11.95]) {
+      for (let shift=0;shift<20;shift++) {
+        const candidate=streetGraph(layout,spacing,shift,4.1);
+        if (candidate?.available.length>=requiredLots) { graph=candidate; break; }
+      }
+      if (graph) break;
+    }
+  }
   if (!graph&&layout.theme==='moon') for (const [spacing,shift,maxGrade] of attempts) {
     const candidate=streetGraph(layout,spacing,shift,maxGrade,true);
     if (candidate?.available.length>=requiredLots) { graph=candidate; break; }

@@ -701,7 +701,6 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
     if (plot.kind!=='shoreWalk'&&plot.kind!=='riverWalk') return [];
     return [[plot,promenade(layout,plan,plot,Math.min(WORLD_BUILD_STEPS,map.progress-i*WORLD_BUILD_STEPS))]];
   }));
-  const withPromenade=[...walks.keys()].some(plot=>plot.kind==='shoreWalk');
   const coastalPaths=[...walks].flatMap(([plot,walk])=>plot.kind==='shoreWalk'?walk.paths:[]);
   if (coastalPaths.length) plan.shoreWalkNear=transportCorridor(coastalPaths.flatMap(path=>path.slice(1).map((p,i)=>[path[i],p])),15);
   plan.footpaths=[...parks.paths,...(rail?.walkways??[]),...[...walks.values()].flatMap(walk=>walk.paths)];
@@ -784,7 +783,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
         }
       }
       if (plot.beach) {
-        const beach=resortBeach(layout,plot,withPromenade);
+        const beach=resortBeach(layout,plot);
         parts.push(...beach.parts.map(part=>({...part,landmark:plot.index})));
         beachSwimmers.push(...beach.swimmers);
       }

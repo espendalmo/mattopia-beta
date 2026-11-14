@@ -553,7 +553,7 @@ export function actorPose(actor, seconds, distanceOverride) {
     : walking ? Math.abs(Math.sin(traveled*6))*.035 : 0;
   const cycle=seconds+actor.phase*11;
   const sound=engineKinds.has(actor.kind)?Number(cycle%9.5<3.35)
-    :actor.kind==='coaster'?Number(segment.dy<-.1&&cycle%7.4<4.3)
+    :actor.kind==='coaster'?Number((actor.woodCoaster?segmentPitch(segment)<-.29:segment.dy<-.1)&&cycle%7.4<4.3)
     :actor.voice?Number(cycle%14.5<2.4)*.8:0;
   const roll=actor.coastal&&actor.kind==='bird'?Math.sin(seconds*2+actor.phase*9)*.20:0;
   return {x,y:y+bob*approach,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking&&!clock.thinking?Math.sin(traveled*6)*.17:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),pitch:pitch*approach,sound,thought:Number(clock.thinking),thrust:Number(actor.kind==='hover')};
@@ -1013,7 +1013,8 @@ export function coasterActor(parts,points,phase,{wood=false,car=0}={}) {
   // whole loop while the lift is slow and the downhill run is faster.
   let duration=0;
   const times=segments.map(({dy,start,end,y})=>{
-    const grade=dy/(end-start),speed=grade>.34?2.15:Math.min(8.4,4.5+Math.max(0,-grade)*4.4+Math.max(0,4-y)*.17);
+    const rise=dy/(end-start),lift=smoothStep((rise-.16)/.22);
+    const speed=4.35-lift*2.2+Math.max(0,-rise)*5.4+smoothStep((3.8-y)/2.6)*.45;
     const at=duration;
     duration+=(end-start)/speed;
     return {at,until:duration,start,speed};

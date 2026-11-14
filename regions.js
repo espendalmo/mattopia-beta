@@ -159,11 +159,16 @@ function districtGround(layout,site,halfWidth,halfDepth) {
   return {y:high+.09,grade:high-low,dry:samples.every(p=>!p.water&&p.bank>.35&&p.basin>-.6&&p.volcanic===undefined)};
 }
 
-function islandPromenade(layout) {
+function islandPromenade(layout,inlandLimit=46) {
   const resort=layout.beachResort;
   const angle=resort?.yaw??layout.phase;
-  const beach=resort&&{
-    ...regionalPoint(resort,0,10),yaw:resort.yaw,halfWidth:11.8,halfDepth:7.8,
+  const c=Math.cos(angle),s=Math.sin(angle);
+  const middle=62;
+  const behindResort=point=>{
+    if (!resort) return true;
+    const dx=point.x-resort.x,dz=point.z-resort.z;
+    const across=Math.abs(dx*c-dz*s),seaward=dx*s+dz*c;
+    return across>=resort.halfWidth+2.45||seaward<=-resort.halfDepth-2.9;
   };
   const buildings=[
     ...layout.regionalSites.map(site=>site.beach?{...site,beach:false}:site),
@@ -172,48 +177,45 @@ function islandPromenade(layout) {
   ];
   const room=point=>{
     const tile=regionSurface(layout,point.x,point.z);
-    return !tile.water&&tile.bank>.69&&tile.volcanic===undefined
+    return !tile.water&&tile.bank>1.38&&tile.volcanic===undefined&&behindResort(point)
       &&buildings.every(site=>!regionalFootprint(site,point.x,point.z,SHORE_WALK_HALF_WIDTH+.35));
   };
-  const samples=Array.from({length:125},(_,i)=>{
-    const heading=angle+(i-62)*.014;
-    const coast=islandCoastPoint(layout,heading);
-    return [1.3,1.65,2,2.35,2.8,3.2,3.7,4.3,5,5.8,6.5,7.3,8.2,9.2,10.3,11.5,13,14.5,16,17.5,19,20.5,22,23.5,25,26.5].flatMap(setback=>{
-      const point={x:coast.x-Math.sin(heading)*setback,z:coast.z-Math.cos(heading)*setback};
-      return room(point)?[{...point,setback}]:[];
-    });
-  });
-  // Pick a continuous route through the coastal band. Looking ahead lets it
-  // bend gradually around the resort and lighthouses.
+  const better=(a,b)=>!b||a.behind>b.behind||
+    a.behind===b.behind&&(a.length>b.length||a.length===b.length&&a.cost<b.cost);
+  // The route crosses the resort's centerline inland. Keep both wings as long
+  // as the terrain allows, then prefer a gentle path close to the coast.
   let previous=[];
-  const walks=[];
-  for (const choices of samples) {
-    const options=choices.map(point=>{
-      const onBeach=beach&&regionalFootprint(beach,point.x,point.z);
-      const penalty=.37*Math.abs(point.setback-7.8)+(onBeach?5:0);
-      let best={score:Infinity};
+  let longest=null;
+  for (let i=0;i<=2*middle;i++) {
+    const heading=angle+(i-middle)*.014;
+    const coast=islandCoastPoint(layout,heading);
+    const dx=Math.sin(heading),dz=Math.cos(heading);
+    const options=[];
+    for (let setback=1.35;setback<=inlandLimit;setback+=.72) {
+      const point={x:coast.x-dx*setback,z:coast.z-dz*setback};
+      if (!room(point)) continue;
+      const penalty=.33*Math.abs(setback-7.65);
+      const isBehind=Number(Boolean(resort)&&i===middle);
+      let best={point,setback,behind:isBehind,length:1,cost:penalty,from:null};
       for (const from of previous) {
         const gap=distance(from.point,point);
-        if (gap>2.65||!room({x:mix(from.point.x,point.x,.5),z:mix(from.point.z,point.z,.5)})) continue;
-        const score=from.score+penalty+Math.abs(from.point.setback-point.setback)*1.45;
-        if (score<best.score) best={score,from};
+        if (gap>2.64) continue;
+        const offset=setback-from.setback;
+        const bend=from.from?offset-(from.setback-from.from.setback):0;
+        const next={point,setback,behind:Math.max(isBehind,from.behind),length:from.length+1,
+          cost:from.cost+penalty+Math.abs(offset)*1.7+Math.abs(bend)*1.2,from};
+        if (better(next,best)&&room({x:mix(from.point.x,point.x,.5),z:mix(from.point.z,point.z,.5)})) best=next;
       }
-      return {point,penalty,...best};
-    });
-    const connected=options.filter(option=>option.from);
-    if (connected.length) previous=connected;
-    else {
-      if (previous.length) walks.push(previous.reduce((best,option)=>option.score<best.score?option:best));
-      previous=options.map(option=>({...option,score:option.penalty}));
+      options.push(best);
+      if (better(best,longest)) longest=best;
     }
+    previous=options;
   }
-  if (previous.length) walks.push(previous.reduce((best,option)=>option.score<best.score?option:best));
-  const longest=walks.map(end=>{
-    const path=[];
-    for (let node=end;node;node=node.from) path.push(node.point);
-    return path.reverse();
-  }).reduce((best,path)=>path.length>best.length?path:best,[]);
-  return longest.length>=5?[longest]:[];
+  const path=[];
+  for (let node=longest;node;node=node.from) path.push(node.point);
+  // Give the promenade more room to turn around an unusually deep parcel.
+  if (inlandLimit===46&&(path.length<101||(resort&&!longest?.behind))) return islandPromenade(layout,56);
+  return path.length>=5?[path.reverse()]:[];
 }
 
 export function resortShore(layout,site,x) {
@@ -235,6 +237,9 @@ function beachDistrict(layout) {
       if (Object.values(layout.berths).some(berth=>distance(berth,site)<23)) continue;
       const ground=districtGround(layout,site,8.6,6.35);
       if (!ground.dry||ground.grade>2.8) continue;
+      const rear=regionalPoint(site,0,-site.halfDepth-3.6);
+      const behind=regionSurface(layout,rear.x,rear.z);
+      if (behind.bank<2.15||behind.y>ground.y+2.4) continue;
       const shores=[-12,-6,0,6,12].map(x=>resortShore(layout,site,x));
       if (shores.some(z=>z===null||z<8.1)) continue;
       const span=Math.max(...shores)-Math.min(...shores);
@@ -440,8 +445,9 @@ export function regionLayout(theme,seed,grand=false,capacity=grand?GRAND_REGION_
   }
   if (grand&&theme==='island') {
     const coastWalk=islandPromenade(layout);
-    const front=islandCoastPoint(layout,layout.beachResort?.yaw??layout.phase,5.8);
-    const middle=coastWalk.flat().reduce((best,point)=>distance(point,front)<distance(best,front)?point:best,coastWalk[0]?.[0]??front);
+    const resort=layout.beachResort;
+    const target=resort?regionalPoint(resort,0,-resort.halfDepth-2.9):islandCoastPoint(layout,layout.phase,5.8);
+    const middle=coastWalk.flat().reduce((best,point)=>distance(point,target)<distance(best,target)?point:best,coastWalk[0]?.[0]??target);
     layout.shoreWalkSite={x:middle.x,z:middle.z,y:regionSurface(layout,middle.x,middle.z).y,yaw:0,waterfront:true};
     layout.shoreWalk=coastWalk;
     const segments=coastWalk.flatMap(path=>path.slice(1).map((point,i)=>[path[i],point]));
