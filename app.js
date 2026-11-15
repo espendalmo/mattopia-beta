@@ -569,13 +569,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       let previousScroll=0;
       const viewport=window.visualViewport;
       const events=new AbortController();
-      const syncViewport=()=>{
-        if (!viewport?.width||!viewport.height) return;
-        dialog.style.setProperty('--map-viewport-left',`${viewport.offsetLeft}px`);
-        dialog.style.setProperty('--map-viewport-top',`${viewport.offsetTop}px`);
-        dialog.style.setProperty('--map-viewport-width',`${viewport.width}px`);
-        dialog.style.setProperty('--map-viewport-height',`${viewport.height}px`);
-      };
+      const syncViewport=()=>setDialogViewport(dialog,viewport,'map');
       const stopPageGesture=event=>{ if (fullScreen&&event.cancelable) event.preventDefault(); };
       const showFullScreen=enabled=>{
         fullScreen=enabled;
@@ -1669,6 +1663,14 @@ function showDialog(content, css = '', afterOpen) {
 }
 function closeDialog() { document.querySelector('dialog')?.close(); }
 
+function setDialogViewport(dialog, viewport, prefix, scale = 1) {
+  if (!viewport?.width || !viewport.height) return;
+  dialog.style.setProperty(`--${prefix}-viewport-left`, `${viewport.offsetLeft}px`);
+  dialog.style.setProperty(`--${prefix}-viewport-top`, `${viewport.offsetTop}px`);
+  dialog.style.setProperty(`--${prefix}-viewport-width`, `${viewport.width * scale}px`);
+  dialog.style.setProperty(`--${prefix}-viewport-height`, `${viewport.height * scale}px`);
+}
+
 function showScratchpad(opener) {
   const round = state.active;
   if (view !== 'round' || !round || round.solved || round.retry || !state.scratchpadEnabled) return;
@@ -1685,6 +1687,21 @@ function showScratchpad(opener) {
       <button class="secondary" data-scratchpad-clear disabled>${msg('scratchpad.clear')}</button>
       <button class="primary" data-action="close-dialog">${msg('scratchpad.back')}${icon('arrow')}</button>
     </div>`, 'scratchpad-dialog', dialog => {
+    const viewport = window.visualViewport;
+    const events = new AbortController();
+    if (viewport) {
+      const fitViewport = () => {
+        const scale = viewport.scale;
+        const zoomed = scale > 1.01 && viewport.width > 0 && viewport.height > 0;
+        dialog.classList.toggle('scratchpad-in-viewport', zoomed);
+        if (!zoomed) return;
+        // Counter browser zoom so the paper and its controls all fit on the screen.
+        setDialogViewport(dialog, viewport, 'scratchpad', scale);
+        dialog.style.setProperty('--scratchpad-viewport-scale', String(1 / scale));
+      };
+      fitViewport();
+      for (const name of ['scroll','resize']) viewport.addEventListener(name, fitViewport, {signal:events.signal});
+    }
     const dispose = mountScratchpad(dialog, round.scratchpad, draft => {
       if (state.active !== round) return;
       if (draft) round.scratchpad = draft;
@@ -1692,6 +1709,7 @@ function showScratchpad(opener) {
       save();
     });
     dialog.addEventListener('close', () => {
+      events.abort();
       dispose();
       if (opener?.isConnected) opener.focus({preventScroll:true});
     }, {once:true});
