@@ -3,7 +3,7 @@ import {randomGenerator} from './worlds.js';
 export {randomGenerator};
 import {restoreRewards} from './rewards.js';
 import {CURRICULUM_LEVELS, CURRICULUM_TOPICS, GRADE_LEVELS, curriculumTopic, createCurriculumTask, validCurriculumTask, levelForGrade, nextLevelForGrade, levelsForGrade} from './curriculum.js';
-export const VERSION='1.47.3';
+export const VERSION='1.48.0';
 export const CHANNEL = 'preview';
 export const ROUND_LENGTH=8;
 const DEFAULT_ROUND_LENGTH=5;
@@ -153,25 +153,80 @@ export function createRound(level=1,seed=Date.now(),first=false,options={}){
       }
     }
   }
-  return{id:`${seed}-${level}`,seed,level,focus:options.mix?null:focus,tasks,...(options.mix&&{mix:options.mix}),index:0,attempts:Array(length).fill(0),helped:Array(length).fill(false),hintStages:Array(length).fill(0),results:Array(length).fill(null),solved:false,startedAt:new Date().toISOString()};
+  return{id:`${seed}-${level}`,seed,level,focus:options.mix?null:focus,tasks,...(options.mix&&{mix:options.mix}),index:0,attempts:Array(length).fill(0),helped:Array(length).fill(false),hintStages:Array(length).fill(0),results:Array(length).fill(null),retry:null,solved:false,startedAt:new Date().toISOString()};
 }
-export function noteHelp(round){if(!round||round.solved||round.index>=round.tasks.length)return round;const helped=[...round.helped],hintStages=[...(round.hintStages||Array(round.tasks.length).fill(0))];helped[round.index]=true;hintStages[round.index]=Math.min(3,hintStages[round.index]+1);return{...round,helped,hintStages};}
-export function answerRound(round,value){
-  if(!round||round.solved||round.index>=round.tasks.length)return round;const t=round.tasks[round.index];
+export function noteHelp(round){
+  if(!round||round.solved||round.retry||round.index>=round.tasks.length)return round;
+  const helped=[...round.helped],hintStages=[...(round.hintStages||Array(round.tasks.length).fill(0))];
+  helped[round.index]=true;
+  hintStages[round.index]=Math.min(3,hintStages[round.index]+1);
+  return{...round,helped,hintStages};
+}
+
+function finishTask(round,reviewed=false) {
+  const {index,tasks,attempts}=round;
+  const t=tasks[index],results=[...round.results];
+  results[index]={type:t.type,firstTry:!reviewed&&attempts[index]===1,helped:reviewed||round.helped[index],
+    attempts:attempts[index],support:t.support||'visible',mode:t.mode||'choice',key:factKey(t),
+    ...(reviewed&&{reviewed:true}),...(t.practiceLevel&&{practiceLevel:t.practiceLevel}),
+    ...(t.n!==undefined&&{n:t.n}),...(t.a!==undefined&&{a:t.a}),...(t.b!==undefined&&{b:t.b}),answer:t.answer};
+  return {...round,results,retry:null,solved:true};
+}
+
+export function answerRound(round,value) {
+  if(!round||round.solved||round.retry||round.index>=round.tasks.length)return round;
+  const {index}=round,t=round.tasks[index];
   if(!Number.isInteger(value)||value<0||value>999||(t.mode!=='input'&&!t.choices.includes(value)))return round;
-  const index=round.index,attempts=[...round.attempts];attempts[index]++;
-  if(value!==t.answer)return{...round,attempts};const results=[...round.results];
-  results[index]={type:t.type,firstTry:attempts[index]===1,helped:round.helped[index],attempts:attempts[index],support:t.support||'visible',mode:t.mode||'choice',key:factKey(t),...(t.practiceLevel&&{practiceLevel:t.practiceLevel}),...(t.n!==undefined&&{n:t.n}),...(t.a!==undefined&&{a:t.a}),...(t.b!==undefined&&{b:t.b}),answer:t.answer};
-  return{...round,attempts,results,solved:true};
+  const attempts=[...round.attempts];
+  attempts[index]++;
+  const next={...round,attempts};
+  return value===t.answer ? finishTask(next) : {...next,retry:{value}};
 }
+
+function relatedTask(round,index,{retry=false}={}) {
+  const source=round.tasks[round.index];
+  const level=source.practiceLevel??round.level;
+  const seed=round.seed??(Number.parseInt(round.id,10)||1);
+  const rng=randomGenerator(seed+round.index*37+(retry?1777:991));
+  const key=factKey(source), previousAnswer=source.labels?.[source.answer];
+  for(let j=0;j<16;j++) {
+    const candidate=generateTask(source.type,level,rng,index);
+    if(factKey(candidate)===key)continue;
+    if(retry&&candidate.labels?.[candidate.answer]===previousAnswer)continue;
+    return {...candidate,...(source.practiceLevel&&{practiceLevel:source.practiceLevel})};
+  }
+  return null;
+}
+
+export function retryPlan(round) {
+  if(!round?.retry||round.solved)return null;
+  const {index}=round, task=round.tasks[index];
+  if(round.attempts[index]>=2||(round.hintStages?.[index]??0)>=3)return {kind:'review'};
+  if(!curriculumTopic(task.type)) {
+    return {kind:task.mode==='input'?'retry':'input',stage:Math.min(2,(round.hintStages?.[index]??0)+1)};
+  }
+  const variant=relatedTask(round,index,{retry:true});
+  return variant ? {kind:'similar',task:{...variant,...(task.role&&{role:task.role}),
+    ...(task.reviewOf!==undefined&&{reviewOf:task.reviewOf})}} : {kind:'review'};
+}
+
+export function continueRetry(round) {
+  const plan=retryPlan(round);
+  if(!plan)return round;
+  if(plan.kind==='review')return finishTask(round,true);
+  const {index}=round,tasks=[...round.tasks],hintStages=[...(round.hintStages||Array(tasks.length).fill(0))],helped=[...round.helped];
+  tasks[index]=plan.task??{...tasks[index],mode:'input'};
+  hintStages[index]=plan.stage??1;
+  helped[index]=true;
+  return {...round,tasks,hintStages,helped,retry:null};
+}
+
 export function advanceRound(round){
   if(!round||!round.solved||round.index>=round.tasks.length)return round;
-  const tasks=[...round.tasks],source=round.tasks[round.index],result=round.results[round.index],target=round.index+3;
+  const tasks=[...round.tasks],result=round.results[round.index],target=round.index+3;
   if(!round.mix&&target<tasks.length&&tasks[target].role!=='preview'&&(!result.firstTry||result.helped)){
-    const rng=randomGenerator((round.seed||Number.parseInt(round.id)||1)+round.index*37+991), practiceLevel=source.practiceLevel||round.level;
-    let repeated=generateTask(source.type,practiceLevel,rng,target);
-    for(let j=0;j<12&&factKey(repeated)===factKey(source);j++)repeated=generateTask(source.type,practiceLevel,rng,target);
-    tasks[target]={...repeated,...(source.practiceLevel&&{practiceLevel}),role:'review',reviewOf:round.index};
+    const repeated=relatedTask(round,target);
+    if(repeated)tasks[target]={...repeated,role:'review',reviewOf:round.index};
   }return{...round,tasks,index:round.index+1,solved:false};
 }
 export function roundSummary(r){if(!r||r.index!==r.tasks.length||!r.results.every(Boolean))return null;return{id:r.id,level:r.level,...(r.mix&&{mix:r.mix}),length:r.tasks.length,date:new Date().toISOString(),focus:r.focus||null,firstTry:r.results.filter(x=>x.firstTry).length,helped:r.results.filter(x=>x.helped).length,results:r.results};}
@@ -214,7 +269,12 @@ export function restoreState(raw){
     && (t.type!=='multiply'||t.a>=2&&t.a<=4&&t.b>=2&&t.b<=6)
     && (t.type!=='divide'||t.b>=2&&t.b<=4&&t.answer>=2&&t.answer<=6&&t.n===t.b*t.answer);
   const valid=r&&typeof r.id==='string'&&validLevel(r.level)&&Array.isArray(r.tasks)&&validRoundLength(length)&&r.tasks.every(validTask)&&Number.isInteger(r.index)&&r.index>=0&&r.index<length&&['attempts','helped','results'].every(k=>Array.isArray(r[k])&&r[k].length===length)&&r.attempts.every(x=>Number.isInteger(x)&&x>=0)&&r.helped.every(x=>typeof x==='boolean')&&r.results.every((x,i)=>i<r.index||(i===r.index&&r.solved)?x&&typeof x.firstTry==='boolean'&&typeof x.helped==='boolean':x===null)&&typeof r.solved==='boolean';
-  const active=valid?{...r,tasks:r.tasks.map(t=>({...t,support:t.support==='optional'&&!curriculumTopic(t.type)?'optional':'visible',mode:t.mode==='input'&&!curriculumTopic(t.type)?'input':'choice'})),hintStages:Array.isArray(r.hintStages)&&r.hintStages.length===length?r.hintStages.map(x=>Number.isInteger(x)?Math.max(0,Math.min(3,x)):0):r.helped.map(v=>v?3:0)}:null;
+  const active=valid?{...r,tasks:r.tasks.map(t=>({...t,support:t.support==='optional'&&!curriculumTopic(t.type)?'optional':'visible',mode:t.mode==='input'&&!curriculumTopic(t.type)?'input':'choice'})),hintStages:Array.isArray(r.hintStages)&&r.hintStages.length===length?r.hintStages.map(x=>Number.isInteger(x)?Math.max(0,Math.min(3,x)):0):r.helped.map(v=>v?3:0),retry:null}:null;
+  if(active&&!active.solved&&active.attempts[active.index]>0&&(r.retry!==null||active.attempts[active.index]>1)) {
+    // Earlier app versions saved attempts but kept the feedback dialog only in memory.
+    const task=active.tasks[active.index],value=r.retry?.value;
+    active.retry={value:validNumber(value)&&value!==task.answer&&(task.mode==='input'||task.choices.includes(value))?value:null};
+  }
   const total=Number.isSafeInteger(raw.roundsCompleted)&&raw.roundsCompleted>=history.length?raw.roundsCompleted:history.length;
   const mix=['grade','all'].includes(raw.mix)?raw.mix:null;
   const autoProgress=!mix&&raw.autoProgress===true;
