@@ -3,6 +3,7 @@ import {constructionStory} from './landmark-stories.js';
 import {mapCharacterInfo} from './map-life.js';
 import { VERSION, CHANNEL, ROUND_LENGTH, ROUND_LENGTHS, PROGRESSION_ROUNDS, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, retryPlan, continueRetry, advanceRound, noteHelp, roundSummary, freshState, restoreState, practiceLevelForGrade, progressionPreview, advancePractice } from './core.js';
 import { hintFor } from './learning.js';
+import { mountScratchpad } from './scratchpad.js';
 import { createSoundPlayer, taskSuccessStep } from './sound.js';
 import { createUpdater, readPublishedVersion, PRODUCTION_PATH } from './update.js';
 import { modelById, selectRewardMode, prepareReward, awardPractice, upcomingBuild, renderBuildSvg, puzzleBrickLayout, renderPuzzleBrick, PERFECT_ROUNDS_PER_BONUS } from './rewards.js';
@@ -92,6 +93,8 @@ function icon(name, css = '') {
     close: '<path d="m6 6 12 12M18 6 6 18"/>',
     check: '<path d="m5 12 4 4L19 6"/>',
     help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 2-2.5 2-2.5 4M12 17h.01"/>',
+    pencil: '<path d="m14 6 4 4M4 20l1-5L16 4a2.8 2.8 0 0 1 4 4L9 19Z"/>',
+    undo: '<path d="M9 5 4 10l5 5m-5-5h10a5 5 0 0 1 0 10h-3"/>',
     settings: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--paper)"/><circle cx="15" cy="17" r="3" fill="var(--paper)"/>',
     sprout: '<path d="M12 20v-9M12 14C5 14 4 9 4 6c6 0 8 3 8 8ZM12 11c0-6 4-8 8-8 0 5-2 8-8 8Z"/>',
     again: '<path d="M20 11a8 8 0 1 1-3-6.2L20 8M20 3v5h-5"/><path d="m12 8 .7 2.3L15 11l-2.3.7L12 14l-.7-2.3L9 11l2.3-.7L12 8Z"/>',
@@ -1470,7 +1473,7 @@ function curriculumVisual(model,solved) {
   return '';
 }
 
-function renderVisual(t, solved) {
+function renderVisual(t, solved, captionId = 'visual-caption') {
   const stage = hintStage();
   if (curriculumTopic(t.type)) return t.visual ? `<div class="visual-card curriculum-visual${t.visual.kind==='numberLine'?' line-visual':''}">${curriculumVisual(t.visual,solved)}</div>` : '';
   if (t.support === 'optional' && !stage && !solved && !state.alwaysShowVisuals) return '<p class="mental-note">Prøv gjerne i hodet.<br>Brikkene er her hvis du trenger dem.</p>';
@@ -1509,7 +1512,7 @@ function renderVisual(t, solved) {
     else if (t.n > 20) caption = partsText(shown);
     else caption = solved ? `${shown} igjen.` : 'Se på tierne og enerne.';
   }
-  return `<div class="visual-card">${html}<p class="visual-caption" id="visual-caption">${caption}</p></div>`;
+  return `<div class="visual-card">${html}<p class="visual-caption"${captionId ? ` id="${captionId}"` : ''}>${caption}</p></div>`;
 }
 
 function renderRound() {
@@ -1531,7 +1534,8 @@ function renderRound() {
     <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-stage"><div class="companion-buddy">${buddy(r.solved, Boolean(r.retry))}</div>
     <p><span class="companion-message">${r.solved ? msg('round.solved') : r.attempts[r.index] ? msg('round.retry') : msg('round.unsolved')}</span><small class="perfect-progress" hidden></small></p><span class="companion-sparks" aria-hidden="true"></span></div></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
     ${equation(t, r.solved)}${renderVisual(t, r.solved)}
-    ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 || r.retry ? 'disabled' : ''}>${icon('help')}${msg(helpLabel)}</button>` : ''}
+    ${!r.solved ? `<div class="task-tools"><button class="help-button" data-action="help" ${stage === 3 || r.retry ? 'disabled' : ''}>${icon('help')}${msg(helpLabel)}</button>
+    ${state.scratchpadEnabled ? `<button class="scratchpad-trigger" data-action="scratchpad" aria-haspopup="dialog" ${r.retry ? 'disabled' : ''}>${icon('pencil')}${msg('scratchpad.title')}</button>` : ''}</div>` : ''}
     ${stage && !r.solved ? `<div class="hint" id="hint-panel"><span class="eplo-hint-name">Eplo</span>${escapeHtml(hintText(t))}</div>` : ''}
     ${t.mode === 'input' ? r.solved ? `<div class="entered-correct" aria-label="Svaret ${t.answer} er riktig">${t.answer} ${icon('check')}</div>` : keypad(Boolean(r.retry)) : renderAnswers(t, r.solved, r.retry)}
     <div class="feedback-area">${feedback}</div></main></div></div>`;
@@ -1664,6 +1668,35 @@ function showDialog(content, css = '', afterOpen) {
   afterOpen?.(d);
 }
 function closeDialog() { document.querySelector('dialog')?.close(); }
+
+function showScratchpad(opener) {
+  const round = state.active;
+  if (view !== 'round' || !round || round.solved || round.retry || !state.scratchpadEnabled) return;
+  const task = round.tasks[round.index];
+  const diagram = task.visual || task.type === 'place' ? renderVisual(task, false, null) : '';
+  const hint = hintStage() ? `<p class="scratchpad-hint">${escapeHtml(hintText(task))}</p>` : '';
+  showDialog(`<h2 id="dialog-title">${icon('pencil')}${msg('scratchpad.title')}</h2>
+    <div class="scratchpad-workspace">
+      <div class="scratchpad-prompt"><h3>${escapeHtml(taskTitle(task))}</h3>${equation(task, false)}${diagram}${hint}</div>
+      <div class="scratchpad-paper"><canvas role="img" aria-label="${msg('scratchpad.area')}"></canvas></div>
+    </div>
+    <div class="scratchpad-actions">
+      <button class="secondary" data-scratchpad-undo disabled>${icon('undo')}${msg('scratchpad.undo')}</button>
+      <button class="secondary" data-scratchpad-clear disabled>${msg('scratchpad.clear')}</button>
+      <button class="primary" data-action="close-dialog">${msg('scratchpad.back')}${icon('arrow')}</button>
+    </div>`, 'scratchpad-dialog', dialog => {
+    const dispose = mountScratchpad(dialog, round.scratchpad, draft => {
+      if (state.active !== round) return;
+      if (draft) round.scratchpad = draft;
+      else delete round.scratchpad;
+      save();
+    });
+    dialog.addEventListener('close', () => {
+      dispose();
+      if (opener?.isConnected) opener.focus({preventScroll:true});
+    }, {once:true});
+  });
+}
 
 const pauseEncouragements = [msg('pause.encourage1'), msg('pause.encourage2'), msg('pause.encourage3'), msg('pause.encourage4')];
 let pauseVisits=0;
@@ -1903,6 +1936,8 @@ function adultView() {
     ${typeof navigator.vibrate === 'function' ? `<label class="sound-setting"><input type="checkbox" id="haptics-setting" ${state.haptics ? 'checked' : ''}>Vibrasjon ved svar og fullføring</label>` : ''}
     <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="visual-setting" aria-describedby="visual-setting-note" ${state.alwaysShowVisuals ? 'checked' : ''}>Vis alltid brikker og figurer</label>
     <p class="adult-note" id="visual-setting-note">Holder tellebrikker og andre figurer synlige i matteoppgavene. Med valget av kan støtten bli valgfri etter flere trygge runder. Barnet kan da hente den fram med «Forklar meg».</p></div>
+    <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="scratchpad-setting" aria-describedby="scratchpad-setting-note" ${state.scratchpadEnabled ? 'checked' : ''}>${msg('scratchpad.setting')}</label>
+    <p class="adult-note" id="scratchpad-setting-note">${msg('scratchpad.settingNote')}</p></div>
     <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="focus-break-setting" aria-describedby="focus-break-note" ${state.focusBreaks ? 'checked' : ''}>Pauseleker mellom øvingsrundene</label>
     <p class="adult-note" id="focus-break-note">En kort lek etter hver tredje runde. Appen veksler mellom Kims lek, klossebygging etter hukommelsen og å telle klosser til et gulv.</p></div>
     <p class="adult-note adaptation-note">Oppgaver som trengte hjelp får litt mer plass. Etter flere trygge runder kan én eller to oppgaver få talltastatur.</p>
@@ -1975,6 +2010,7 @@ function adultView() {
         if (e.target.id === 'sound-setting') { state.sound = e.target.checked; save(); state.sound ? playSuccess() : sounds.stop(); }
         if (e.target.id === 'haptics-setting') { state.haptics = e.target.checked; save(); }
         if (e.target.id === 'visual-setting') { state.alwaysShowVisuals = e.target.checked; save(); }
+        if (e.target.id === 'scratchpad-setting') { state.scratchpadEnabled = e.target.checked; save(); }
         if (e.target.id === 'focus-break-setting') {
           state.focusBreaks = e.target.checked;
           if (!state.focusBreaks) {
@@ -2170,6 +2206,7 @@ document.addEventListener('click', e => {
     if (view !== 'round') startRound();
   }
   if (action === 'retry') retryAnswer();
+  if (action === 'scratchpad') showScratchpad(actionButton);
   if (action === 'collection') showCollection(actionButton.dataset);
   if (action === 'collectible') {
     const { kind, id } = e.target.closest('[data-action="collectible"]').dataset;
@@ -2284,7 +2321,7 @@ document.addEventListener('click', e => {
     finishBetaTestAction();
   }
   if (action === 'reset') showDialog('<h2 id="dialog-title">Slette historikken?</h2><p>Denne spilleren mister stjerner, plantevekst, bygg og en påbegynt runde.</p><button class="primary" data-action="close-dialog">Behold historikken</button><button class="text-button" data-action="confirm-reset">Ja, slett historikken</button>', 'pause-dialog');
-  if (action === 'confirm-reset') { closeDialog(); const { level, sound, haptics, rewardMode, focusBreaks, alwaysShowVisuals, autoProgress, progressionExcluded, roundLength, mix } = state; state = selectRewardMode({ ...freshState(), level, sound, haptics, focusBreaks, alwaysShowVisuals, autoProgress, progressionExcluded, roundLength, mix }, rewardMode); completedReward = null; focusGame = null; save(); view = profile ? 'home' : 'onboarding'; render(); focusHeading(); }
+  if (action === 'confirm-reset') { closeDialog(); const { level, sound, haptics, rewardMode, focusBreaks, scratchpadEnabled, alwaysShowVisuals, autoProgress, progressionExcluded, roundLength, mix } = state; state = selectRewardMode({ ...freshState(), level, sound, haptics, focusBreaks, scratchpadEnabled, alwaysShowVisuals, autoProgress, progressionExcluded, roundLength, mix }, rewardMode); completedReward = null; focusGame = null; save(); view = profile ? 'home' : 'onboarding'; render(); focusHeading(); }
 });
 
 document.addEventListener('submit', event => {
