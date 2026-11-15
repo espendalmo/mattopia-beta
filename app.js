@@ -1518,6 +1518,7 @@ function renderRound() {
   const t = r.tasks[r.index];
   const done = r.index + (r.solved ? 1 : 0);
   const stage = hintStage();
+  const helpLabel = ['round.help','round.moreHelp','round.viewSolution','round.showHelp'][stage];
   const length = r.tasks.length;
   const progress = Array.from({ length }, (_, i) => `<span class="step ${i < done ? 'done' : i === done ? 'current' : ''}"></span>`).join('');
   let feedback;
@@ -1530,7 +1531,7 @@ function renderRound() {
     <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-stage"><div class="companion-buddy">${buddy(r.solved, Boolean(r.retry))}</div>
     <p><span class="companion-message">${r.solved ? msg('round.solved') : r.attempts[r.index] ? msg('round.retry') : msg('round.unsolved')}</span><small class="perfect-progress" hidden></small></p><span class="companion-sparks" aria-hidden="true"></span></div></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
     ${equation(t, r.solved)}${renderVisual(t, r.solved)}
-    ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 || r.retry ? 'disabled' : ''}>${icon('help')}${stage === 3 ? msg('round.showHelp') : stage ? msg('round.moreHelp') : msg('round.help')}</button>` : ''}
+    ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 || r.retry ? 'disabled' : ''}>${icon('help')}${msg(helpLabel)}</button>` : ''}
     ${stage && !r.solved ? `<div class="hint" id="hint-panel"><span class="eplo-hint-name">Eplo</span>${escapeHtml(hintText(t))}</div>` : ''}
     ${t.mode === 'input' ? r.solved ? `<div class="entered-correct" aria-label="Svaret ${t.answer} er riktig">${t.answer} ${icon('check')}</div>` : keypad(Boolean(r.retry)) : renderAnswers(t, r.solved, r.retry)}
     <div class="feedback-area">${feedback}</div></main></div></div>`;
@@ -2042,11 +2043,10 @@ function submitAnswer(value) {
 function showRetry() {
   const round = state.active, plan = retryPlan(round);
   if (!plan) return;
-  const task = round.tasks[round.index], tryingAgain = plan.stage !== undefined;
-  const hints = tryingAgain ? [hintFor(task, plan.stage)] : [...new Set([hintFor(task, 2), hintFor(task, 3)])];
-  const label = plan.kind === 'review' ? msg(round.index === round.tasks.length - 1 ? 'round.complete' : 'round.retryNext')
-    : msg({input:'round.retryInput',retry:'round.retryAgain',similar:'round.retrySimilar'}[plan.kind]);
-  showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>${msg(tryingAgain ? 'round.retryHint' : 'round.retrySolution')}</h2>
+  const task = round.tasks[round.index], showsSolution = plan.kind === 'similar' || plan.stage === 3;
+  const hints = showsSolution ? [...new Set([hintFor(task, 2), hintFor(task, 3)])] : [hintFor(task, plan.stage)];
+  const label = msg({input:'round.retryInput',retry:'round.retryAgain',similar:'round.retrySimilar'}[plan.kind]);
+  showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>${msg(showsSolution ? 'round.retrySolution' : 'round.retryHint')}</h2>
     <div class="retry-hint" id="retry-explanation">${hints.map(hint => `<p>${escapeHtml(hint)}</p>`).join('')}</div>
     <button class="primary" data-action="retry">${label} ${icon('arrow')}</button>`, 'retry-sheet', dialog => {
     dialog.setAttribute('aria-describedby','retry-explanation');
@@ -2076,20 +2076,23 @@ function flashAnswer(task, value, correct) {
 
 function retryAnswer() {
   if (view !== 'round' || !state.active?.retry) return;
+  const task = state.active.tasks[state.active.index];
   state.active = continueRetry(state.active);
   closeDialog();
-  if (state.active.solved) { goToNextTask(); return; }
-  const newTask = state.active.tasks[state.active.index].mode !== 'input';
-  if (newTask) ui = makeUI();
+  const nextTask = state.active.tasks[state.active.index];
+  const replaced = nextTask.mode === 'choice' && nextTask !== task;
+  if (replaced) ui = makeUI();
   else ui.entry = '';
   save(); render();
-  if (newTask) root.querySelector('.task-scroll')?.scrollTo({top:0});
+  if (replaced) root.querySelector('.task-scroll')?.scrollTo({top:0});
   focusHeading();
 }
 
 function goToNextTask() {
   if (view !== 'round' || !state.active?.solved) return;
-  state.active = advanceRound(state.active);
+  const next = advanceRound(state.active);
+  if (next === state.active) return;
+  state.active = next;
   if (state.active.index === state.active.tasks.length) {
     completedReward = null;
     const summary = roundSummary(state.active);
