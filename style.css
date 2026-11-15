@@ -1453,6 +1453,8 @@ canvas.lunar-starfield,
 .map-eplo-overlay:not(.map-eplo-standalone) .map-eplo-close { top: 0; right: 0; }
 .map-eplo-overlay:not(.map-eplo-standalone) .eplo-note p { font-size: .82rem; line-height: 1.35; }
 .adult-dialog .adult-intro { margin-bottom: 15px; }
+.adult-dialog .adult-save-note { margin: 4px 0 0; }
+.adult-dialog .adult-save-note:empty { display: none; }
 .adult-dialog .admin-section { padding: 7px 0; }
 .adult-dialog .admin-section-body { padding: 8px 0 12px; }
 .adult-dialog .admin-section-body .adult-group { margin-bottom: 0; }

@@ -1,5 +1,8 @@
 // Endre teksten til høyre. Behold nøklene og plassholderne, som {current} og {total}.
 export default Object.freeze({
+  "adult.saveAutomatic": "Endringer lagres automatisk.",
+  "adult.saveFailed": "Nettleseren kunne ikke lagre endringene.",
+  "adult.saved": "Endringene er lagret.",
   "adult.title": "For voksne",
   "exercise.angleRemainder.hint": "En rett vinkel er 90°.",
   "exercise.angleRemainder.method": "Trekk {a}° fra 90°.",

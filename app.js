@@ -1921,7 +1921,9 @@ function adultView() {
     <button class="secondary" data-action="show-profiles">Bytt eller legg til spiller</button>
     <button class="delete-button" data-action="delete-profile">Slett profilen</button>
   </section>` : '';
-  showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>${msg('adult.title')}</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk voksenvisningen">${icon('close')}</button></div><p class="adult-intro">Ingen tidsfrist, liv eller poengtrekk. En stjerne betyr at barnet har øvd.</p>
+  showDialog(`<div class="dialog-header"><div><h2 id="dialog-title" tabindex="-1" autofocus>${msg('adult.title')}</h2>
+    <p class="adult-note adult-save-note" data-adult-save-status role="status">${storageWorks ? msg('adult.saveAutomatic') : ''}</p></div>
+    <button class="icon-button" data-action="close-dialog" aria-label="Lukk voksenvisningen">${icon('close')}</button></div><p class="adult-intro">Ingen tidsfrist, liv eller poengtrekk. En stjerne betyr at barnet har øvd.</p>
     ${!storageWorks ? '<p class="storage-warning">Nettleseren tillater ikke lagring akkurat nå. Appen virker, men framgangen kan forsvinne når siden lukkes.</p>' : ''}
     <details class="adult-details admin-section"><summary>Spiller og øving</summary><div class="admin-section-body">${playerSettings}
     <div class="round-length-setting"><label class="profile-field"><span>${msg('setup.roundLength')}</span>
@@ -1952,6 +1954,18 @@ function adultView() {
     <details class="adult-details"><summary>Legg appen på hjemskjermen</summary><p>På iPad og iPhone: åpne adressen i Safari, velg Del og «Legg til på Hjem-skjerm». Åpne appen på nett én gang før dere bruker den uten nett.</p><p>Profiler og framgang lagres lokalt i denne nettleseren eller i den installerte appen. Safari og hjemskjermappen kan ha hver sine profiler. Det er ingen konto, sporing eller eksterne ressurser.</p></details>
     <button class="delete-button" data-action="reset">${profile ? 'Slett denne spillerens øvingshistorikk' : 'Slett øvingshistorikken'}</button></div></details><button class="primary" data-action="close-dialog">Ferdig</button><p class="version">Mattopia ${VERSION}</p>`, 'adult-dialog', d => {
       if (CHANNEL === 'preview') checkPublishedRelease(d);
+      const saveStatus = d.querySelector('[data-adult-save-status]');
+      const playerId = profile?.id;
+      let pendingSave = null;
+      function saveSetting({edit=false} = {}) {
+        const options = {edit: edit || pendingSave?.edit === true};
+        const saved = save(options);
+        pendingSave = saved ? null : options;
+        saveStatus.textContent = msg(saved ? 'adult.saved' : 'adult.saveFailed');
+      }
+      d.addEventListener('close', () => {
+        if (pendingSave && profile?.id === playerId) save(pendingSave);
+      }, {once:true});
       const refreshPractice = selector => {
         const fieldset=d.querySelector('#practice-options');
         const expanded=fieldset.querySelector('.progression-tracks')?.open;
@@ -1972,14 +1986,14 @@ function adultView() {
             state.mix=null;
           } else return;
           state.progressRounds = 0;
-          save();
+          saveSetting();
           refreshPractice('input[name=level]:checked');
         }
         if (e.target.id === 'player-grade' && profile) {
           profile = { ...profile, grade:profileDetails({ grade:e.target.value }).grade };
           state.progressRounds = 0;
           alignPracticeLevel(profile.grade);
-          save({ edit:true });
+          saveSetting({edit:true});
           refreshPractice();
         }
         if (e.target.id === 'auto-progress' && profile?.grade) {
@@ -1987,7 +2001,7 @@ function adultView() {
           if (state.autoProgress) state.mix = null;
           state.progressRounds = 0;
           alignPracticeLevel(profile.grade);
-          save();
+          saveSetting();
           refreshPractice('#auto-progress');
         }
         if (e.target.name === 'progression-track' && profile?.grade) {
@@ -1999,18 +2013,18 @@ function adultView() {
           state.progressionExcluded={...state.progressionExcluded,[grade]:[...excluded]};
           state.progressRounds=0;
           alignPracticeLevel(grade);
-          save();
+          saveSetting();
           refreshPractice(`input[name="progression-track"][value="${level}"]`);
         }
         if (e.target.id === 'round-length' && ROUND_LENGTHS.includes(Number(e.target.value))) {
           state.roundLength = Number(e.target.value);
-          save();
+          saveSetting();
         }
-        if (e.target.name === 'reward-mode') { state = selectRewardMode(state, e.target.value); save(); }
-        if (e.target.id === 'sound-setting') { state.sound = e.target.checked; save(); state.sound ? playSuccess() : sounds.stop(); }
-        if (e.target.id === 'haptics-setting') { state.haptics = e.target.checked; save(); }
-        if (e.target.id === 'visual-setting') { state.alwaysShowVisuals = e.target.checked; save(); }
-        if (e.target.id === 'scratchpad-setting') { state.scratchpadEnabled = e.target.checked; save(); }
+        if (e.target.name === 'reward-mode') { state = selectRewardMode(state, e.target.value); saveSetting(); }
+        if (e.target.id === 'sound-setting') { state.sound = e.target.checked; saveSetting(); state.sound ? playSuccess() : sounds.stop(); }
+        if (e.target.id === 'haptics-setting') { state.haptics = e.target.checked; saveSetting(); }
+        if (e.target.id === 'visual-setting') { state.alwaysShowVisuals = e.target.checked; saveSetting(); }
+        if (e.target.id === 'scratchpad-setting') { state.scratchpadEnabled = e.target.checked; saveSetting(); }
         if (e.target.id === 'focus-break-setting') {
           state.focusBreaks = e.target.checked;
           if (!state.focusBreaks) {
@@ -2018,7 +2032,7 @@ function adultView() {
             focusGame = null;
             if (view === 'focus-break') view = 'home';
           }
-          save();
+          saveSetting();
         }
       });
     });
